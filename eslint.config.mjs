@@ -124,6 +124,13 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
+      // An underscore-prefixed parameter is deliberately unused. Express identifies an error
+      // handler by ARITY, so its fourth parameter must stay declared even though nothing reads
+      // it; `after-used` reports exactly that case and nothing else would satisfy it.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+      ],
     },
   },
 

@@ -1,0 +1,95 @@
+/**
+ * The catalog, loaded and validated at boot (TSD 5.1 steps 2 and 3, TSD 7.3).
+ *
+ * **The server does not start on unvalidated safety data.** `allergenTags` is what keeps a
+ * peanut dish away from someone who cannot eat one, and a record that failed validation has no
+ * claim to be trusted about it. So a single bad record stops the process rather than being
+ * skipped - skipping would leave a server that runs, answers, and is quietly missing a meal.
+ *
+ * The same `mealSchema` the seed script uses, which is why a record cannot pass one and fail
+ * the other.
+ */
+
+import { mealSchema } from '@nutritime/contracts';
+import type { Meal } from '@nutritime/contracts';
+
+export interface Catalog {
+  readonly meals: readonly Meal[];
+  /** By id, for the detail route. Built once; a linear scan per request is not free at 60. */
+  readonly byId: ReadonlyMap<string, Meal>;
+  readonly version: string;
+}
+
+export class CatalogError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'CatalogError';
+  }
+}
+
+/**
+ * Validate `seededCatalog` into a `Catalog`, or throw naming the record index and field path.
+ *
+ * The index AND the path, because "a record failed" is not actionable: the file holds sixty
+ * records and the person reading the error has to find the one that broke. Every failing
+ * record is reported, not just the first, for the same reason the config loader reports every
+ * variable.
+ */
+export function buildCatalog(seeded: unknown): Catalog {
+  if (!Array.isArray(seeded)) {
+    throw new CatalogError('meals.json did not parse as an array of records');
+  }
+
+  const meals: Meal[] = [];
+  const failures: string[] = [];
+
+  for (const [index, record] of seeded.entries()) {
+    const result = mealSchema.safeParse(record);
+    if (!result.success) {
+      for (const issue of result.error.issues) {
+        const path = issue.path.map((segment) => String(segment)).join('.');
+        failures.push(
+          `  record ${String(index)}${path === '' ? '' : `.${path}`}: ${issue.message}`,
+        );
+      }
+      continue;
+    }
+    // No cast: Zod infers mutable arrays, and a mutable array IS assignable to a readonly
+    // one. Only the reverse fails, which is the divergence P02 recorded.
+    meals.push(result.data);
+  }
+
+  if (failures.length > 0) {
+    throw new CatalogError(
+      `${String(failures.length)} catalog validation failure(s):\n${failures.join('\n')}`,
+    );
+  }
+  if (meals.length === 0) {
+    // An empty catalog is not a working server with nothing to show; it is a boot that found
+    // no data. `packages/catalog` ships an empty array before the seed has ever run.
+    throw new CatalogError('the catalog is empty; run `npm run seed`');
+  }
+
+  const byId = new Map<string, Meal>();
+  for (const meal of meals) {
+    if (byId.has(meal.id)) {
+      throw new CatalogError(`duplicate meal id "${meal.id}"`);
+    }
+    byId.set(meal.id, meal);
+  }
+
+  // `meals[0]` is `Meal | undefined` under noUncheckedIndexedAccess, but the empty case threw
+  // above, so the fallback is unreachable rather than defensive. Read through the map's first
+  // value instead of re-throwing a condition that cannot hold.
+  const version = meals[0]?.catalogVersion ?? '';
+  const mixed = meals.filter((meal) => meal.catalogVersion !== version);
+  if (mixed.length > 0) {
+    // One catalog has one version. A mixed file means two seed runs were spliced together,
+    // and `/health` would then report a version most of the records do not carry.
+    throw new CatalogError(
+      `mixed catalogVersion: ${String(mixed.length)} record(s) differ from "${version}"`,
+    );
+  }
+
+  return { meals, byId, version };
+}
