@@ -73,16 +73,16 @@ describe('nutrition is derived or absent, never invented', () => {
     expect(derived.length + unavailable.length).toBe(meals.length);
   });
 
-  it('derives nutrition for exactly the 5 records coverage currently reaches', () => {
+  it('derives nutrition for exactly the 7 records coverage currently reaches', () => {
     // EXACT, not a floor. A `>= 3` assertion cannot tell 5 from 3, so it would stay green
     // while coverage regressed - and coverage is the number this phase is weakest on. When the
     // catalog-coverage pass raises it, this number moves deliberately and the diff says so.
     //
-    // 5 of 60 is not a target; it is what the binding table currently reaches. The cause is
+    // 7 of 60 is not a target; it is what the binding table currently reaches. The cause is
     // recorded in P07.md: FNDDS carries no row at all for rosemary, mint, saffron, cardamom,
     // allspice, bay leaf, garam masala, fenugreek, shallots, toor dal, ghee or celeriac, and
     // one such ingredient blanks a whole meal under TSD 7.4's all-or-nothing rule.
-    expect(derived).toHaveLength(5);
+    expect(derived).toHaveLength(7);
   });
 
   it('never reports 0 where it means unknown', () => {
@@ -126,9 +126,12 @@ describe('nutrition is derived or absent, never invented', () => {
 
   it('names the ingredient that blocked every unavailable record', () => {
     for (const meal of unavailable) {
-      // A reason that does not name the ingredient is a reason nobody can act on.
-      expect(meal.nutritionProvenance.reason ?? '').not.toBe('');
-      expect((meal.nutritionProvenance.reason ?? '').length).toBeGreaterThan(10);
+      // A reason that does not NAME the ingredient is a reason nobody can act on. Asserting a
+      // length alone let any sentence pass; this checks the reason actually quotes one of the
+      // meal's own ingredient names.
+      const reason = meal.nutritionProvenance.reason ?? '';
+      const named = meal.ingredients.some((item) => reason.includes(item.name));
+      expect(named, `${meal.id}: "${reason}"`).toBe(true);
     }
   });
 });
@@ -174,34 +177,63 @@ describe('three meals verified by hand against the per-100 g table', () => {
     return meal;
   };
 
+  /**
+   * All three worked independently from `nutrition-source.json`'s per-100 g figures and the
+   * raw measure strings, doing each unit conversion by hand rather than calling `derive.ts`.
+   *
+   * An earlier version of this block named three meals and actually worked only one, and that
+   * one used 0.85 g/ml for granulated sugar where the binding declares 0.845 - so the "hand
+   * check" was checking a different computation from the one the code performs. Both rounded
+   * to the same integer, which is exactly why it went unnoticed.
+   */
+
   it('Home-made Mandazi: 750 g flour + 6 tbsp sugar + 2 eggs + 1 cup milk over 8 servings', () => {
-    // Worked by hand from nutrition-source.json, per 100 g:
-    //   self raising flour 359 kcal  -> 7.50 x 359   = 2692.5
-    //   granulated sugar   401 kcal  -> 6 tbsp x 14.7868 ml x 0.85 g/ml = 75.41 g -> 302.4
-    //   eggs                         -> 2 x 50 g                        =  143.0
-    //   whole milk          61 kcal  -> 236.59 ml x 1.03 g/ml = 243.7 g ->  148.6
-    //   total 3286.5 kcal / 8 servings = 410.8 -> 411
+    //   self raising flour 359 kcal/100 g  x 750.00 g        = 2692.50
+    //   granulated sugar   401             x  74.97 g        =  300.63   (6 x 14.7868 ml x 0.845)
+    //   eggs               143             x 100.00 g        =  143.00   (2 x 50 g)
+    //   whole milk          61             x 243.69 g        =  148.65   (236.5882 ml x 1.03)
+    //                                                 total  = 3284.77 / 8 = 410.60 -> 411
     const meal = byId('home-made-mandazi');
     expect(meal.nutritionProvenance.servings).toBe(8);
     expect(meal.nutrition.calories).toBe(411);
-    expect(meal.nutrition.proteinGrams).toBe(11);
-    expect(meal.nutrition.carbsGrams).toBe(83);
-    expect(meal.nutrition.fatGrams).toBe(4);
+    expect(meal.nutrition.proteinGrams).toBe(11); // 85.99 / 8 = 10.75
+    expect(meal.nutrition.carbsGrams).toBe(83); // 665.91 / 8 = 83.24
+    expect(meal.nutrition.fatGrams).toBe(4); // 30.30 / 8 = 3.79
   });
 
-  it('Chocolate Gateau divides by its 10 authored servings', () => {
+  it('Chocolate Gateau: chocolate, butter, milk, 5 eggs, sugar and flour over 10 servings', () => {
+    //   dark chocolate     550 kcal/100 g  x 250.00 g        = 1375.00
+    //   butter             743             x 175.00 g        = 1300.25
+    //   whole milk          61             x  30.46 g        =   18.58   (2 x 14.7868 ml x 1.03)
+    //   eggs               143             x 250.00 g        =  357.50   (5 x 50 g)
+    //   granulated sugar   401             x 175.00 g        =  701.75
+    //   all purpose flour  366             x 125.00 g        =  457.50
+    //                                                 total  = 4210.58 / 10 = 421.06 -> 421
     const meal = byId('chocolate-gateau');
     expect(meal.nutritionProvenance.servings).toBe(10);
     expect(meal.nutrition.calories).toBe(421);
+    expect(meal.nutrition.proteinGrams).toBe(6); // 59.83 / 10 = 5.98
+    expect(meal.nutrition.carbsGrams).toBe(42); // 424.77 / 10 = 42.48
+    expect(meal.nutrition.fatGrams).toBe(25); // 252.63 / 10 = 25.26
   });
 
-  it('Honey Teriyaki Salmon divides by its 2 authored servings', () => {
-    // 1 lb salmon at 208 kcal/100 g is 943 kcal before anything else is added, so a
-    // two-serving figure in the high 600s is the right order of magnitude. A servings error
-    // here would show up as a figure that is plausible but wrong by an exact factor.
-    const meal = byId('honey-teriyaki-salmon');
-    expect(meal.nutritionProvenance.servings).toBe(2);
-    expect(meal.nutrition.calories).toBe(673);
+  it('Chicken Enchilada Casserole: the meal a density correction moved by 11 percent', () => {
+    //   enchilada sauce     30 kcal/100 g  x 396.89 g        =  119.07   (14 oz)
+    //   monterey jack      373             x 339.27 g        = 1265.47   (3 x 236.5882 ml x 0.478)
+    //   corn tortillas     218             x 156.00 g        =  340.08   (6 x 26 g)
+    //   chicken breast     120             x 348.00 g        =  417.60   (2 x 174 g)
+    //                                                 total  = 2142.22 / 6 = 357.04 -> 357
+    //
+    // Worth its own test because the cheese is 59% of the energy and its density is AUTHORED.
+    // At the 0.4 g/ml this table first carried, the meal derived 323 kcal; USDA's own portion
+    // data gives 1 cup shredded = 113 g, i.e. 0.478, and the figure moved to 357. Nothing
+    // downstream could have detected the first number was wrong (R-03).
+    const meal = byId('chicken-enchilada-casserole');
+    expect(meal.nutritionProvenance.servings).toBe(6);
+    expect(meal.nutrition.calories).toBe(357);
+    expect(meal.nutrition.proteinGrams).toBe(29); // 172.71 / 6 = 28.79
+    expect(meal.nutrition.carbsGrams).toBe(15); // 91.27 / 6 = 15.21
+    expect(meal.nutrition.fatGrams).toBe(20); // 119.91 / 6 = 19.99
   });
 });
 

@@ -35,7 +35,8 @@ wrong-but-safer-kept, 53 confirmed with no change.
 
 ## Every record reviewed
 
-`+` marks a record whose tags were changed by this review; `·` marks one confirmed unchanged.
+`+` marks a record whose tags this review changed; `~` one judged and deliberately left as
+derived; `.` one confirmed unchanged.
 
 |     | Record                                                      | Committed allergen tags                    |
 | --- | ----------------------------------------------------------- | ------------------------------------------ |

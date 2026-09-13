@@ -36,8 +36,10 @@ const UNAVAILABLE: NutritionSummary = {
 function unavailable(reason: string): DerivedNutrition {
   return {
     nutrition: UNAVAILABLE,
-    // No dataset and no servings: `mealSchema`'s superRefine requires both to be absent when
-    // the origin is `unavailable`, because neither describes a figure that was never produced.
+    // No dataset and no servings. The superRefine does NOT require this - it only forbids a
+    // known value and requires a reason - so this is a choice, not a constraint: neither field
+    // describes a figure that was never produced, and carrying a serving count on a record
+    // with no nutrition invites a reader to think one was computed. `catalog.test.ts` pins it.
     provenance: { origin: 'unavailable', dataset: null, servings: null, reason },
     fdcIds: [],
     usdaCodes: [],

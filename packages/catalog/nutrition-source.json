@@ -82,15 +82,28 @@
     },
     {
       "key": "basil",
-      "description": "Spices, basil, dried",
-      "usdaCode": "2003",
-      "fdcId": "171317",
+      "description": "Basil, fresh",
+      "usdaCode": "2044",
+      "fdcId": "172232",
       "sourceLabel": "SR Legacy",
       "per100g": {
-        "kcal": 233,
-        "proteinGrams": 22.98,
-        "carbsGrams": 47.75,
-        "fatGrams": 4.07
+        "kcal": 23,
+        "proteinGrams": 3.15,
+        "carbsGrams": 2.65,
+        "fatGrams": 0.64
+      }
+    },
+    {
+      "key": "beef brisket",
+      "description": "Beef, brisket, whole, separable lean only, trimmed to 0\" fat, all grades, cooked, braised",
+      "usdaCode": "13368",
+      "fdcId": "170612",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 218,
+        "proteinGrams": 29.75,
+        "carbsGrams": 0,
+        "fatGrams": 10.08
       }
     },
     {
@@ -185,6 +198,19 @@
       }
     },
     {
+      "key": "canned chickpeas",
+      "description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, canned, solids and liquids, low sodium",
+      "usdaCode": "16360",
+      "fdcId": "175250",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 88,
+        "proteinGrams": 4.92,
+        "carbsGrams": 13.49,
+        "fatGrams": 1.95
+      }
+    },
+    {
       "key": "canola oil",
       "description": "Oil, canola",
       "usdaCode": "4582",
@@ -263,6 +289,19 @@
       }
     },
     {
+      "key": "cherry tomato",
+      "description": "Tomatoes, red, ripe, raw, year round average",
+      "usdaCode": "11529",
+      "fdcId": "170457",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 18,
+        "proteinGrams": 0.88,
+        "carbsGrams": 3.89,
+        "fatGrams": 0.2
+      }
+    },
+    {
       "key": "chicken breast",
       "description": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw",
       "usdaCode": "5062",
@@ -286,6 +325,19 @@
         "proteinGrams": 2.52,
         "carbsGrams": 3.53,
         "fatGrams": 1.2
+      }
+    },
+    {
+      "key": "chicken thigh",
+      "description": "Chicken, broilers or fryers, thigh, meat and skin, raw",
+      "usdaCode": "5091",
+      "fdcId": "172385",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 221,
+        "proteinGrams": 16.52,
+        "carbsGrams": 0.25,
+        "fatGrams": 16.61
       }
     },
     {
@@ -364,6 +416,32 @@
         "proteinGrams": 14.67,
         "carbsGrams": 3.57,
         "fatGrams": 0.96
+      }
+    },
+    {
+      "key": "cocoa powder",
+      "description": "Cocoa, dry powder, unsweetened",
+      "usdaCode": "19165",
+      "fdcId": "169593",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 228,
+        "proteinGrams": 19.6,
+        "carbsGrams": 57.9,
+        "fatGrams": 13.7
+      }
+    },
+    {
+      "key": "condensed milk",
+      "description": "Milk, canned, condensed, sweetened",
+      "usdaCode": "1095",
+      "fdcId": "171275",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 321,
+        "proteinGrams": 7.91,
+        "carbsGrams": 54.4,
+        "fatGrams": 8.7
       }
     },
     {
@@ -588,6 +666,19 @@
       }
     },
     {
+      "key": "ginger root",
+      "description": "Ginger root, raw",
+      "usdaCode": "11216",
+      "fdcId": "169231",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 80,
+        "proteinGrams": 1.82,
+        "carbsGrams": 17.77,
+        "fatGrams": 0.75
+      }
+    },
+    {
       "key": "granulated sugar",
       "description": "Sugars, granulated",
       "usdaCode": "19335",
@@ -754,6 +845,19 @@
         "proteinGrams": 0,
         "carbsGrams": 69.6,
         "fatGrams": 0.1
+      }
+    },
+    {
+      "key": "marshmallows",
+      "description": "Candies, marshmallows",
+      "usdaCode": "19116",
+      "fdcId": "167995",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 318,
+        "proteinGrams": 1.8,
+        "carbsGrams": 81.3,
+        "fatGrams": 0.2
       }
     },
     {

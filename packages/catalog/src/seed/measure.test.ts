@@ -226,7 +226,41 @@ describe('parseMeasureToGrams - vague and unknown units', () => {
     // matching as 4 x 00 and converting to zero grams.
     expect(grams(parseMeasureToGrams('3 400g cans'))).toBe(1200);
     expect(grams(parseMeasureToGrams('400g'))).toBe(400);
-    expect(grams(parseMeasureToGrams('1 - 14 ounce can'))).toBeCloseTo(396.89, 1);
+  });
+
+  it('REFUSES a hyphenated mass range instead of multiplying it', () => {
+    // The defect this pins, and it was silent. The sized-container rewrite runs BEFORE the
+    // range guard, so while its separator accepted a hyphen it hid the range from the guard
+    // entirely: `4-5 pound` matched as 4 x 5 and converted to 9071 g - four times the true
+    // mass of the dominant ingredient of a real catalog meal.
+    //
+    // Ranges in volume units were always refused, so only the mass class was affected, which
+    // is why the existing range tests could not see it. Every one of them used a volume unit.
+    for (const measure of ['4-5 pound', '2-3 kg', '3-4 g', '2 - 3 lb', '1-2 oz', '5-6 grams']) {
+      const result = parseMeasureToGrams(measure);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.kind).toBe('ambiguous-range');
+      }
+    }
+  });
+
+  it('reads an all-preparation unit as a bare count', () => {
+    // `1 chopped` is one onion. Filtering the empty stripped unit out of the candidates left
+    // `chopped` standing as an unrecognised unit; it blocked 15 of the catalog's 55
+    // unavailable records, the single largest cause.
+    const onion = { gramsPerUnit: { item: 110 } };
+    expect(grams(parseMeasureToGrams('1 chopped', onion))).toBe(110);
+    expect(grams(parseMeasureToGrams('2 finely chopped', onion))).toBe(220);
+    expect(grams(parseMeasureToGrams('Minced', onion))).toBe(110);
+    expect(grams(parseMeasureToGrams('Grated', onion))).toBe(110);
+  });
+
+  it('reaches a declared gram weight through an irregular plural', () => {
+    // `leaves` trims to `leave`, not `leaf`, so a binding declaring `leaf` was never consulted
+    // and `6 leaves` failed with the weight sitting right there in the table.
+    expect(grams(parseMeasureToGrams('6 leaves', { gramsPerUnit: { leaf: 0.5 } }))).toBe(3);
+    expect(grams(parseMeasureToGrams('2 loaves', { gramsPerUnit: { loaf: 400 } }))).toBe(800);
   });
 
   it('reads a hyphenated mixed number as a quantity and a hyphenated range as a range', () => {
@@ -240,8 +274,11 @@ describe('parseMeasureToGrams - vague and unknown units', () => {
     expect(grams(parseMeasureToGrams('1 (200g) pack'))).toBe(200);
   });
 
-  it('keeps the first half of a dual-unit measure', () => {
+  it('keeps the METRIC half of a dual-unit measure, whichever side it is on', () => {
+    // The catalog publishes both orders. Keeping the first blindly took the imperial
+    // approximation (170.1 g) over the stated 180 g in `6oz/180g`, which is live.
     expect(grams(parseMeasureToGrams('150g/6oz'))).toBe(150);
+    expect(grams(parseMeasureToGrams('6oz/180g'))).toBe(180);
   });
 
   it('never returns zero grams on a failure path', () => {

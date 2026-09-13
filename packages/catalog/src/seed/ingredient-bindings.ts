@@ -145,18 +145,23 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['spring water', 'water'],
   // Expanded at T-07-07 for the live catalog vocabulary.
   ['flour', 'all purpose flour'],
-  ['self-raising flour', 'self raising flour'],
+  ['self raising flour', 'self raising flour'],
   ['sugar', 'granulated sugar'],
   ['dark soft brown sugar', 'brown sugar'],
   ['coco sugar', 'brown sugar'],
   ['bread', 'white bread'],
   ['wholegrain bread', 'white bread'],
   ['milk', 'whole milk'],
-  ['semi-skimmed milk', 'whole milk'],
-  ['clotted cream', 'heavy cream'],
+  ['semi skimmed milk', 'whole milk'],
+  // `clotted cream` is deliberately UNBOUND: the archive carries no row, and clotted cream
+  // is 586 kcal / 64 g fat against heavy cream's 340 / 36. It is the dominant ingredient of
+  // `fettucine-alfredo` (227 g), so substituting would have been a 1.7x error on the figure
+  // that meal is mostly made of. An unavailable meal beats a wrong number.
+
   ['cream', 'heavy cream'],
   ['creme fraiche', 'sour cream'],
-  ['fromage frais', 'sour cream'],
+  // `fromage frais` likewise unbound: ~90 kcal against sour cream's 198.
+
   ['shredded monterey jack cheese', 'monterey jack cheese'],
   ['colby jack cheese', 'monterey jack cheese'],
   ['cheese', 'cheddar'],
@@ -168,7 +173,7 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['prosciutto', 'cured ham'],
   ['parma ham', 'cured ham'],
   ['chicken breasts', 'chicken breast'],
-  ['chicken thighs', 'chicken breast'],
+  ['chicken thighs', 'chicken thigh'],
   ['chicken', 'chicken breast'],
   ['raw king prawns', 'shrimp'],
   ['potatoes', 'potato'],
@@ -178,7 +183,7 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['red onions', 'red onion'],
   ['tomatoes', 'tomato'],
   ['plum tomatoes', 'tomato'],
-  ['cherry tomatoes', 'tomato'],
+  ['cherry tomatoes', 'cherry tomato'],
   ['baby plum tomatoes', 'tomato'],
   ['canned tomatoes', 'tomato'],
   ['chopped tomatoes', 'tomato'],
@@ -192,7 +197,7 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['chilli powder', 'chili powder'],
   ['red chilli powder', 'chili powder'],
   ['cayenne pepper', 'cayenne pepper'],
-  ['stir-fry vegetables', 'mixed vegetables'],
+  ['stir fry vegetables', 'mixed vegetables'],
   ['frozen peas', 'mixed vegetables'],
   ['rapeseed oil', 'canola oil'],
   ['oil', 'canola oil'],
@@ -204,7 +209,7 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['plain chocolate', 'dark chocolate'],
   ['chocolate chips', 'dark chocolate'],
   ['white chocolate chips', 'dark chocolate'],
-  ['cacao', 'dark chocolate'],
+  ['cacao', 'cocoa powder'],
   ['vegetable stock', 'vegetable broth'],
   ['vegetable stock cube', 'vegetable broth'],
   ['beef stock', 'vegetable broth'],
@@ -227,12 +232,16 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['paccheri pasta', 'pasta'],
   ['cumin seeds', 'cumin seed'],
   ['mustard seeds', 'mustard seed'],
-  ['ginger', 'ground ginger'],
+  // Fresh root, not the dried spice: the catalog measures it as `1 inch`, `large piece` and
+  // `2 tsp shredded`, which are plainly the rhizome. 80 kcal against the spice's 335.
+  ['ginger', 'ginger root'],
+  ['fresh ginger', 'ginger root'],
+  ['ginger paste', 'ginger root'],
   ['thyme', 'dried thyme'],
   ['fresh thyme', 'dried thyme'],
   ['dried oregano', 'dried oregano'],
   ['oregano', 'dried oregano'],
-  ['parmigiano-reggiano', 'parmesan cheese'],
+  ['parmigiano reggiano', 'parmesan'],
   ['leeks', 'leek'],
   ['sesame seeds', 'sesame seed'],
   ['garlic clove', 'garlic'],
@@ -255,13 +264,12 @@ export const INGREDIENT_ALIASES: ReadonlyMap<string, string> = new Map([
   ['paprika', 'chili powder'],
   ['ground cumin', 'cumin seed'],
   ['coriander seeds', 'cumin seed'],
-  ['miniature marshmallows', 'granulated sugar'],
+  ['miniature marshmallows', 'marshmallows'],
   ['golden syrup', 'maple syrup'],
-  ['condensed milk', 'whole milk'],
   ['almond milk', 'whole milk'],
   ['soya milk', 'whole milk'],
-  ['cannellini beans', 'chickpeas'],
-  ['butter beans', 'chickpeas'],
+  ['cannellini beans', 'canned chickpeas'],
+  ['butter beans', 'canned chickpeas'],
 ]);
 
 export interface IngredientBinding {
@@ -282,7 +290,7 @@ const LARGE_EGG_GRAMS = 50;
  * happens to omit a key another entry has acquires that key as `undefined`, which then does
  * not satisfy `Record<string, number>`.
  */
-const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
+export const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
   [
     'butter',
     {
@@ -487,7 +495,10 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     {
       usdaCode: '2044',
       usdaDescription: 'Basil, fresh',
-      measure: { gramsPerUnit: { leaf: 0.5, bunch: 20 } },
+      // Fresh weights on the fresh row. A second entry for this key bound the DRIED spice
+      // (2003, 233 kcal) with these same fresh gram weights attached, and `new Map` took it:
+      // a `Bunch` of basil derived 58 kcal against a true ~5. Removed.
+      measure: { gramsPerUnit: { leaf: 0.5, bunch: 20, handful: 10 } },
     },
   ],
   [
@@ -682,7 +693,10 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     {
       usdaCode: '16056',
       usdaDescription: 'Chickpeas (garbanzo beans, bengal gram), mature seeds, raw',
-      measure: { gramsPerMillilitre: 0.8, gramsPerUnit: { can: 400, tin: 400 } },
+      // No `can` or `tin` here. This row is DRY seed at 378 kcal/100 g; a tin holds cooked
+      // beans at 88. Declaring a can weight on it turned `1 can Chickpeas` into 1512 kcal
+      // against a true ~352 - a 4.3x error. Canned goes to its own binding.
+      measure: { gramsPerMillilitre: 0.8 },
     },
   ],
   [
@@ -727,7 +741,10 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     {
       usdaCode: '20044',
       usdaDescription: 'Rice, white, long-grain, regular, raw, enriched',
-      measure: { gramsPerMillilitre: 0.85 },
+      // 0.78, matching the `rice` entry: USDA gives 1 cup raw long-grain as 185 g. The two
+      // keys bound the same code at two different densities, which is a table that disagrees
+      // with itself.
+      measure: { gramsPerMillilitre: 0.78 },
     },
   ],
   [
@@ -792,7 +809,10 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     {
       usdaCode: '1025',
       usdaDescription: 'Cheese, monterey',
-      measure: { gramsPerMillilitre: 0.4, gramsPerUnit: { slice: 28 } },
+      // 0.478, not 0.4: USDA's own portion data is 1 cup shredded = 113 g. This is the only
+      // authored density that moves a COMMITTED figure - `chicken-enchilada-casserole` uses
+      // 3 cups and it is 55% of the meal's energy.
+      measure: { gramsPerMillilitre: 0.478, gramsPerUnit: { slice: 28 } },
     },
   ],
   [
@@ -808,7 +828,7 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     {
       usdaCode: '1023',
       usdaDescription: 'Cheese, gruyere',
-      measure: { gramsPerMillilitre: 0.4 },
+      measure: { gramsPerMillilitre: 0.478 },
     },
   ],
   [
@@ -1197,14 +1217,6 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
     },
   ],
   [
-    'basil',
-    {
-      usdaCode: '2003',
-      usdaDescription: 'Spices, basil, dried',
-      measure: { gramsPerMillilitre: 0.12, gramsPerUnit: { bunch: 25, handful: 10, leaf: 0.5 } },
-    },
-  ],
-  [
     'clams',
     {
       usdaCode: '15157',
@@ -1218,6 +1230,76 @@ const BINDING_ENTRIES: readonly (readonly [string, IngredientBinding])[] = [
       usdaCode: '20134',
       usdaDescription: 'Rice noodles, cooked',
       measure: { gramsPerMillilitre: 0.4 },
+    },
+  ],
+  [
+    'canned chickpeas',
+    {
+      usdaCode: '16360',
+      usdaDescription:
+        'Chickpeas (garbanzo beans, bengal gram), mature seeds, canned, solids and liquids, low sodium',
+      measure: { gramsPerMillilitre: 0.95, gramsPerUnit: { can: 400, tin: 400 } },
+    },
+  ],
+  [
+    'condensed milk',
+    {
+      usdaCode: '1095',
+      usdaDescription: 'Milk, canned, condensed, sweetened',
+      measure: { gramsPerMillilitre: 1.28, gramsPerUnit: { can: 397, tin: 397 } },
+    },
+  ],
+  [
+    'marshmallows',
+    {
+      usdaCode: '19116',
+      usdaDescription: 'Candies, marshmallows',
+      // Miniature marshmallows are mostly air: 1 cup is about 50 g, not the 200 g a sugar
+      // density implied. Aliasing them to granulated sugar was wrong twice over - 401 kcal
+      // against 318, and four times the mass.
+      measure: { gramsPerMillilitre: 0.21 },
+    },
+  ],
+  [
+    'cocoa powder',
+    {
+      usdaCode: '19165',
+      usdaDescription: 'Cocoa, dry powder, unsweetened',
+      measure: { gramsPerMillilitre: 0.42 },
+    },
+  ],
+  [
+    'ginger root',
+    {
+      usdaCode: '11216',
+      usdaDescription: 'Ginger root, raw',
+      measure: { gramsPerUnit: { item: 30, piece: 15, inch: 6, large: 45, small: 15 } },
+    },
+  ],
+  [
+    'chicken thigh',
+    {
+      usdaCode: '5091',
+      usdaDescription: 'Chicken, broilers or fryers, thigh, meat and skin, raw',
+      measure: { gramsPerUnit: { item: 90, thigh: 90 } },
+    },
+  ],
+  [
+    'cherry tomato',
+    {
+      usdaCode: '11529',
+      usdaDescription: 'Tomatoes, red, ripe, raw, year round average',
+      // Same row as a regular tomato; only the countable weight differs. Inheriting the
+      // 123 g item weight turned `12` cherry tomatoes into 1476 g - eight times the truth.
+      measure: { gramsPerMillilitre: 0.65, gramsPerUnit: { item: 15, small: 12, large: 20 } },
+    },
+  ],
+  [
+    'beef brisket',
+    {
+      usdaCode: '13368',
+      usdaDescription:
+        'Beef, brisket, whole, separable lean only, trimmed to 0" fat, all grades, cooked, braised',
     },
   ],
 ];

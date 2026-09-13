@@ -128,10 +128,10 @@
     "allergenTags": ["egg", "gluten", "wheat"],
     "dietTags": ["regular"],
     "nutrition": {
-      "calories": null,
-      "proteinGrams": null,
-      "carbsGrams": null,
-      "fatGrams": null
+      "calories": 787,
+      "proteinGrams": 40,
+      "carbsGrams": 29,
+      "fatGrams": 58
     },
     "price": {
       "amountCents": 1050,
@@ -149,10 +149,10 @@
       "licenceConfirmed": false
     },
     "nutritionProvenance": {
-      "origin": "unavailable",
-      "dataset": null,
-      "servings": null,
-      "reason": "Black Pudding \"2 sliced\": \"2 sliced\" uses the unit \"sliced\", which is not a known mass, volume or countable unit"
+      "origin": "usda-derived",
+      "dataset": "USDA FNDDS supporting data 2022-10-28",
+      "servings": 2,
+      "reason": null
     }
   },
   {
@@ -404,7 +404,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onion \"1 chopped\": \"1 chopped\" uses the unit \"chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Cardamom: \"Cardamom\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -489,7 +489,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Garlic Clove \"Minced\": \"Minced\" uses the unit \"minced\", which is not a known mass, volume or countable unit"
+      "reason": "Garlic Clove \"Minced\": \"Minced\" is a bare count, and this ingredient declares no gram weight per item"
     }
   },
   {
@@ -630,7 +630,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "basil \"6 leaves\": \"6 leaves\" counts in \"leaves\", and this ingredient declares no gram weight for one of them"
+      "reason": "Parmigiano-Reggiano \"sprinkling\": \"sprinkling\" uses the unit \"sprinkling\", which is not a known mass, volume or countable unit"
     }
   },
   {
@@ -758,7 +758,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Leek \"1 chopped\": \"1 chopped\" uses the unit \"chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Coriander \"2 tsp ground\": \"2 tsp ground\" is a volume and this ingredient declares no grams per millilitre; a millilitre is not a gram, and assuming water would be a guess"
     }
   },
   {
@@ -1161,7 +1161,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onion \"1 chopped\": \"1 chopped\" uses the unit \"chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Garlic \"1 tablespoon minced\": \"1 tablespoon minced\" is a volume and this ingredient declares no grams per millilitre; a millilitre is not a gram, and assuming water would be a guess"
     }
   },
   {
@@ -1875,10 +1875,10 @@
     "allergenTags": ["gluten", "milk", "wheat"],
     "dietTags": ["regular"],
     "nutrition": {
-      "calories": 323,
-      "proteinGrams": 27,
+      "calories": 357,
+      "proteinGrams": 29,
       "carbsGrams": 15,
-      "fatGrams": 17
+      "fatGrams": 20
     },
     "price": {
       "amountCents": 1000,
@@ -2263,7 +2263,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onion \"5 thinly sliced\": \"5 thinly sliced\" uses the unit \"thinly sliced\", which is not a known mass, volume or countable unit"
+      "reason": "Ginger paste \"1 tbsp\": \"1 tbsp\" is a volume and this ingredient declares no grams per millilitre; a millilitre is not a gram, and assuming water would be a guess"
     }
   },
   {
@@ -2379,7 +2379,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Chicken \"5 boneless\": \"5 boneless\" uses the unit \"boneless\", which is not a known mass, volume or countable unit"
+      "reason": "Squash: \"Squash\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -2833,7 +2833,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Beef Brisket: \"Beef Brisket\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
+      "reason": "Beef Brisket \"4-5 pound\": \"4-5 pound\" names a range of quantities; choosing one of them would be a guess"
     }
   },
   {
@@ -3235,7 +3235,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Semi-skimmed Milk: \"Semi-skimmed Milk\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
+      "reason": "White Fish Fillets: \"White Fish Fillets\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -3520,7 +3520,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Red Chilli \"1 finely sliced\": \"1 finely sliced\" uses the unit \"finely sliced\", which is not a known mass, volume or countable unit"
+      "reason": "Thai red curry paste: \"Thai red curry paste\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -3711,7 +3711,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Nutmeg \"Grated\": \"Grated\" uses the unit \"grated\", which is not a known mass, volume or countable unit"
+      "reason": "Clotted Cream: \"Clotted Cream\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -3788,7 +3788,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onion \"1 finely chopped\": \"1 finely chopped\" uses the unit \"finely chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Pilchards: \"Pilchards\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -4573,7 +4573,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Garlic Clove \"4 sliced\": \"4 sliced\" uses the unit \"sliced\", which is not a known mass, volume or countable unit"
+      "reason": "Garlic Clove \"4 sliced\": \"4 sliced\" is a bare count, and this ingredient declares no gram weight per item"
     }
   },
   {
@@ -4711,7 +4711,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onions \"2 finely chopped\": \"2 finely chopped\" uses the unit \"finely chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Thyme \"sprigs of fresh\": \"sprigs of fresh\" counts in \"sprigs\", and this ingredient declares no gram weight for one of them"
     }
   },
   {
@@ -4954,7 +4954,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onion \"1 finely chopped\": \"1 finely chopped\" uses the unit \"finely chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Thyme \"sprigs of fresh\": \"sprigs of fresh\" counts in \"sprigs\", and this ingredient declares no gram weight for one of them"
     }
   },
   {
@@ -5048,7 +5048,7 @@
       "origin": "unavailable",
       "dataset": null,
       "servings": null,
-      "reason": "Onions \"2 chopped\": \"2 chopped\" uses the unit \"chopped\", which is not a known mass, volume or countable unit"
+      "reason": "Bay Leaf: \"Bay Leaf\" matches no ingredient alias or binding; it is left unresolved rather than matched to the nearest name"
     }
   },
   {
@@ -5103,10 +5103,10 @@
     "allergenTags": ["milk"],
     "dietTags": ["vegetarian", "gluten-aware"],
     "nutrition": {
-      "calories": null,
-      "proteinGrams": null,
-      "carbsGrams": null,
-      "fatGrams": null
+      "calories": 353,
+      "proteinGrams": 14,
+      "carbsGrams": 25,
+      "fatGrams": 23
     },
     "price": {
       "amountCents": 600,
@@ -5124,10 +5124,10 @@
       "licenceConfirmed": false
     },
     "nutritionProvenance": {
-      "origin": "unavailable",
-      "dataset": null,
-      "servings": null,
-      "reason": "Onion \"1 finely chopped\": \"1 finely chopped\" uses the unit \"finely chopped\", which is not a known mass, volume or countable unit"
+      "origin": "usda-derived",
+      "dataset": "USDA FNDDS supporting data 2022-10-28",
+      "servings": 4,
+      "reason": null
     }
   }
 ]

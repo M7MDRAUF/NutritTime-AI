@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { INGREDIENT_BINDINGS } from './ingredient-bindings.js';
+import { normalizeText } from '@nutritime/domain';
+import { BINDING_ENTRIES, INGREDIENT_ALIASES, INGREDIENT_BINDINGS } from './ingredient-bindings.js';
 import { canonicalizeIngredientName, resolveIngredient } from './ingredient-resolver.js';
 
 /**
@@ -131,5 +132,62 @@ describe('resolveIngredient - binding', () => {
       }
     }
     expect(unbound).toEqual([]);
+  });
+});
+
+describe('the tables cannot silently disagree with themselves', () => {
+  it('declares no binding key twice', () => {
+    // `new Map` takes the LAST entry for a duplicated key, silently. `basil` was declared
+    // twice - once as the fresh leaf (2044, 23 kcal) and once as the dried spice (2003,
+    // 233 kcal) - and the dried row won, a 10x error with the correct row already written
+    // down two hundred lines above it. Nothing detected it, so this does.
+    const keys = BINDING_ENTRIES.map(([key]) => key);
+    const seen = new Set<string>();
+    const duplicates = keys.filter((key) => (seen.has(key) ? true : (seen.add(key), false)));
+    expect(duplicates).toStrictEqual([]);
+    expect(INGREDIENT_BINDINGS.size).toBe(BINDING_ENTRIES.length);
+  });
+
+  it('spells every alias key the way normalizeText will produce it', () => {
+    // A hyphenated key has no reachable spelling: `normalizeText` collapses every
+    // non-alphanumeric run to a space, so `semi-skimmed milk` could never match while the
+    // catalog reported "Semi-skimmed Milk matches no ingredient alias".
+    const unreachable = [...INGREDIENT_ALIASES.keys()].filter((key) => normalizeText(key) !== key);
+    expect(unreachable).toStrictEqual([]);
+  });
+
+  it('points every alias at a binding, or at a name the archive deliberately lacks', () => {
+    // Aliases are not chained: `resolveIngredient` returns the alias target directly, so an
+    // alias pointing at another ALIAS key resolves to nothing. `parmigiano-reggiano` was dead
+    // twice over, by an unreachable key AND an alias target.
+    //
+    // A target with no binding is legitimate in exactly one case: the archive carries no row
+    // for that food at all, so the alias exists to turn "unknown word" into the actionable
+    // `unbound-ingredient` failure. Those are listed here so the list itself is reviewable -
+    // a name that quietly joins it is a defect, a name that is argued for is a known gap.
+    const DELIBERATELY_UNBOUND = new Set(['shallots', 'clotted cream', 'fromage frais']);
+
+    const danglers = [...INGREDIENT_ALIASES.entries()]
+      .filter(([, target]) => !INGREDIENT_BINDINGS.has(target))
+      .filter(([, target]) => !DELIBERATELY_UNBOUND.has(target))
+      .map(([key, target]) => `${key} -> ${target}`);
+    expect(danglers).toStrictEqual([]);
+
+    // ...and an alias must never point at a name that is ONLY another alias. A target that is
+    // also a binding key is fine even when an alias of the same name exists - the resolver
+    // finds the binding. `parmigiano-reggiano -> parmesan cheese` was the real failure: the
+    // target existed solely as an alias, so the lookup ended nowhere.
+    const chained = [...INGREDIENT_ALIASES.entries()]
+      .filter(([, target]) => INGREDIENT_ALIASES.has(target) && !INGREDIENT_BINDINGS.has(target))
+      .filter(([, target]) => !DELIBERATELY_UNBOUND.has(target))
+      .map(([key, target]) => `${key} -> ${target}`);
+    expect(chained).toStrictEqual([]);
+  });
+
+  it('declares a usdaCode for every binding and re-verifies it against the archive', () => {
+    for (const [key, binding] of INGREDIENT_BINDINGS) {
+      expect(binding.usdaCode, key).toMatch(/^\d+$/);
+      expect(binding.usdaDescription.length, key).toBeGreaterThan(0);
+    }
   });
 });

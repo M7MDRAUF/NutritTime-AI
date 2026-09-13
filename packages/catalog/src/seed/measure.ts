@@ -352,10 +352,14 @@ function normalizeMeasure(measure: string): string {
   }
   text = text.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
 
-  // `150g/6oz` is one amount written twice. Keep the first; it is the metric one.
-  const dualUnit = /^(\d+(?:\.\d+)?\s*[a-z]+)\s*\/\s*\d/.exec(text);
-  if (dualUnit?.[1] !== undefined) {
-    text = dualUnit[1];
+  // `150g/6oz` is one amount written twice. Keep the METRIC half, whichever side it is on:
+  // the catalog publishes `6oz/180g` as well, and keeping the first blindly took the imperial
+  // approximation (170.1 g) over the stated 180 g.
+  const dual = /^(\d+(?:\.\d+)?\s*[a-z]+)\s*\/\s*(\d[^/]*)$/.exec(text);
+  const metric = /^\d+(?:\.\d+)?\s*(?:g|kg|ml|l|gram|grams|kilogram|kilograms)\b/;
+  if (dual?.[1] !== undefined && dual[2] !== undefined) {
+    const [, left, right] = dual;
+    text = metric.test(right) && !metric.test(left) ? right.trim() : left.trim();
   }
 
   // `2-1/2 cups` and `1-1/2 cups` are MIXED NUMBERS, not ranges: the part after the hyphen is
@@ -365,10 +369,21 @@ function normalizeMeasure(measure: string): string {
 
   // `3 400g cans` and `1 - 14 ounce can` are a count of a sized container. Multiplying is
   // exact: three 400 g tins is 1200 g.
-  // The separator is REQUIRED. Without it `400g` matches as 4 x 00 and converts to zero
-  // grams - a silent, catastrophic misread of the commonest measure in the catalog.
+  // **The separator must be WHITESPACE.** Two earlier versions of this line were wrong in
+  // opposite directions and both were silent:
+  //
+  //   no separator at all -> `400g` matched as 4 x 00 and converted to ZERO grams;
+  //   a hyphen allowed    -> `4-5 pound` matched as 4 x 5 and converted to 9071 g, because
+  //                          this rewrite runs before the RANGE guard and so hid the range
+  //                          from it. `4-5 pound` is live in the catalog.
+  //
+  // A hyphen between two numbers means a range in every measure string TheMealDB publishes.
+  // Requiring whitespace leaves `3 400g cans` working and lets `4-5 pound` fall through to
+  // the RANGE check, which refuses it. `1 - 14 ounce can` is refused too: that is one can, not
+  // a range, but refusing a real measure costs one meal its nutrition while multiplying a
+  // range ships a number that is wrong by 4x.
   const sized =
-    /^(\d+)(?:\s+|\s*-\s*)(\d+(?:\.\d+)?)\s*(g|kg|ml|l|oz|lb|ounce|ounces|pound|pounds|gram|grams)\b/.exec(
+    /^(\d+)\s+(\d+(?:\.\d+)?)\s*(g|kg|ml|l|oz|lb|ounce|ounces|pound|pounds|gram|grams)\b/.exec(
       text,
     );
   if (sized?.[1] !== undefined && sized[2] !== undefined && sized[3] !== undefined) {
@@ -430,8 +445,25 @@ function parseQuantity(text: string): number | null {
   return null;
 }
 
+/**
+ * Plurals whose singular a trailing-`s` trim cannot reach.
+ *
+ * `leaves` folded to `leave`, so a binding declaring `leaf: 0.5` was never consulted and
+ * `6 leaves` of basil failed with the gram weight sitting right there in the table.
+ */
+const IRREGULAR_UNIT_PLURALS: Readonly<Record<string, string>> = {
+  leaves: 'leaf',
+  loaves: 'loaf',
+  halves: 'half',
+  knives: 'knife',
+};
+
 /** Naive plural trim, so a `gramsPerUnit` table may be keyed in the singular alone. */
 function singularUnit(unit: string): string {
+  const irregular = IRREGULAR_UNIT_PLURALS[unit];
+  if (irregular !== undefined) {
+    return irregular;
+  }
   if (unit.length > 3 && /(?:ch|sh|ss|x|z)es$/.test(unit)) {
     return unit.slice(0, -2);
   }
@@ -500,7 +532,17 @@ export function parseMeasureToGrams(
     COUNTABLE_UNITS.has(candidate) ||
     COUNTABLE_UNITS.has(singularUnit(candidate)) ||
     VAGUE_UNITS.has(candidate);
-  unit = candidates.find((candidate) => candidate !== '' && known(candidate)) ?? unit;
+  const resolved = candidates.find((candidate) => candidate !== '' && known(candidate));
+  if (resolved !== undefined) {
+    unit = resolved;
+  } else if (withoutTrailingPreparation(unit) === '') {
+    // `1 chopped`, `2 sliced`, `Minced`, `Grated`: the unit is ALL preparation, so the
+    // quantity counts the ingredient itself and the unit is the bare count. Filtering the
+    // empty string out of the candidates left `chopped` standing as an unrecognised unit and
+    // failed measures that plainly say "one onion" - it blocked 15 of the 55 unavailable
+    // records, which is the single largest cause of unavailability in the catalog.
+    unit = '';
+  }
 
   const gramsPerUnitOfMass = GRAMS_PER_UNIT_OF_MASS[unit];
   if (gramsPerUnitOfMass !== undefined) {

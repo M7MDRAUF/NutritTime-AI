@@ -17,7 +17,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { mealSchema } from '@nutritime/contracts';
 import type { Meal } from '@nutritime/contracts';
-import { inferAllergensFromIngredients } from '@nutritime/domain';
+import { inferAllergensFromIngredients, isCanonicalAllergen } from '@nutritime/domain';
 import { AUTHORED_MEALS } from './src/seed/authoring.js';
 import type { AuthoredMeal } from './src/seed/authoring.js';
 import { deriveNutrition, indexNutritionSource } from './src/seed/derive.js';
@@ -97,7 +97,18 @@ async function fetchMeals(): Promise<readonly MappedMeal[]> {
  */
 function reviewedAllergens(meal: MappedMeal, authored: AuthoredMeal): readonly string[] {
   const derived = inferAllergensFromIngredients(meal.ingredients.map((item) => item.name));
-  return [...new Set([...derived, ...(authored.allergenAdditions ?? [])])].sort();
+  const additions = authored.allergenAdditions ?? [];
+
+  // **R-16, and the plan names this exact control.** `allergenTags` is `z.array(z.string())`,
+  // so a typo like `treenut` or `dairy` validates, passes the superRefine, passes every test -
+  // and at runtime resolves to no canonical allergen at all. A hand-added safety tag that
+  // matches nothing is worse than no tag, because the review log says it was handled.
+  const unknown = additions.filter((tag) => !isCanonicalAllergen(tag));
+  if (unknown.length > 0) {
+    fail(`${meal.id}: allergen addition(s) not in the canonical taxonomy: ${unknown.join(', ')}`);
+  }
+
+  return [...new Set([...derived, ...additions])].sort();
 }
 
 /**
