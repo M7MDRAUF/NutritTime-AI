@@ -120,8 +120,12 @@ const MAX_LISTED_AVOIDED = 3;
  *
  * Whole-token matching through the shared text primitives, so `nut` never matches `minute`
  * and a user who dislikes `onion` is not surprised by `spring onions`, which they are.
+ *
+ * Exported because chat retrieval (§4.8 step 4) has to make the same judgement to decide what
+ * to demote. One implementation and two callers, for the reason §4.7 gives for relevance: the
+ * recommendation screen and the assistant must never disagree about what a user dislikes.
  */
-function matchedDislikedIngredients(meal: Meal, disliked: readonly string[]): string[] {
+export function matchedDislikedIngredients(meal: Meal, disliked: readonly string[]): string[] {
   // Segmented, not merely tokenised: `tokenizeSegments` is what stops the disliked term
   // `milk chocolate` matching the ingredient `"milk, chocolate"` across the comma. TSD 4.1
   // names that exact pair, and the allergen module segments for the same reason.

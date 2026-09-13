@@ -109,6 +109,13 @@ const TOKEN_GROUPS: readonly (readonly [CanonicalAllergen, readonly string[]])[]
       // Unqualified chocolate is more often milk chocolate than not. Dark chocolate is
       // wrongly flagged, which hides a safe meal rather than exposing an unsafe one.
       'chocolate',
+      // Found by the P07 catalog review: a real meal listed "Fromage Frais" and inference
+      // reported no dairy at all. `fromage` covers fromage frais and fromage blanc; `paneer`
+      // and `halloumi` were missing for the same reason.
+      'fromage',
+      'paneer',
+      'halloumi',
+      'quark',
     ],
   ],
   [
