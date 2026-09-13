@@ -27,3 +27,7 @@ Thumbs.db
 
 # scratch
 tmp/
+
+# USDA dataset. The archive lives outside the repository and is read via USDA_DATASET_PATH;
+# this rule is defence against a future copy-paste dropping a 16 MB CSV into the tree.
+*.csv

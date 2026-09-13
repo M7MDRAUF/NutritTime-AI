@@ -1,0 +1,1384 @@
+{
+  "dataset": "USDA FNDDS supporting data 2022-10-28",
+  "vintage": "2022-10-28",
+  "rows": [
+    {
+      "key": "active dry yeast",
+      "description": "Leavening agents, yeast, baker's, active dry",
+      "usdaCode": "18375",
+      "fdcId": "175043",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 325,
+        "proteinGrams": 40.44,
+        "carbsGrams": 41.22,
+        "fatGrams": 7.61
+      }
+    },
+    {
+      "key": "all purpose flour",
+      "description": "Flour, wheat, all-purpose, enriched, bleached",
+      "usdaCode": "20081",
+      "fdcId": "789890",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 366,
+        "proteinGrams": 10.9,
+        "carbsGrams": 77.3,
+        "fatGrams": 1.48
+      }
+    },
+    {
+      "key": "arugula",
+      "description": "Arugula, raw",
+      "usdaCode": "11959",
+      "fdcId": "169387",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 25,
+        "proteinGrams": 2.58,
+        "carbsGrams": 3.65,
+        "fatGrams": 0.66
+      }
+    },
+    {
+      "key": "bacon",
+      "description": "Pork, cured, bacon, unprepared",
+      "usdaCode": "10123",
+      "fdcId": "168277",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 393,
+        "proteinGrams": 13.66,
+        "carbsGrams": 0,
+        "fatGrams": 37.13
+      }
+    },
+    {
+      "key": "baked beans",
+      "description": "Beans, baked, canned, plain or vegetarian",
+      "usdaCode": "16006",
+      "fdcId": "175182",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 94,
+        "proteinGrams": 4.75,
+        "carbsGrams": 21.14,
+        "fatGrams": 0.37
+      }
+    },
+    {
+      "key": "baking powder",
+      "description": "Leavening agents, baking powder, double-acting, sodium aluminum sulfate",
+      "usdaCode": "18369",
+      "fdcId": "172803",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 53,
+        "proteinGrams": 0,
+        "carbsGrams": 27.7,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "basil",
+      "description": "Spices, basil, dried",
+      "usdaCode": "2003",
+      "fdcId": "171317",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 233,
+        "proteinGrams": 22.98,
+        "carbsGrams": 47.75,
+        "fatGrams": 4.07
+      }
+    },
+    {
+      "key": "black pepper",
+      "description": "Spices, pepper, black",
+      "usdaCode": "2030",
+      "fdcId": "170931",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 251,
+        "proteinGrams": 10.39,
+        "carbsGrams": 63.95,
+        "fatGrams": 3.26
+      }
+    },
+    {
+      "key": "blood sausage",
+      "description": "Blood sausage",
+      "usdaCode": "7005",
+      "fdcId": "171618",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 379,
+        "proteinGrams": 14.6,
+        "carbsGrams": 1.29,
+        "fatGrams": 34.5
+      }
+    },
+    {
+      "key": "brie",
+      "description": "Cheese, brie",
+      "usdaCode": "1006",
+      "fdcId": "172177",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 334,
+        "proteinGrams": 20.75,
+        "carbsGrams": 0.45,
+        "fatGrams": 27.68
+      }
+    },
+    {
+      "key": "broccoli",
+      "description": "Broccoli, raw",
+      "usdaCode": "11090",
+      "fdcId": "747447",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 39,
+        "proteinGrams": 2.57,
+        "carbsGrams": 6.27,
+        "fatGrams": 0.34
+      }
+    },
+    {
+      "key": "brown rice",
+      "description": "Rice, brown, long-grain, raw (Includes foods for USDA's Food Distribution Program)",
+      "usdaCode": "20036",
+      "fdcId": "169703",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 367,
+        "proteinGrams": 7.54,
+        "carbsGrams": 76.25,
+        "fatGrams": 3.2
+      }
+    },
+    {
+      "key": "brown sugar",
+      "description": "Sugars, brown",
+      "usdaCode": "19334",
+      "fdcId": "168833",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 380,
+        "proteinGrams": 0.12,
+        "carbsGrams": 98.09,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "butter",
+      "description": "Butter, stick, salted",
+      "usdaCode": "1001",
+      "fdcId": "173410",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 743,
+        "proteinGrams": 0.85,
+        "carbsGrams": 0.06,
+        "fatGrams": 82.2
+      }
+    },
+    {
+      "key": "canola oil",
+      "description": "Oil, canola",
+      "usdaCode": "4582",
+      "fdcId": null,
+      "sourceLabel": "Informed by FDC Foundation and SR Legacy",
+      "per100g": {
+        "kcal": 900,
+        "proteinGrams": 0,
+        "carbsGrams": 0,
+        "fatGrams": 100
+      }
+    },
+    {
+      "key": "carrot",
+      "description": "Carrots, raw",
+      "usdaCode": "11124",
+      "fdcId": "170393",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 41,
+        "proteinGrams": 0.93,
+        "carbsGrams": 9.58,
+        "fatGrams": 0.24
+      }
+    },
+    {
+      "key": "cashews",
+      "description": "Nuts, cashew nuts, dry roasted, without salt added",
+      "usdaCode": "12085",
+      "fdcId": "170571",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 574,
+        "proteinGrams": 15.31,
+        "carbsGrams": 32.69,
+        "fatGrams": 46.35
+      }
+    },
+    {
+      "key": "cayenne pepper",
+      "description": "Spices, pepper, red or cayenne",
+      "usdaCode": "2031",
+      "fdcId": "170932",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 318,
+        "proteinGrams": 12.01,
+        "carbsGrams": 56.63,
+        "fatGrams": 17.27
+      }
+    },
+    {
+      "key": "celery",
+      "description": "Celery, raw",
+      "usdaCode": "11143",
+      "fdcId": "169988",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 14,
+        "proteinGrams": 0.69,
+        "carbsGrams": 2.97,
+        "fatGrams": 0.17
+      }
+    },
+    {
+      "key": "cheddar",
+      "description": "Cheese, cheddar",
+      "usdaCode": "1009",
+      "fdcId": "328637",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 409,
+        "proteinGrams": 23.3,
+        "carbsGrams": 2.44,
+        "fatGrams": 34
+      }
+    },
+    {
+      "key": "chicken breast",
+      "description": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw",
+      "usdaCode": "5062",
+      "fdcId": "171077",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 120,
+        "proteinGrams": 22.5,
+        "carbsGrams": 0,
+        "fatGrams": 2.62
+      }
+    },
+    {
+      "key": "chicken broth",
+      "description": "Soup, stock, chicken, home-prepared",
+      "usdaCode": "6172",
+      "fdcId": "172884",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 36,
+        "proteinGrams": 2.52,
+        "carbsGrams": 3.53,
+        "fatGrams": 1.2
+      }
+    },
+    {
+      "key": "chickpeas",
+      "description": "Chickpeas (garbanzo beans, bengal gram), mature seeds, raw",
+      "usdaCode": "16056",
+      "fdcId": "173756",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 378,
+        "proteinGrams": 20.47,
+        "carbsGrams": 62.95,
+        "fatGrams": 6.04
+      }
+    },
+    {
+      "key": "chili powder",
+      "description": "Spices, chili powder",
+      "usdaCode": "2009",
+      "fdcId": "171319",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 282,
+        "proteinGrams": 13.46,
+        "carbsGrams": 49.7,
+        "fatGrams": 14.28
+      }
+    },
+    {
+      "key": "cider vinegar",
+      "description": "Vinegar, cider",
+      "usdaCode": "2048",
+      "fdcId": "173469",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 21,
+        "proteinGrams": 0,
+        "carbsGrams": 0.93,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "cilantro",
+      "description": "Coriander (cilantro) leaves, raw",
+      "usdaCode": "11165",
+      "fdcId": "169997",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 23,
+        "proteinGrams": 2.13,
+        "carbsGrams": 3.67,
+        "fatGrams": 0.52
+      }
+    },
+    {
+      "key": "cinnamon",
+      "description": "Spices, cinnamon, ground",
+      "usdaCode": "2010",
+      "fdcId": "171320",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 247,
+        "proteinGrams": 3.99,
+        "carbsGrams": 80.59,
+        "fatGrams": 1.24
+      }
+    },
+    {
+      "key": "clams",
+      "description": "Mollusks, clam, mixed species, raw",
+      "usdaCode": "15157",
+      "fdcId": "174214",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 86,
+        "proteinGrams": 14.67,
+        "carbsGrams": 3.57,
+        "fatGrams": 0.96
+      }
+    },
+    {
+      "key": "corn tortilla",
+      "description": "Tortillas, ready-to-bake or -fry, corn",
+      "usdaCode": "18363",
+      "fdcId": "175036",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 218,
+        "proteinGrams": 5.7,
+        "carbsGrams": 44.64,
+        "fatGrams": 2.85
+      }
+    },
+    {
+      "key": "cornstarch",
+      "description": "Cornstarch",
+      "usdaCode": "20027",
+      "fdcId": "169698",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 381,
+        "proteinGrams": 0.26,
+        "carbsGrams": 91.27,
+        "fatGrams": 0.05
+      }
+    },
+    {
+      "key": "cream cheese",
+      "description": "Cheese, cream",
+      "usdaCode": "1017",
+      "fdcId": "173418",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 350,
+        "proteinGrams": 6.15,
+        "carbsGrams": 5.52,
+        "fatGrams": 34.44
+      }
+    },
+    {
+      "key": "cumin",
+      "description": "Spices, cumin seed",
+      "usdaCode": "2014",
+      "fdcId": "170923",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 375,
+        "proteinGrams": 17.81,
+        "carbsGrams": 44.24,
+        "fatGrams": 22.27
+      }
+    },
+    {
+      "key": "cumin seed",
+      "description": "Spices, cumin seed",
+      "usdaCode": "2014",
+      "fdcId": "170923",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 375,
+        "proteinGrams": 17.81,
+        "carbsGrams": 44.24,
+        "fatGrams": 22.27
+      }
+    },
+    {
+      "key": "cured ham",
+      "description": "Pork, cured, ham, whole, separable lean only, roasted",
+      "usdaCode": "10153",
+      "fdcId": "168284",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 157,
+        "proteinGrams": 25.05,
+        "carbsGrams": 0,
+        "fatGrams": 5.5
+      }
+    },
+    {
+      "key": "dark chocolate",
+      "description": "Candies, chocolate, dark, NFS (45-59% cacao solids 90%; 60-69% cacao solids 5%; 70-85% cacao solids 5%)",
+      "usdaCode": "19905",
+      "fdcId": "170274",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 550,
+        "proteinGrams": 5.09,
+        "carbsGrams": 59.97,
+        "fatGrams": 32.2
+      }
+    },
+    {
+      "key": "distilled vinegar",
+      "description": "Vinegar, distilled",
+      "usdaCode": "2053",
+      "fdcId": "172237",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 18,
+        "proteinGrams": 0,
+        "carbsGrams": 0.04,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "dried oregano",
+      "description": "Spices, oregano, dried",
+      "usdaCode": "2027",
+      "fdcId": "171328",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 265,
+        "proteinGrams": 9,
+        "carbsGrams": 68.92,
+        "fatGrams": 4.28
+      }
+    },
+    {
+      "key": "dried thyme",
+      "description": "Spices, thyme, dried",
+      "usdaCode": "2042",
+      "fdcId": "170938",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 276,
+        "proteinGrams": 9.11,
+        "carbsGrams": 63.94,
+        "fatGrams": 7.43
+      }
+    },
+    {
+      "key": "egg",
+      "description": "Eggs, Grade A, Large, egg whole",
+      "usdaCode": "1123",
+      "fdcId": "748967",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 143,
+        "proteinGrams": 12.4,
+        "carbsGrams": 0.96,
+        "fatGrams": 9.96
+      }
+    },
+    {
+      "key": "eggplant",
+      "description": "Eggplant, raw",
+      "usdaCode": "11209",
+      "fdcId": "169228",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 25,
+        "proteinGrams": 0.98,
+        "carbsGrams": 5.88,
+        "fatGrams": 0.18
+      }
+    },
+    {
+      "key": "enchilada sauce",
+      "description": "Sauce, enchilada, red, mild, ready to serve",
+      "usdaCode": "27063",
+      "fdcId": "174074",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 30,
+        "proteinGrams": 0.62,
+        "carbsGrams": 4.87,
+        "fatGrams": 0.91
+      }
+    },
+    {
+      "key": "english muffin",
+      "description": "Muffins, English, wheat",
+      "usdaCode": "18264",
+      "fdcId": "172761",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 223,
+        "proteinGrams": 8.7,
+        "carbsGrams": 44.8,
+        "fatGrams": 2
+      }
+    },
+    {
+      "key": "fennel",
+      "description": "Fennel, bulb, raw",
+      "usdaCode": "11957",
+      "fdcId": "169385",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 31,
+        "proteinGrams": 1.24,
+        "carbsGrams": 7.3,
+        "fatGrams": 0.2
+      }
+    },
+    {
+      "key": "feta",
+      "description": "Cheese, feta",
+      "usdaCode": "1019",
+      "fdcId": "173420",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 265,
+        "proteinGrams": 14.21,
+        "carbsGrams": 3.88,
+        "fatGrams": 21.49
+      }
+    },
+    {
+      "key": "garlic",
+      "description": "Garlic, raw",
+      "usdaCode": "11215",
+      "fdcId": "1104647",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 143,
+        "proteinGrams": 6.62,
+        "carbsGrams": 28.2,
+        "fatGrams": 0.38
+      }
+    },
+    {
+      "key": "granulated sugar",
+      "description": "Sugars, granulated",
+      "usdaCode": "19335",
+      "fdcId": "746784",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 401,
+        "proteinGrams": 0,
+        "carbsGrams": 99.6,
+        "fatGrams": 0.32
+      }
+    },
+    {
+      "key": "greek yogurt",
+      "description": "Yogurt, Greek, plain, nonfat",
+      "usdaCode": "1256",
+      "fdcId": "330137",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 59,
+        "proteinGrams": 10.3,
+        "carbsGrams": 3.64,
+        "fatGrams": 0.37
+      }
+    },
+    {
+      "key": "green bean",
+      "description": "Beans, snap, green, raw",
+      "usdaCode": "11052",
+      "fdcId": "169961",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 31,
+        "proteinGrams": 1.83,
+        "carbsGrams": 6.97,
+        "fatGrams": 0.22
+      }
+    },
+    {
+      "key": "ground ginger",
+      "description": "Spices, ginger, ground",
+      "usdaCode": "2021",
+      "fdcId": "170926",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 335,
+        "proteinGrams": 8.98,
+        "carbsGrams": 71.62,
+        "fatGrams": 4.24
+      }
+    },
+    {
+      "key": "gruyere",
+      "description": "Cheese, gruyere",
+      "usdaCode": "1023",
+      "fdcId": "171242",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 413,
+        "proteinGrams": 29.81,
+        "carbsGrams": 0.36,
+        "fatGrams": 32.34
+      }
+    },
+    {
+      "key": "heavy cream",
+      "description": "Cream, fluid, heavy whipping",
+      "usdaCode": "1053",
+      "fdcId": "170859",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 340,
+        "proteinGrams": 2.84,
+        "carbsGrams": 2.84,
+        "fatGrams": 36.08
+      }
+    },
+    {
+      "key": "honey",
+      "description": "Honey",
+      "usdaCode": "19296",
+      "fdcId": "169640",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 304,
+        "proteinGrams": 0.3,
+        "carbsGrams": 82.4,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "kale",
+      "description": "Kale, raw",
+      "usdaCode": "11233",
+      "fdcId": "323505",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 43,
+        "proteinGrams": 2.92,
+        "carbsGrams": 4.42,
+        "fatGrams": 1.49
+      }
+    },
+    {
+      "key": "leek",
+      "description": "Leeks, (bulb and lower leaf-portion), raw",
+      "usdaCode": "11246",
+      "fdcId": "169246",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 61,
+        "proteinGrams": 1.5,
+        "carbsGrams": 14.15,
+        "fatGrams": 0.3
+      }
+    },
+    {
+      "key": "lemon",
+      "description": "Lemons, raw, without peel",
+      "usdaCode": "9150",
+      "fdcId": "167746",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 29,
+        "proteinGrams": 1.1,
+        "carbsGrams": 9.32,
+        "fatGrams": 0.3
+      }
+    },
+    {
+      "key": "lemon juice",
+      "description": "Lemon juice, raw",
+      "usdaCode": "9152",
+      "fdcId": "167747",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 22,
+        "proteinGrams": 0.35,
+        "carbsGrams": 6.9,
+        "fatGrams": 0.24
+      }
+    },
+    {
+      "key": "lentils",
+      "description": "Lentils, raw",
+      "usdaCode": "16069",
+      "fdcId": "172420",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 352,
+        "proteinGrams": 24.63,
+        "carbsGrams": 63.35,
+        "fatGrams": 1.06
+      }
+    },
+    {
+      "key": "maple syrup",
+      "description": "Syrups, table blends, pancake, with 2% maple",
+      "usdaCode": "19360",
+      "fdcId": "168838",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 265,
+        "proteinGrams": 0,
+        "carbsGrams": 69.6,
+        "fatGrams": 0.1
+      }
+    },
+    {
+      "key": "mixed vegetables",
+      "description": "Vegetables, mixed, frozen, cooked, boiled, drained, without salt",
+      "usdaCode": "11584",
+      "fdcId": "170472",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 65,
+        "proteinGrams": 2.86,
+        "carbsGrams": 13.09,
+        "fatGrams": 0.15
+      }
+    },
+    {
+      "key": "monterey jack cheese",
+      "description": "Cheese, monterey",
+      "usdaCode": "1025",
+      "fdcId": "170844",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 373,
+        "proteinGrams": 24.48,
+        "carbsGrams": 0.68,
+        "fatGrams": 30.28
+      }
+    },
+    {
+      "key": "mozzarella",
+      "description": "Cheese, mozzarella, low moisture, part-skim",
+      "usdaCode": "1029",
+      "fdcId": "329370",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 296,
+        "proteinGrams": 23.7,
+        "carbsGrams": 4.44,
+        "fatGrams": 20.4
+      }
+    },
+    {
+      "key": "mushroom",
+      "description": "Mushrooms, white button",
+      "usdaCode": "11260",
+      "fdcId": "1999629",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 31,
+        "proteinGrams": 2.89,
+        "carbsGrams": 4.08,
+        "fatGrams": 0.37
+      }
+    },
+    {
+      "key": "mustard seed",
+      "description": "Spices, mustard seed, ground",
+      "usdaCode": "2024",
+      "fdcId": "170929",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 508,
+        "proteinGrams": 26.08,
+        "carbsGrams": 28.09,
+        "fatGrams": 36.24
+      }
+    },
+    {
+      "key": "nutmeg",
+      "description": "Spices, nutmeg, ground",
+      "usdaCode": "2025",
+      "fdcId": "171326",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 525,
+        "proteinGrams": 5.84,
+        "carbsGrams": 49.29,
+        "fatGrams": 36.31
+      }
+    },
+    {
+      "key": "olive oil",
+      "description": "Oil, olive, extra virgin",
+      "usdaCode": "4063",
+      "fdcId": null,
+      "sourceLabel": "Informed by FDC Foundation and SR Legacy",
+      "per100g": {
+        "kcal": 900,
+        "proteinGrams": 0,
+        "carbsGrams": 0,
+        "fatGrams": 100
+      }
+    },
+    {
+      "key": "onion",
+      "description": "Onions, raw",
+      "usdaCode": "11282",
+      "fdcId": "170000",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 40,
+        "proteinGrams": 1.1,
+        "carbsGrams": 9.34,
+        "fatGrams": 0.1
+      }
+    },
+    {
+      "key": "parmesan",
+      "description": "Cheese, parmesan, grated",
+      "usdaCode": "1032",
+      "fdcId": "325036",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 420,
+        "proteinGrams": 29.6,
+        "carbsGrams": 12.4,
+        "fatGrams": 28
+      }
+    },
+    {
+      "key": "parsley",
+      "description": "Parsley, fresh",
+      "usdaCode": "11297",
+      "fdcId": "170416",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 36,
+        "proteinGrams": 2.97,
+        "carbsGrams": 6.33,
+        "fatGrams": 0.79
+      }
+    },
+    {
+      "key": "pasta",
+      "description": "Pasta, dry, enriched",
+      "usdaCode": "20120",
+      "fdcId": "169736",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 371,
+        "proteinGrams": 13.04,
+        "carbsGrams": 74.67,
+        "fatGrams": 1.51
+      }
+    },
+    {
+      "key": "pine nuts",
+      "description": "Nuts, pine nuts, dried",
+      "usdaCode": "12147",
+      "fdcId": "170591",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 673,
+        "proteinGrams": 13.69,
+        "carbsGrams": 13.08,
+        "fatGrams": 68.37
+      }
+    },
+    {
+      "key": "pork sausage",
+      "description": "Pork sausage, link/patty, cooked, pan-fried",
+      "usdaCode": "7064",
+      "fdcId": "174578",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 325,
+        "proteinGrams": 18.53,
+        "carbsGrams": 1.42,
+        "fatGrams": 27.25
+      }
+    },
+    {
+      "key": "potato",
+      "description": "Potatoes, flesh and skin, raw",
+      "usdaCode": "11352",
+      "fdcId": "170026",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 77,
+        "proteinGrams": 2.05,
+        "carbsGrams": 17.49,
+        "fatGrams": 0.09
+      }
+    },
+    {
+      "key": "puff pastry",
+      "description": "Puff pastry, frozen, ready-to-bake, baked",
+      "usdaCode": "18211",
+      "fdcId": "172738",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 558,
+        "proteinGrams": 7.4,
+        "carbsGrams": 45.7,
+        "fatGrams": 38.5
+      }
+    },
+    {
+      "key": "red chili pepper",
+      "description": "Peppers, hot chili, red, raw",
+      "usdaCode": "11819",
+      "fdcId": "170106",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 40,
+        "proteinGrams": 1.87,
+        "carbsGrams": 8.81,
+        "fatGrams": 0.44
+      }
+    },
+    {
+      "key": "red onion",
+      "description": "Onions, red, raw",
+      "usdaCode": "100252",
+      "fdcId": "790577",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 44,
+        "proteinGrams": 0.94,
+        "carbsGrams": 9.93,
+        "fatGrams": 0.1
+      }
+    },
+    {
+      "key": "red pepper",
+      "description": "Peppers, sweet, red, raw",
+      "usdaCode": "11821",
+      "fdcId": "170108",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 26,
+        "proteinGrams": 0.99,
+        "carbsGrams": 6.03,
+        "fatGrams": 0.3
+      }
+    },
+    {
+      "key": "rice noodles",
+      "description": "Rice noodles, cooked",
+      "usdaCode": "20134",
+      "fdcId": "168914",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 108,
+        "proteinGrams": 1.79,
+        "carbsGrams": 24.01,
+        "fatGrams": 0.2
+      }
+    },
+    {
+      "key": "ricotta",
+      "description": "Cheese, ricotta, whole milk",
+      "usdaCode": "1036",
+      "fdcId": "746766",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 158,
+        "proteinGrams": 7.81,
+        "carbsGrams": 6.86,
+        "fatGrams": 11
+      }
+    },
+    {
+      "key": "sake",
+      "description": "Alcoholic beverage, rice (sake)",
+      "usdaCode": "43479",
+      "fdcId": "167723",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 134,
+        "proteinGrams": 0.5,
+        "carbsGrams": 5,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "salmon",
+      "description": "Fish, salmon, Atlantic, farmed, raw",
+      "usdaCode": "15236",
+      "fdcId": "175167",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 208,
+        "proteinGrams": 20.42,
+        "carbsGrams": 0,
+        "fatGrams": 13.42
+      }
+    },
+    {
+      "key": "salt",
+      "description": "Salt, table, iodized",
+      "usdaCode": "2047",
+      "fdcId": "173468",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 0,
+        "proteinGrams": 0,
+        "carbsGrams": 0,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "self raising flour",
+      "description": "Flour, pastry, unenriched, unbleached",
+      "usdaCode": "100256",
+      "fdcId": "1104913",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 359,
+        "proteinGrams": 8.75,
+        "carbsGrams": 77.2,
+        "fatGrams": 1.64
+      }
+    },
+    {
+      "key": "serrano pepper",
+      "description": "Peppers, serrano, raw",
+      "usdaCode": "11977",
+      "fdcId": "169395",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 32,
+        "proteinGrams": 1.74,
+        "carbsGrams": 6.7,
+        "fatGrams": 0.44
+      }
+    },
+    {
+      "key": "sesame seed",
+      "description": "Seeds, sesame seed kernels, dried (decorticated)",
+      "usdaCode": "12201",
+      "fdcId": "169412",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 631,
+        "proteinGrams": 20.45,
+        "carbsGrams": 11.73,
+        "fatGrams": 61.21
+      }
+    },
+    {
+      "key": "shrimp",
+      "description": "Crustaceans, shrimp, mixed species, raw (may contain additives to retain moisture)",
+      "usdaCode": "15149",
+      "fdcId": "174210",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 71,
+        "proteinGrams": 13.61,
+        "carbsGrams": 0.91,
+        "fatGrams": 1.01
+      }
+    },
+    {
+      "key": "smoked haddock",
+      "description": "Fish, haddock, smoked",
+      "usdaCode": "15035",
+      "fdcId": "174199",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 116,
+        "proteinGrams": 25.23,
+        "carbsGrams": 0,
+        "fatGrams": 0.96
+      }
+    },
+    {
+      "key": "smoked salmon",
+      "description": "Fish, salmon, chinook, smoked",
+      "usdaCode": "15077",
+      "fdcId": "173687",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 117,
+        "proteinGrams": 18.28,
+        "carbsGrams": 0,
+        "fatGrams": 4.32
+      }
+    },
+    {
+      "key": "sour cream",
+      "description": "Cream, sour, cultured",
+      "usdaCode": "1056",
+      "fdcId": "171257",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 198,
+        "proteinGrams": 2.44,
+        "carbsGrams": 4.63,
+        "fatGrams": 19.35
+      }
+    },
+    {
+      "key": "soy sauce",
+      "description": "Soy sauce made from soy and wheat (shoyu)",
+      "usdaCode": "16123",
+      "fdcId": "174277",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 53,
+        "proteinGrams": 8.14,
+        "carbsGrams": 4.93,
+        "fatGrams": 0.57
+      }
+    },
+    {
+      "key": "soybean oil",
+      "description": "Oil, soybean",
+      "usdaCode": "4044",
+      "fdcId": null,
+      "sourceLabel": "Informed by FDC Foundation and SR Legacy",
+      "per100g": {
+        "kcal": 900,
+        "proteinGrams": 0,
+        "carbsGrams": 0,
+        "fatGrams": 100
+      }
+    },
+    {
+      "key": "spinach",
+      "description": "Spinach, mature",
+      "usdaCode": "11457",
+      "fdcId": "1999633",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 28,
+        "proteinGrams": 2.91,
+        "carbsGrams": 2.64,
+        "fatGrams": 0.6
+      }
+    },
+    {
+      "key": "spring onions",
+      "description": "Onions, spring or scallions (includes tops and bulb), raw",
+      "usdaCode": "11291",
+      "fdcId": "170005",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 32,
+        "proteinGrams": 1.83,
+        "carbsGrams": 7.34,
+        "fatGrams": 0.19
+      }
+    },
+    {
+      "key": "tomato",
+      "description": "Tomatoes, red, ripe, raw, year round average",
+      "usdaCode": "11529",
+      "fdcId": "170457",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 18,
+        "proteinGrams": 0.88,
+        "carbsGrams": 3.89,
+        "fatGrams": 0.2
+      }
+    },
+    {
+      "key": "tomato paste",
+      "description": "Tomato products, canned, paste, without salt added (Includes foods for USDA's Food Distribution Program)",
+      "usdaCode": "11546",
+      "fdcId": "170459",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 82,
+        "proteinGrams": 4.32,
+        "carbsGrams": 18.91,
+        "fatGrams": 0.47
+      }
+    },
+    {
+      "key": "tomato puree",
+      "description": "Tomato products, canned, puree, with salt added",
+      "usdaCode": "11888",
+      "fdcId": "170546",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 38,
+        "proteinGrams": 1.65,
+        "carbsGrams": 8.98,
+        "fatGrams": 0.21
+      }
+    },
+    {
+      "key": "turmeric",
+      "description": "Spices, turmeric, ground",
+      "usdaCode": "2043",
+      "fdcId": "172231",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 312,
+        "proteinGrams": 9.68,
+        "carbsGrams": 67.14,
+        "fatGrams": 3.25
+      }
+    },
+    {
+      "key": "unsalted butter",
+      "description": "Butter, stick, unsalted",
+      "usdaCode": "1145",
+      "fdcId": null,
+      "sourceLabel": "Informed by FDC Foundation and SR Legacy",
+      "per100g": {
+        "kcal": 743,
+        "proteinGrams": 0.85,
+        "carbsGrams": 0.06,
+        "fatGrams": 82.2
+      }
+    },
+    {
+      "key": "vanilla extract",
+      "description": "Vanilla extract, imitation, no alcohol",
+      "usdaCode": "2052",
+      "fdcId": "172236",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 56,
+        "proteinGrams": 0.03,
+        "carbsGrams": 14.4,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "vegetable broth",
+      "description": "Soup, vegetable broth, ready to serve",
+      "usdaCode": "6700",
+      "fdcId": "171583",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 5,
+        "proteinGrams": 0.24,
+        "carbsGrams": 0.93,
+        "fatGrams": 0.07
+      }
+    },
+    {
+      "key": "vinegar",
+      "description": "Vinegar, cider",
+      "usdaCode": "2048",
+      "fdcId": "173469",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 21,
+        "proteinGrams": 0,
+        "carbsGrams": 0.93,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "water",
+      "description": "Water, bottled, generic",
+      "usdaCode": "14555",
+      "fdcId": "174158",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 0,
+        "proteinGrams": 0,
+        "carbsGrams": 0,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "white bread",
+      "description": "Bread, white, commercially prepared",
+      "usdaCode": "18069",
+      "fdcId": "325871",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 267,
+        "proteinGrams": 9.43,
+        "carbsGrams": 49.2,
+        "fatGrams": 3.59
+      }
+    },
+    {
+      "key": "white rice",
+      "description": "Rice, white, long-grain, regular, raw, enriched",
+      "usdaCode": "20044",
+      "fdcId": "168877",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 365,
+        "proteinGrams": 7.13,
+        "carbsGrams": 79.95,
+        "fatGrams": 0.66
+      }
+    },
+    {
+      "key": "white wine",
+      "description": "Alcoholic beverage, wine, table, white",
+      "usdaCode": "14106",
+      "fdcId": "174837",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 82,
+        "proteinGrams": 0.07,
+        "carbsGrams": 2.6,
+        "fatGrams": 0
+      }
+    },
+    {
+      "key": "whole milk",
+      "description": "Milk, whole, 3.25% milkfat, with added vitamin D",
+      "usdaCode": "1077",
+      "fdcId": "746782",
+      "sourceLabel": "Foundation",
+      "per100g": {
+        "kcal": 61,
+        "proteinGrams": 3.27,
+        "carbsGrams": 4.63,
+        "fatGrams": 3.2
+      }
+    },
+    {
+      "key": "zucchini",
+      "description": "Squash, summer, zucchini, includes skin, raw",
+      "usdaCode": "11477",
+      "fdcId": "169291",
+      "sourceLabel": "SR Legacy",
+      "per100g": {
+        "kcal": 17,
+        "proteinGrams": 1.21,
+        "carbsGrams": 3.11,
+        "fatGrams": 0.32
+      }
+    }
+  ]
+}

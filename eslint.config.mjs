@@ -200,4 +200,16 @@ export default tseslint.config(
     files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
     rules: { 'no-console': 'off' },
   },
+
+  // The seed script is a hand-run command-line tool whose entire user interface is its
+  // console output: what it fetched, what did not resolve, what it wrote. It never runs at
+  // boot or in a request.
+  //
+  // The rule is RESTATED minus `log` rather than switched off, because P01 learned that an
+  // `'off'` exemption silently drops the whole rule for these files - `console.debug` and
+  // `console.trace` would come back with it.
+  {
+    files: ['packages/catalog/seed.ts'],
+    rules: { 'no-console': ['error', { allow: ['log', 'warn', 'error'] }] },
+  },
 );

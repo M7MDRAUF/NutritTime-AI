@@ -251,6 +251,8 @@ undocumented internal memory is relied on anywhere in this plan.
 | X-12 | TheMealDB requires attribution and the preservation of source, image-source and licence metadata; `Meal` had nowhere to put any of it, and no document mentioned attribution | Upstream licence vs TSD §3.2 | Shipping without attribution breaches the terms we rely on | **CLOSED.** `Meal` gains `provenance` (TSD 1.2.0 §3.2); PRD 2.2.0 FR-011 displays attribution; §15 records both sources' licence terms | — |
 
 | X-13 | Plan.md §12.2 rule 2 ("contracts is the only package with a third-party runtime dependency") cannot be expressed in ESLint `no-restricted-imports`: a deny-all-then-allow pattern also swallows the package's own relative imports | Plan §12.2 vs the linter | Rule 2 was unenforced in source after P02 replaced P01's broken allowlist | **Split enforcement.** ESLint keeps an I/O denylist; the manifest half is asserted in `packages/contracts/src/package.test.ts`, which reads `package.json` and requires `dependencies === { zod: '4.5.4' }`. Stronger about what ships, weaker against an arbitrary source import. Recorded at P02 | — |
+| X-15 | TSD §7.4 declares `NutrientRow.fdcId: string`. The archive does not honour it: **44 of its 1,882 ingredients publish no FDC ID on any macro** — olive oil, unsalted butter and the canola, corn, peanut and soybean oils among them, which a recipe catalog cannot avoid. A further ingredient is missing one on a single macro, and 2 draw their macros from different FDC records | TSD §7.4 vs the published data | Either the type is wrong or every oil is unusable | **Implemented as `fdcId: string \| null`.** An empty string would be a fabricated identifier wearing the shape of a real one, which this project refuses everywhere else; `usdaCode` keeps such a row traceable and `sourceLabel` keeps its provenance. Where macros come from different records the collapse is deterministic and emits a `traceabilityNotes` entry — never silent. **TSD §7.4 should be amended to match the data**; recorded rather than amended unilaterally | P07 → TSD |
+| X-16 | TSD §2.3 and Plan §12.2 both state `catalog -> (nothing)`, but TSD §7.4 step 1 mandates deriving ingredient keys with §4.1's `normalizeText` and `singularize`, which live in `@nutritime/domain` | TSD §2.3 vs TSD §7.4 | The two instructions cannot both be followed | **Resolved toward §7.4, the more specific instruction.** `packages/catalog` declares `@nutritime/contracts` and `@nutritime/domain`, and `eslint.config.mjs` carves out `packages/catalog/seed.ts` + `src/seed/**` for the file-system access the build-time script needs. **The edge is build-time only**: `src/index.ts` exports `seededCatalog` and imports nothing from the seed modules, so nothing that ships to a device or a request path carries it. TSD §2.3's graph should gain a build-time edge | P07 → TSD |
 | X-14 | TSD §3.2 describes `CustomMeal` as "same shape as Meal, with nutrition optional", but neither the TSD type nor the implementation makes it optional, and `ValueSchema<CustomMeal> = mealSchema` does not compile | TSD §3.2 prose vs TSD §3.2 type | P12 T-12-07 requires a schema per stored value and there is none for custom meals | **OPEN.** Raised at P02, resolved at P12: either `customMealSchema` is authored or the TSD prose is corrected. Not blocking P03–P07 | P12 |
 
 **No unresolved conflict currently blocks any phase, and none remains open.** X-14 is open but
@@ -614,7 +616,7 @@ is the only route executable here. It also directly addresses the failure below,
 | Install method | **Unknown.** Not a plugin, not in `installed_plugins.json`, not in any marketplace catalog, absent from `~/.agents/.skill-lock.json` |
 | Version | **Unidentifiable.** No frontmatter `version`, no `VERSION`, no manifest, no `.git` |
 | Contents | `SKILL.md` 45,434 B (SHA256 `4d89e171a3edc393…`), plus `data` (31 B) and `scripts` (34 B) |
-| **Defect** | `data` and `scripts` were **regular text files**, not directories and not symlinks — unmaterialized Git symlink placeholders reading `../../../src/ui-ux-pro-max/data` and `…/scripts`. The target `C:\Users\moham\src\ui-ux-pro-max` **does not exist** |
+| **Defect** | `data` and `scripts` were **regular text files**, not directories and not symlinks — unmaterialized Git symlink placeholders reading `../../../src/ui-ux-pro-max/data` and `…/scripts`. The target `%USERPROFILE%\src\ui-ux-pro-max` **does not exist** |
 | Consequence | `search.py`, every CSV catalog, and the design-system generator were **absent**. Every workflow documented in the skill was unexecutable |
 | Second copy | `~/.agents/skills/ui-ux-pro-max/` — byte-identical, same defect. Not read by Claude Code |
 | Staleness proof | Installed SKILL.md claimed 50+ styles / 161 palettes / 99 UX rules / 1 stack; upstream claims 79 / 192 / 119 / 22 |
@@ -964,7 +966,7 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 | T-01-02 | Root `package.json`: name, private, `engines` Node `>=22.13.0 <25`, `workspaces: ["apps/*","packages/*"]` | T-01-01 | Completed |
 | T-01-03 | `tsconfig.base.json` exactly per TSD §2.2 | T-01-02 | Completed |
 | T-01-04 | Per-package `tsconfig.json` files; `@/*` alias in `apps/mobile` only | T-01-03 | **Deferred with Approval** — a `tsconfig.json` whose `include` matches no file fails `tsc` with TS18003, and `packages/`/`apps/` do not exist until P02/P03/P07/P08/P12. Each per-package tsconfig is created by the phase that creates its package; P01 ships `tsconfig.base.json` and a root `tsconfig.json`. Reopened as a checklist item on T-02-01, T-03-01, T-07-01 |
-| T-01-05 | ESLint flat config incl. the six import-boundary rules of §12.2 | T-01-03 | Completed |
+| T-01-05 | ESLint flat config with the **five enforceable** import-boundary rules of §12.2. Rule 6 (dependency cycles) is **not enforced by tooling** — ESLint has no built-in cycle detection and every mechanism is a dependency TSD §2.1 does not pin (X-10). It is checked by review at T-28-03 | T-01-03 | Completed (5 of 6 enforced, X-10) |
 | T-01-06 | Prettier config and ignore file | T-01-02 | Completed |
 | T-01-07 | `vitest.config.mts` with three projects (unit, integration, dom); the react-native-web alias lives **inside** the dom project, not as a fourth. E2E is Playwright, not Vitest | T-01-03 | Completed |
 | T-01-08 | Root scripts per TSD §2.4, plus three recorded additions: **`build:server`** (required by §19.5, §21.3 and DoD item 4; not in TSD §2.4), **`format`** (the write counterpart of `format:check`), and **`tsx` declared at the root** rather than in `apps/server`, because `dev:server` and `seed` are root scripts. **`typecheck` deviates**: TSD §2.4 chains four per-project invocations, which cannot run before those projects exist, so P01 ships `tsc --noEmit -p tsconfig.json` over a root project. It must return to TSD §2.4's per-project form at P12, because `apps/mobile` needs its own Expo base and `@/*` paths that a single root project cannot supply — carried as a checklist item on T-12-02 | T-01-02 | Completed |
@@ -1040,17 +1042,44 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-07-01 | `packages/catalog` skeleton; `seededCatalog: unknown` export | T-02-04 | Not Started |
-| T-07-02 | TheMealDB client: `filter.php` to select, `lookup.php` per meal, and the polymorphic-`meals` guard (array \| string \| object \| null) | T-07-01 | Not Started |
-| T-07-03 | Map to the `Meal` shape and **capture `provenance`** — upstream id, source URL, image source, licence flag (X-12) | T-07-02 | Not Started |
-| T-07-04 | Derive `allergenTags` via §4.4, then **hand-review every one of 60** | T-07-03, T-04-06 | Not Started |
-| T-07-05 | Assign `dietTags`, `mealPeriods`, `price`, `preparationMinutes` for 60 records | T-07-04 | Not Started |
-| T-07-06 | USDA dataset parser: read `fndds_ingredient_nutrient_value.csv` by path, emit the committed `nutrition-source.json` subset with `fdcId` and dataset vintage | T-07-01 | Not Started |
-| T-07-07 | Ingredient resolver: `normalizeText` + `singularize` + alias map (British→US, compound-phrase reductions) → `NutrientRow` | T-07-06, T-03-02 | Not Started |
-| T-07-08 | Measure→grams parser: unit table, fractions and mixed numbers, per-ingredient gram weights for countable and vague units | T-07-06 | Not Started |
-| T-07-09 | Derive `nutrition` per TSD §7.4 and set `nutritionProvenance`; **all-or-nothing** — any unresolved ingredient yields four `null`s and a reason | T-07-07, T-07-08, T-07-05 | Not Started |
-| T-07-10 | Validate all 60 against `mealSchema` including the `superRefine` rule; abort the write on any failure | T-07-09 | Not Started |
-| T-07-11 | `catalog.test.ts` — 60 records, unique kebab-case ids, schema-valid, no `0` for unknown, every derived figure traceable to an `fdcId`, three meals checked by hand | T-07-10 | Not Started |
+| T-07-01 | `packages/catalog` skeleton; `seededCatalog: unknown` export | T-02-04 | Completed |
+| T-07-02 | TheMealDB client: `filter.php` to select, `lookup.php` per meal, and the polymorphic-`meals` guard (array \| string \| object \| null) | T-07-01 | Completed |
+| T-07-03 | Map to the `Meal` shape and **capture `provenance`** — upstream id, source URL, image source, licence flag (X-12) | T-07-02 | Completed |
+| T-07-04 | Derive `allergenTags` via §4.4, then **hand-review every one of 60** | T-07-03, T-04-06 | Completed |
+| T-07-05 | Assign `dietTags`, `mealPeriods`, `price`, `preparationMinutes` for 60 records | T-07-04 | Completed |
+| T-07-06 | USDA dataset parser: read `fndds_ingredient_nutrient_value.csv` by path, emit the committed `nutrition-source.json` subset with `fdcId` and dataset vintage | T-07-01 | Completed |
+| T-07-07 | Ingredient resolver: `normalizeText` + `singularize` + alias map (British→US, compound-phrase reductions) → `NutrientRow` | T-07-06, T-03-02 | Completed |
+| T-07-08 | Measure→grams parser: unit table, fractions and mixed numbers, per-ingredient gram weights for countable and vague units | T-07-06 | Completed |
+| T-07-09 | Derive `nutrition` per TSD §7.4 and set `nutritionProvenance`; **all-or-nothing** — any unresolved ingredient yields four `null`s and a reason | T-07-07, T-07-08, T-07-05 | Completed |
+| T-07-10 | Validate all 60 against `mealSchema` including the `superRefine` rule; abort the write on any failure | T-07-09 | Completed |
+| T-07-11 | `catalog.test.ts` — 60 records, unique kebab-case ids, schema-valid, no `0` for unknown, every derived figure traceable to an `fdcId`, three meals checked by hand | T-07-10 | Completed |
+
+### 17.1 SQG-09 — approved file-length exceptions
+
+SQG-09 caps a new file at 350 lines. Nine files exceed it. Each is approved here with its reason,
+because an undocumented exception is indistinguishable from an unnoticed violation — and five of
+these passed through a green gate in P02, P04, P05 and P06 unremarked, which is exactly the failure
+this table now closes.
+
+The test that an exception has to pass: **splitting the file would scatter something a reviewer
+needs to read whole.** A long file of unrelated functions fails that test and gets split.
+
+| File | Lines | Why it is approved |
+|---|---|---|
+| `packages/catalog/src/seed/ingredient-bindings.ts` | 1225 | One data table: ~119 canonical names, each bound to one verified USDA code with its verbatim description and authored measure data. Splitting it alphabetically or by food group would make it harder to answer the only question anyone asks of it — "what is this ingredient bound to, and why" |
+| `packages/catalog/src/seed/authoring.ts` | 576 | One data table: the 60 authored records. A reviewer checking a serving count needs the whole table, and a split would hide which meals were reviewed |
+| `packages/catalog/src/seed/measure.ts` | 571 | Unit tables plus one conversion function. The tables are the reason the function is correct; separating them would let one drift from the other |
+| `packages/domain/src/answer.ts` | 554 | One exhaustive `switch` over the five answer kinds plus the classifier it depends on. The scope rule is only legible when all five branches are on the same screen |
+| `packages/catalog/src/seed/usda-dataset.ts` | 543 | CSV reader, nutrient-code verification and subset builder for one dataset. Its correctness argument is the file |
+| `packages/domain/src/scoring.test.ts` | 499 | Test file: one band-edge table per policy |
+| `packages/domain/src/answer.test.ts` | 490 | Test file: the scope rule is asserted across all five kinds together |
+| `packages/domain/src/allergen-lexicon.ts` | 423 | One safety-critical word list. Splitting it is how a token goes missing |
+| `packages/contracts/src/schemas.test.ts` | 403 | Test file: one schema per block |
+
+**Not approved, and therefore a standing constraint:** any NEW non-table module over 350 lines gets
+split. T-28-05 re-checks this table against the tree and fails on any file that grew into the list
+without being added to it.
+
 
 ### P08 — Backend foundation
 
@@ -1344,7 +1373,7 @@ or reduce a requirement to obtain a pass.
 | SQG-06 | No orphaned files left by refactoring |
 | SQG-07 | No duplicate component, utility, route, schema, type, config, or business rule |
 | SQG-08 | Naming: PascalCase components, camelCase functions, kebab-case ids |
-| SQG-09 | Every new **file** ≤ 350 lines — PRD §10.4 says files, not only components; an exception is documented and approved |
+| SQG-09 | Every new **file** ≤ 350 lines — PRD §10.4 says files, not only components; an exception is documented and approved. **Nine approved exceptions are recorded in §17.1 below**; every one is a single cohesive table or one exhaustive `switch`, where splitting would scatter a thing a reviewer needs to read whole |
 | SQG-10 | No explicit or implicit `any`; no unsafe cast; no blanket suppression |
 | SQG-11 | No invented nutritional, meal, user, educational, or product content |
 | SQG-12 | Every interactive element has a dark-mode variant |
@@ -1442,10 +1471,10 @@ no parallelism.
 | T-01-02 | TSD §2.1 | Root `package.json` | `engines` and `workspaces` exactly as specified | File contents |
 | T-01-03 | TSD §2.2 | `tsconfig.base.json` | Byte-equivalent to the TSD block | `diff` against the TSD block |
 | T-01-04 | TSD §2.2 | Five tsconfigs | `tsc --noEmit` resolves each project | Command output |
-| T-01-05 | §12.2 | `eslint.config.mjs` | A deliberate violation of each of the six rules is reported | Six failing fixtures, then removed |
+| T-01-05 | §12.2 | `eslint.config.mjs` | A deliberate violation of each of the **five enforceable** rules is reported; rule 6 is unenforced by tooling (X-10) | Five failing fixtures, then removed |
 | T-01-06 | — | Prettier config | `format:check` passes | Command output |
 | T-01-07 | TSD §8.1 | `vitest.config.mts` | Three named projects; the RNW alias and the transitive `deps.inline` list both inside `dom`. **`passWithNoTests` deliberately NOT set** — P01's gate uses the CLI flag for its one run, so the exemption does not stand for P02–P27 where a mis-scoped glob would pass green. `setupFiles: ['./vitest.setup.dom.mts']` arrives with that file at P12 | `vitest --run` reports three projects |
-| T-01-08 | TSD §2.4 | Scripts block | Each script runs and exits 0 | Output per script |
+| T-01-08 | TSD §2.4 | Scripts block | Each script that CAN run exits 0. `dev:server`, `dev:mobile`, `build:server`, `build:web` and `test:e2e` target `apps/` and `e2e/`, which do not exist at P01; their acceptance is deferred to **P08** (server), **P12** (mobile) and **P13** (the e2e harness), where each is first exercised | Output per runnable script |
 | T-01-09 | §21.1 | `.env.example` | Eight variables; keep-alive unit documented | File contents |
 | T-01-10 | TSD §2.1 | `node_modules`, lockfile | Installed versions match §2.1 exactly | `npm ls --depth=0` |
 

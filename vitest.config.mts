@@ -1,5 +1,42 @@
 import { defineConfig } from 'vitest/config';
+import fs from 'node:fs';
 import path from 'node:path';
+
+/**
+ * Load `.env` into `process.env` before any project starts.
+ *
+ * Without this the file is decorative: `USDA_DATASET_PATH` is documented in `.env`, read by
+ * the seed script, and never actually set for a test run. Hand-rolled rather than pulled from
+ * `dotenv`, because TSD 2.1 pins the toolchain and a config convenience is not worth a
+ * dependency. An already-set variable wins, so a real environment always beats the file.
+ */
+function loadDotEnv(): void {
+  const file = path.resolve(import.meta.dirname, '.env');
+  if (!fs.existsSync(file)) {
+    return;
+  }
+  // Split on the newline character itself and strip any carriage return, rather than a
+  // regex: a CRLF file must parse the same as an LF one.
+  for (const raw of fs.readFileSync(file, 'utf8').split(String.fromCharCode(10))) {
+    // No regex: eslint no-control-regex rejects a literal CR, and a plain endsWith says
+    // what is meant more directly anyway.
+    const line = raw.endsWith(String.fromCharCode(13)) ? raw.slice(0, -1) : raw;
+    const trimmed = line.trim();
+    if (trimmed === '' || trimmed.startsWith('#')) {
+      continue;
+    }
+    const split = trimmed.indexOf('=');
+    if (split <= 0) {
+      continue;
+    }
+    const key = trimmed.slice(0, split).trim();
+    if (process.env[key] === undefined) {
+      process.env[key] = trimmed.slice(split + 1).trim();
+    }
+  }
+}
+
+loadDotEnv();
 
 /**
  * Three projects, per TSD 8.1. E2E is Playwright and is deliberately not a Vitest project.
