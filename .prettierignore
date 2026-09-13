@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+playwright-report/
+test-results/
+
+# Session tooling, not project source
+.claude/
+
+# Specification and planning documents: authored prose with deliberate line breaks and
+# table alignment. Reflowing them destroys diffs and is forbidden by Plan.md P27 T-27-04.
+# Named explicitly so README.md and design-system/*.md are still formatted.
+/PRD.md
+/SDD.md
+/TSD.md
+/Plan.md

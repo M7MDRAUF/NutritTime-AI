@@ -1,0 +1,2981 @@
+# NutriTime AI — Construction Plan
+
+- **Version:** 1.0.0
+- **Date:** 2026-09-13
+- **Author:** Mohammad Ra'uf Naser Albatayneh
+- **Status:** Approved for phased execution
+- **Governs:** `PRD.md` v2.0.0, `SDD.md` v2.0.0, `TSD.md` v1.0.0
+- **Deliverable type:** Plan only. No application code exists or was written.
+
+---
+
+## 1. Purpose and Planning-Only Boundary
+
+This document is the phase-by-phase construction plan for NutriTime AI. It exists so that a future
+session can execute exactly one phase at a time, with no unauthorized decisions, and stop with
+evidence.
+
+**What this document is:** an ordered decomposition of the three authoritative specifications into
+29 phases and 226 tasks, each with dependencies, acceptance criteria, evidence requirements, and stop
+conditions, plus the gates that decide whether a phase is done.
+
+**What this document is not:** it is not a specification. It invents no requirement, endpoint,
+dependency, screen, or content. Where the specifications are silent or contradict each other, this
+plan records a blocker (§7) and marks the dependent phases `Blocked` rather than choosing for you.
+
+**Planning-only boundary — what was and was not done in producing this file:**
+
+| Action | Status |
+|---|---|
+| Read `PRD.md`, `SDD.md`, `TSD.md`, repository state, agent instructions | Done, read-only |
+| Repair and update the UI UX Pro Max integration globally | Done — tool maintenance, not application work (§13) |
+| Run UI UX Pro Max searches and the design-system generator | Done, output recorded in §13–§14 |
+| Write `Plan.md` | Done — this file |
+| Create any application source file, config, manifest, or test | **Not done** |
+| Initialise a git repository, install project dependencies, scaffold a workspace | **Not done** |
+| Modify `PRD.md`, `SDD.md`, or `TSD.md` | **Not done** |
+| Begin Phase P01 | **Not done** |
+
+Execution of P01 requires a separate, explicit instruction.
+
+---
+
+## 2. Executive Summary
+
+NutriTime AI recommends a meal appropriate to the time of day from a validated 60-record local
+catalog, filtered deterministically by the user's allergies, diet, and disliked ingredients, and
+answers free-text questions about those same meals. A local Gemma 3:4B model phrases answers the
+domain has already computed; it decides nothing.
+
+**The build in one paragraph.** One npm workspace holds two applications and three pure packages. The
+domain package carries every rule that must be correct — allergen inference, diet compatibility,
+scoring, relevance ranking, retrieval, and the answer resolvers — and imports nothing that does I/O,
+so it is unit-testable in isolation and is built first. The Express service loads and validates the
+catalog at boot, serves five endpoints, and owns the only outbound call in the system (to Ollama on
+localhost). The Expo application consumes those endpoints, persists the user's own records on device
+through versioned repositories, and ships to two surfaces: a native build and an
+`expo export --platform web` build that is a first-class delivery target, not only a test harness.
+
+**Sequencing rationale.** TSD §10 fixes five phases and states the domain comes first; this plan
+honours that and expands it. Phases P01–P10 build inward-out with no UI at all, because every rule
+the product's safety depends on is a pure function and can be proven before a screen exists. P11–P12
+establish the design system and the application shell. P13 is a tracer slice — Explore, end to end —
+which proves the whole stack works on one narrow path before five more features are laid on it.
+P14–P21 are feature slices, each carrying its own full vertical flow. P22–P27 harden the web surface,
+accessibility, tests, performance, CI, and documentation. P28 is an independent whole-repository
+audit whose final task is the last implementation-plan task in this document.
+
+**Scale.** 29 phases, 226 tasks, 15 functional requirements, 5 endpoints, 10 screens, 6 storage keys,
+9 domain modules, 16 shared components. The critical path is the one
+given in §16, which is authoritative: P00 → P01 → P02 → P04 → P05 → P06 → P19 → P21 → P24 → P25/P26
+→ P27 → P28.
+
+**Highest-risk work, in order.** (1) P04, allergen inference — the only module where a defect is a
+safety issue, and the only one whose failure mode is silent. (2) P19/P21, the assistant's containment
+layer — four checks and a grammar constraint standing between a 4B model and a user-visible false
+statement. (3) P07, hand-authoring 60 nutrition records — a single mistyped digit wins every
+superlative question and passes every automated check except the range bound.
+
+---
+
+## 3. Documents and Sources Inspected
+
+| # | Source | Location | State at inspection |
+|---|---|---|---|
+| 1 | Product Requirements Document | `PRD.md` | v2.0.0, 17,732 bytes, 15 functional requirements, 10 screens |
+| 2 | Software Design Document | `SDD.md` | v2.0.0, 34,232 bytes, 19 sections |
+| 3 | Technical Specification Document | `TSD.md` | v1.0.0, 77,250 bytes, 10 sections |
+| 4 | Project directory | `NEW_VERSION/` | Three `.md` files and `.claude/settings.local.json`. **No git, no manifests, no source, no tests, no CI** |
+| 5 | Project settings | `.claude/settings.local.json` | 111 bytes; a single Read permission for the parent tree |
+| 6 | Repository agent instructions | — | **None exist.** No `CLAUDE.md`, `AGENTS.md`, or equivalent under the project |
+| 7 | User-level agent instructions | `~/.claude/CLAUDE.md` | 231 bytes; a graphify pointer only. No project-relevant constraints |
+| 8 | Project memory | `~/.claude/projects/…-NEW-VERSION/memory/` | Directory exists, **empty** |
+| 9 | Architecture Decision Records | — | **None as separate files.** SDD §17 carries a 12-row Decisions table that serves this role |
+| 10 | API contracts and shared schemas | `TSD.md` §3, §5.4 | Present and complete — 5 endpoints, 5 error codes, all Zod schemas |
+| 11 | Package manifests / lockfiles | — | **None exist.** Pinned versions live in TSD §2.1 |
+| 12 | TS / lint / format / test / build / CI / env config | — | **None exist.** Specified in TSD §2.2, §2.4, §5.2, §8.1 |
+| 13 | Existing source and tests | — | **None exist** |
+| 14 | UI UX Pro Max integration | `~/.claude/skills/ui-ux-pro-max/` | Broken on inspection; repaired and validated — see §13 |
+
+**Consequence.** Items 4, 6, 8, 9, 11, 12 and 13 are absent. This is a greenfield build, not a
+modification. No task in this plan is a refactor, and no task depends on reading code that does not
+exist. Absences 11 and 12 are resolved by P01; absence 9 is resolved by treating SDD §17 as the
+decision record.
+
+---
+
+## 4. Source-of-Truth Hierarchy
+
+Applied throughout. On any disagreement, the higher row wins and the disagreement is recorded in §7
+rather than silently resolved.
+
+| Rank | Source | Authoritative for |
+|---|---|---|
+| 0 | **A direct user directive in the session that commissioned this plan** | Decisions the documents do not contain and cannot settle, recorded as D-01…D-06 in §7.1 with their consequences. A rank-0 decision that would contradict ranks 1–3 is recorded as a conflict in §7.3 instead of being applied |
+| 1 | `PRD.md` | What the product must do; user-visible behaviour; acceptance criteria; non-goals |
+| 2 | `SDD.md` | System shape; component boundaries; why a design is what it is; §17 decisions |
+| 3 | `TSD.md` | Exact signatures, constants, schemas, algorithms, error codes, versions, file paths |
+| 4 | This `Plan.md` | Sequencing, task decomposition, gates, evidence, ownership |
+| 5 | UI UX Pro Max output | **Advisory only.** Design intelligence, reconciled against 1–3 before use |
+| 6 | Ambient convention | Last resort, only where 1–5 are silent, and recorded as an assumption |
+
+Two refinements the documents themselves state, carried here:
+
+- TSD §1 fixes the split precisely: on an implementation detail the TSD wins; on *why*, the SDD wins; on what the user experiences, the PRD wins. A value appears in exactly one of the three.
+- There is no source below rank 6. If a decision cannot be derived from 0–6, it is a blocker, not a judgement
+call. Rank 0 exists because four decisions in §7.1 rest on it — D-01 alone creates P22, all of §20 and
+SQG-15, none of which is derivable from the documents, which treat the web export only as a test target.
+Without that rank the plan would be claiming an authority it does not have.
+
+---
+
+## 5. Confirmed Scope
+
+Derived from PRD §7 and the platform decision recorded in §7 D-01.
+
+### 5.1 Feature areas
+
+| Area | Content | Requirements |
+|---|---|---|
+| A — Recommendations and preferences | Meal-period detection, deterministic allergen/diet/availability filtering, eight-policy scoring, top three, optional model-phrased explanation with deterministic fallback, onboarding and settings | FR-002, FR-003, FR-004, FR-007, FR-008, FR-009 |
+| B — Saved and custom meals | Favourites, full custom-meal CRUD, persistence across restarts, selective and full data reset | FR-012, FR-013, FR-014 |
+| C — Grounded assistant | 1–500-character question, deterministic retrieval, **domain-resolved answer phrased by the model**, citations, explicit unavailability | FR-015 |
+| Cross-cutting | Startup hydration, catalog retrieval, nutrition contract, explore/search, meal details | FR-001, FR-005, FR-006, FR-010, FR-011 |
+
+### 5.2 Surfaces
+
+| Surface | Build | Status |
+|---|---|---|
+| Native mobile | Expo / React Native 0.86.3 | Primary |
+| Mobile web | `expo export --platform web` (react-native-web 0.21.2) | **First-class delivery surface** (D-01). Carries the obligations in §20 |
+
+### 5.3 Fixed inventories
+
+- **Screens (10):** Splash · Onboarding · Dietary Setup · Home · Explore · Meal Details · Saved · Create/Edit Meal · Assistant · Settings (PRD §11)
+- **Tabs (5):** Home · Explore · Assistant · Saved · Settings
+- **Endpoints (5):** `GET /health` · `GET /api/v1/meals` · `GET /api/v1/meals/:mealId` · `POST /api/v1/recommendations` · `POST /api/v1/chat` (TSD §5.4)
+- **Storage keys (6):** meta · onboarding · preferences · favorites · customMeals · ui, plus a quarantine ledger (TSD §6.4)
+- **Domain modules (9):** text · money · meal-period · allergens · diet · scoring · relevance · chat-retrieval · answer (TSD §4)
+- **Shared components (16):** TSD §6.7
+- **Error codes (5):** `invalid_request` · `meal_not_found` · `ai_disabled` · `ai_unavailable` · `ai_busy` (TSD §3.5)
+- **Catalog:** 60 records, `catalogVersion 1.0.0`, `source: "local"` (TSD §7.1)
+
+---
+
+## 6. Explicit Out-of-Scope
+
+Anything here that appears in a future task is unauthorized scope expansion and fails the gate.
+
+### 6.1 Out of scope by PRD §4 (binding non-goals)
+
+Medical, clinical, or dietary advice · any allergen-safety guarantee · real payment · real ordering or
+delivery · accounts, authentication, or cloud sync · model training or fine-tuning · free-form AI
+generation of meals, ingredients, nutrition values, prices, or safety claims.
+
+### 6.2 Out of scope by SDD §17 decisions
+
+Server database of any kind · server-side migrations · `{data, meta}` response envelope · rate
+limiting · circuit breakers · provider adapters · LRU or answer caching · readiness probe ·
+observability metrics, traces, and alerts · queue with depth.
+
+### 6.3 Removed from the product at PRD v2.0.0
+
+Cart · checkout · orders · order history · simulated delivery · USDA FoodData Central integration ·
+nutrition enrichment at runtime.
+
+### 6.4 Out of scope for this plan, with reasons
+
+| Item | Reason |
+|---|---|
+| Database, migrations, rollback, seeding policy | No database exists (SDD §17). Mapped to real persistence in §10 — deviation X-02 |
+| Duplicate-submission handling / idempotency keys | No endpoint mutates server state: three reads and two computations. Deviation X-03 |
+| PWA, service worker, offline caching, installability | Required by no document; explicitly excluded per the planning brief |
+| Sorting and pagination beyond `GET /api/v1/meals` | TSD §5.4 gives them to that endpoint only |
+| Coverage thresholds | TSD §8.1: "Coverage is reported and read, not enforced" |
+| ADR files under `docs/adr/` | SDD §17 is the decision record. Creating a parallel one would give one fact two homes |
+| Multi-device sync, backup, export | Not in any document |
+| `~/.agents/skills/ui-ux-pro-max` repair | Not read by Claude Code. Reported in §13, awaiting your decision |
+
+---
+
+## 7. Planning Ledger — Assumptions, Decisions, Conflicts, Blockers
+
+Per the planning brief §1.3: no approved project-memory mechanism exists (§3 item 8), so the mission
+ledger lives here rather than in an invented structure. This section is the authoritative record; no
+undocumented internal memory is relied on anywhere in this plan.
+
+### 7.1 Decisions taken (with authority)
+
+| ID | Decision | Authority | Consequence |
+|---|---|---|---|
+| D-01 | Platform is Expo + React Native; the web export is a **first-class delivery surface** | User, this session | §20 obligations apply to the web build; P22 exists; PRD/SDD/TSD unchanged |
+| D-02 | No database. "Data model and database strategy" maps to catalog + device storage | User, this session; SDD §17 | §10 rewritten as persistence; Database Architect role → Persistence Architect |
+| D-03 | UI UX Pro Max repaired and updated **globally** via the official CLI | User, this session | §13; completed and validated before §14 was written |
+| D-04 | No prior build is referenced | User, this session | Every task derives from PRD/SDD/TSD alone |
+| D-05 | Mission ledger lives in this file | Planning brief §1.3; §3 item 8 | This section |
+| D-06 | SDD §17 is the decision record; no separate ADR files | SDD §17; §6.4 | No ADR tasks |
+| D-07 | Both proposed amendments accepted: PRD §10.5 touch targets, and a fixed typeface in TSD §6.6 | User, this session | PRD → 2.1.0, TSD → 1.1.0. X-05 and X-07 closed; Q-02 and Q-03 answered; R-09 closed |
+| D-08 | Nutrition comes from the USDA FoodData Central **supporting-data** archive (`fndds_ingredient_nutrient_value.csv`), consumed at build time. Both Foundation archives rejected | User supplied the datasets; choice measured this session | PRD → 2.2.0, SDD → 2.1.0, TSD → 1.2.0 (new §7.4). X-11 closed. P07 grows from 7 tasks to 11 |
+
+### 7.2 Assumptions (each must be confirmed or it becomes a blocker)
+
+| ID | Assumption | Basis | Confirm by | If wrong |
+|---|---|---|---|---|
+| A-01 | Node 22.13+ and npm are the runtime and package manager; npm workspaces, not pnpm or yarn | TSD §2.1 `engines`, §2.4 scripts use `npm` | P01 | P01 tasks change; lockfile policy changes |
+| A-02 | The repository will be initialised with git in P01 | No `.git` exists; TSD §2.4 assumes CI on push | P01 T-01-01 | P26 CI tasks blocked |
+| A-03 | Ollama runs on the developer machine with `gemma3:4b` pulled | PRD §15; verified: Ollama is on PATH | P19 | P19–P21 use `AI_FAKE` only; real-model acceptance deferred |
+| A-04 | `python3` is available for UI UX Pro Max scripts | Verified this session: 3.13.14 | Done | Frontend tool workflow blocked |
+| A-05 | The 60 catalog records are authored by the developer, not sourced automatically | TSD §7.2 steps 3–5 say "by hand" | P07 | P07 effort and risk change materially |
+| A-06 | Deployment target is the developer's own machine; no hosting provider | SDD §2.2, §12; PRD scope line | P26 | P26 gains provider tasks |
+| A-07 | Single developer; no branch protection or review gate is enforceable | PRD document control; SDD §1 | P26 | P26 gains review-gate tasks |
+| A-08 | API versioning is additive within v1; a breaking change would require `/api/v2` | **No document states this.** Plan-introduced in §11.1 | P09 | Harmless — no v2 is planned. Recorded so it is not mistaken for a specification |
+| A-09 | Some implementation symbols are named by this plan, not by the documents: a default-preferences constant, an assistant copy module, the `ui` store's `lastTab` and disclaimer flag, the Expo scheme `nutritime`, `userInterfaceStyle: automatic`, and portrait-primary orientation | **No document names them.** Plan-introduced | P12, P14, P18, P21, P22 | Rename freely. None changes behaviour the documents specify; they exist so a task can name a file instead of gesturing at one |
+
+### 7.3 Conflicts and deviations (recorded, not silently resolved)
+
+| ID | Conflict | Sources | Impact | Resolution | Blocks |
+|---|---|---|---|---|---|
+| X-01 | Planning brief says "mobile web application"; PRD/SDD/TSD specify Expo + React Native | Brief vs PRD §1 | Determines the entire frontend plan | **Resolved by D-01.** Documents stand; web export becomes a delivery surface | — |
+| X-02 | Brief mandates a Database Architect, DB foundation phase, and migration/rollback process; SDD §17 decides no database exists | Brief vs SDD §17 | A whole phase would be fabricated | **Resolved by D-02.** No DB invented. §10 covers catalog + device storage; rollback maps to quarantine | — |
+| X-03 | Brief requires duplicate-submission behaviour per endpoint; no endpoint mutates state | Brief vs TSD §5.4 | Would invent idempotency keys | Recorded as not applicable, with reasoning, per endpoint in §11 | — |
+| X-04 | Brief requires `to` paths matching router configuration; React Navigation uses typed route names, not `to` | Brief vs TSD §6.2 | Gate wording | Gate item restated as "every navigation target exists in `RootParamList` and every screen route is registered" | — |
+| X-05 | UI UX Pro Max UX catalog states touch targets are 44pt iOS / 48dp Android / 24 CSS px web; PRD §10.5 stated a universal 44×44 points | Tool vs PRD §10.5 | Accessibility acceptance criteria | **CLOSED — amendment accepted (D-07).** PRD amended to 2.1.0: 44 pt iOS / 48 dp Android / 24 px web, with 48 dp as the single build-to value satisfying all three. The tool refined the requirement; it did not override it, because you approved the change | — |
+| X-06 | UI UX Pro Max design-system generator returned a landing-page pattern (Hero → Testimonials → CTA) and web idioms (`cursor-pointer`, hover) for a five-tab touch app | Tool vs PRD §11, SDD §14 | Would misdirect the whole UI | **Documents win.** Pattern and CTA guidance discarded with reason; palette, style family, anti-patterns and checklist retained. Recorded in §14.2 | — |
+| X-07 | Generator proposed Playfair Display as **body** type; TSD §6.6 fixed a token architecture but no typeface | Tool vs TSD §6.6 | Readability and token ownership | **CLOSED — amendment accepted (D-07), but not the generator's pairing.** The generator's "Inter heading / Playfair body" was a mismatched cross-product of two catalog rows. The coherent row for the adopted style family is **Flat Design Mobile (System Bold): Inter for both, falling back to system SF/Roboto**, and that is what TSD 1.1.0 §6.6 now fixes. The token architecture was never in question | — |
+
+| X-08 | The planning brief mandates `npm audit` as a gate; TSD §2.4 says "`npm run check` is the single gate. Nothing else is required" and SDD §16 declines extra gates | Brief vs TSD §2.4, SDD §16 | An advisory in a pinned Expo tree could otherwise block every phase gate | **Kept as an explicitly recorded deviation**, not an invention: `npm audit --audit-level=high` runs at P26 and P28 and is reported. It does **not** block a phase gate; findings are triaged and recorded as risks | — |
+| X-09 | PRD §12 requires five states on *every* data-driven screen; TSD §6.8's per-screen table lists fewer for Explore and Saved | PRD §12 vs TSD §6.8 | Each screen's acceptance criteria | **PRD wins** (rank 1 > rank 3). §14.5 and §19.2 are the per-screen *minimum*; PRD §12's five remain mandatory wherever the state is reachable. A state that cannot occur on a screen is recorded as not applicable with a reason, never silently dropped | — |
+| X-10 | §12.2 rule 6 and T-01-05 require a dependency-cycle check; SDD §16 explicitly declines a cycle checker | Brief vs SDD §16 | Tooling scope | **CORRECTED at P01 on new evidence.** The original resolution — "an import rule inside the existing lint config adds no new tooling" — rested on a factual error: ESLint has no built-in cycle detection, and every mechanism (`eslint-plugin-import`, `madge`, `dpdm`) is a dependency TSD §2.1 does not pin. **Rule 6 is therefore unenforced by tooling**, consistent with SDD §16, and is checked by review at P28 T-28-03. The five enforceable rules are proven by the T-01-05 probe | — |
+
+| X-11 | PRD FR-006 required per-serving nutrition; TheMealDB publishes none at any access tier, and the plan's own T-07-05 stop condition forbade estimating | PRD FR-006 vs the recipe source | P07 could not be completed as written — either nutrition was invented or the product shipped hollow | **CLOSED.** USDA FoodData Central adopted as a **build-time dataset** (D-08): 1,882 ingredients, all four macros, per 100 g. PRD 2.2.0, SDD 2.1.0 and TSD 1.2.0 amended; TSD §7.4 defines the derivation contract. No runtime dependency is added, so SDD §2.1 is unchanged | — |
+| X-12 | TheMealDB requires attribution and the preservation of source, image-source and licence metadata; `Meal` had nowhere to put any of it, and no document mentioned attribution | Upstream licence vs TSD §3.2 | Shipping without attribution breaches the terms we rely on | **CLOSED.** `Meal` gains `provenance` (TSD 1.2.0 §3.2); PRD 2.2.0 FR-011 displays attribution; §15 records both sources' licence terms | — |
+
+**No unresolved conflict currently blocks any phase, and none remains open.** X-05 and X-07 were the
+last two; both were accepted and applied to the source documents (D-07), taking PRD to 2.1.0 and TSD
+to 1.1.0. Every X row above now carries a closed resolution.
+
+### 7.4 Open questions
+
+| ID | Question | Needed by | Default if unanswered |
+|---|---|---|---|
+| Q-01 | ~~Repair the broken `~/.agents/skills/ui-ux-pro-max` copy?~~ | — | **ANSWERED: repaired.** See §13.6 |
+| Q-02 | ~~Accept the X-05 touch-target amendment into PRD §10.5?~~ | — | **ANSWERED: accepted.** PRD 2.1.0 |
+| Q-03 | ~~Accept a tool-recommended font pairing, or keep TSD §6.6's scale?~~ | — | **ANSWERED: accepted.** TSD 1.1.0 fixes Inter with a system fallback |
+| Q-04 | Is a `README.md` required as a deliverable? | P27 | Yes — planned; it is the only entry point a future reader has |
+| Q-05 | Should the web build be deployed anywhere, or run locally only? | P26 | Local only, per A-06 |
+
+### 7.5 Blockers
+
+| ID | Blocker | Raised | Status | Blocked phases |
+|---|---|---|---|---|
+| B-01 | UI UX Pro Max non-functional: `data`/`scripts` were dangling symlink stubs; no `search.py`, no catalogs | Reconnaissance | **CLEARED** — §13 | P11, P12, P22, P23 (were blocked) |
+| B-02 | Installed UI UX Pro Max version unidentifiable: no version field, manifest, git, or lock entry | Reconnaissance | **CLEARED** — now `ui-ux-pro-max-cli@2.15.0`, SKILL.md SHA `98a17c91…` | Same as B-01 |
+| B-03 | No git repository exists | Reconnaissance | **OPEN** — resolved by T-01-01 | P26 |
+| B-04 | No package manifest, lockfile, or tooling config exists | Reconnaissance | **OPEN** — resolved by P01 | P02 onward |
+
+B-03 and B-04 are expected greenfield conditions with planned remedies, not unresolved contradictions.
+
+### 7.6 Traceability ledger pointers
+
+Requirement-to-task coverage: §22. Phase dependencies: §16. Risk register: §23. Test obligations:
+§19. UI/UX obligations: §14. Mobile-web obligations: §20. AI/Ollama obligations: §15.
+
+---
+
+## 8. Architecture Summary
+
+Restated from SDD §2–§3 for execution context. The SDD is authoritative; nothing here adds to it.
+
+```mermaid
+flowchart LR
+    User[User]
+    Mobile["Expo / React Native app<br/>native + web export"]
+    Storage[("AsyncStorage / localStorage<br/>6 keys + quarantine")]
+    API["Express API<br/>5 endpoints"]
+    Catalog[("meals.json<br/>60 records, in memory")]
+    Ollama["Ollama · Gemma 3:4B"]
+    Images["TheMealDB image URLs"]
+
+    User --> Mobile
+    Mobile -->|typed repositories| Storage
+    Mobile -->|HTTP JSON /api/v1| API
+    Mobile -->|img src| Images
+    API --> Catalog
+    API -->|structured output, timeout| Ollama
+```
+
+**Dependency direction** (SDD §3.2) — inward, and enforced as a gate item in every phase:
+
+```text
+Screens / HTTP routes  ->  Application use cases  ->  Domain  <-  Infrastructure adapters
+```
+
+**The five invariants every phase is checked against:**
+
+1. The domain imports nothing that performs I/O, reads a clock, or renders. It is pure.
+2. Allergen and diet decisions are made before the model is reachable, and no model outcome can widen the eligible meal set.
+3. The domain resolves the assistant's answer; the model only phrases it.
+4. Unknown nutrition is `null` and renders as "Not available" — never `0`, never a guess.
+5. Every value crossing a trust boundary is parsed with Zod, never cast.
+
+**Server holds no clock.** Per TSD §5.4, the client sends `mealPeriod`; the server never derives it.
+
+---
+
+## 9. Modular Repository and Folder Strategy
+
+Structure from SDD §4 and TSD §4/§2.3. No existing code is restructured, because none exists.
+
+```text
+nutritime-ai/
+├── apps/
+│   ├── mobile/          Expo application (native + web export)
+│   └── server/          Express service
+├── packages/
+│   ├── contracts/       Zod schemas + shared types
+│   ├── domain/          Pure rules
+│   └── catalog/         meals.json + seed script
+├── design-system/       Generated design artifacts (P11)
+├── e2e/                 Playwright specs, own package.json
+├── .github/workflows/   One CI job
+├── PRD.md  SDD.md  TSD.md  Plan.md  README.md
+```
+
+| Directory | Responsibility | Allowed | Prohibited | Depends on | Owner |
+|---|---|---|---|---|---|
+| `packages/contracts` | Shared types, Zod schemas, enumerations, error codes | Pure TS, `zod` | Any I/O; React; Express; business rules | zod only | Contracts owner |
+| `packages/domain` | Every rule that must be correct | Pure functions, pure data tables | React Native, Express, AsyncStorage, `fetch`, Ollama clients, `Date.now()` | contracts | Domain owner |
+| `packages/catalog` | `meals.json` + seed script | The catalog, the seed script | Runtime logic, validation logic (that is contracts') | none at runtime | Catalog owner |
+| `apps/server` | HTTP surface, config, AI lane, containment | Routes, middleware, use cases, `ai/` | Domain rules (import them), UI, persistence of user data | contracts, domain | Backend owner |
+| `apps/mobile` | Screens, state, storage, API client, theme | Features, shared components, navigation, infrastructure | Domain rules duplicated; direct AsyncStorage outside the driver; colour literals | contracts, domain, catalog | Frontend owner |
+| `design-system/` | Generated design artifacts + decision record | `MASTER.md`, page overrides, `DECISIONS.md` | Application code | — | Frontend owner |
+| `e2e/` | Playwright specs | Specs, fixtures, config | Application code; workspace membership | — | QA owns the harness, config and fixtures. Feature phases contribute **one spec file each** under `e2e/specs/`, so no two phases write the same file |
+
+**Conflict-prevention rules.** One owner per directory; no two phases write the same file
+concurrently (§16 enforces this); `apps/*` never imports from another app; `packages/*` never imports
+from `apps/*`; no cyclic imports; `@react-native-async-storage/async-storage` is imported by exactly
+one file (`asyncStorageDriver.ts`).
+
+**Restructuring:** none planned. Every directory above is created new in P01–P02.
+
+---
+
+## 10. Data Model and Persistence Strategy
+
+Per D-02, there is no database. This section covers the two real stores.
+
+### 10.1 Store 1 — the meal catalog (read-only)
+
+| Property | Value |
+|---|---|
+| Location | `packages/catalog/meals.json` |
+| Size | 60 records, `catalogVersion "1.0.0"`, `source: "local"` |
+| Producer | `packages/catalog/seed.ts`, run by hand — never in CI, never at boot (TSD §7.2) |
+| Validator | `mealSchema` (TSD §3.3), applied by both the seed script and boot |
+| Load | Once at server boot into an array plus a `Map<string, Meal>` by id |
+| Failure | Server **exits non-zero** naming the record index and failing field path |
+| Mutability | None at runtime. No endpoint writes to it |
+
+**Nutrition invariant.** Four nullable integers, per serving, units implied by field name. Because
+TSD §3.2 removed the type-level `basis`/`unit` guard, the invariant is enforced by schema range
+bounds instead: calories 0–2000 kcal, protein 0–200 g, carbohydrate 0–300 g, fat 0–200 g. This is the
+only defence against a hand-authoring typo that would otherwise win every superlative question and
+pass containment, because the domain would genuinely have resolved that number.
+
+### 10.2 Store 2 — device storage (read/write)
+
+Six keys plus a quarantine ledger (TSD §6.4). Every value is wrapped:
+
+```ts
+interface StorageEnvelope { schemaVersion: number; updatedAt: string; value: unknown }
+```
+
+| Concern | Mechanism |
+|---|---|
+| Schema evolution | `schemaVersion` per key; **only `schemaVersion - 1` migrates**, and only when a migration function for the current version exists |
+| Anything older | Quarantined, never guessed at |
+| Corruption | Decode/migrate/validate failure quarantines the raw value, removes the live key, returns the fallback with status `recovered` |
+| Isolation | One key's corruption never touches another's |
+| **Rollback equivalent** | The quarantine ledger. A bad migration leaves the original bytes recoverable rather than overwritten — this is what replaces database rollback (D-02) |
+| Bounds | Favourites and custom meals cap at 200. Past the cap the **write is refused** (`StorageWriteError('bound-exceeded')`), never silently trimmed. Reads truncate and report `recovered` |
+| Driver isolation | Exactly one file imports the AsyncStorage package |
+
+**Web-surface note (D-01).** On the web export, react-native-web backs AsyncStorage with
+`localStorage`. Quota and eviction behaviour differ from native; P22 T-22-06 verifies bound refusal
+and quarantine on the web build specifically rather than assuming parity.
+
+### 10.3 What is deliberately absent
+
+No server database, no ORM, no connection pool, no server-side migration runner, no seed-on-boot, no
+backup or export. Each is out of scope by SDD §17 or §6.4 above.
+
+---
+
+## 11. API Architecture and Endpoint Inventory
+
+Derived from TSD §5.4 and §3.5. **No endpoint is invented.** The inventory is exactly five.
+
+### 11.1 Cross-cutting rules
+
+| Concern | Rule | Source |
+|---|---|---|
+| Base path | `/api/v1` for domain endpoints; `/health` is unversioned | TSD §5.4 |
+| Versioning | Additive within v1. A required-field removal or type change requires `/api/v2` | **Plan-introduced (A-08)** — no document states a versioning policy, so this is an assumption, not an attribution |
+| Transport | JSON in, JSON out, stateless | SDD §7.1 |
+| Success shape | The payload directly. **No envelope** — one client, which does not need `meta.requestId` to correlate anything | SDD §7.1 |
+| Error shape | `{ error: { code, message, retryable, details? } }` | TSD §3.4 |
+| Validation | Every body parsed with `z.strictObject` at the edge. An unexpected field is a 400, not a silent ignore | TSD §3.3 |
+| Body cap | 64 KB (`express.json({ limit: '64kb' })`) | TSD §5.3 |
+| Messages | Fixed local strings. No upstream error text ever reaches a response body or log line | TSD §3.5 |
+| Headers | Request: `Accept`, and `Content-Type` on POST. **No custom header** — one would make every GET preflighted | TSD §6.5 |
+| Timeouts | Client deadlines exceed server budgets so the client never gives up first | TSD §6.5 |
+| Retry | No automatic client retry. `retryable` tells the UI whether to offer a retry control | TSD §3.5 |
+| **Duplicate submission** | **Not applicable to any endpoint** (X-03). Three reads and two pure computations; nothing mutates server state, so a repeated request is indistinguishable from the first and equally harmless. No idempotency key is invented | TSD §5.4 |
+| Data ownership | The server owns the catalog and owns nothing else. All user data lives on the device and is never transmitted except the narrow preference projections below | SDD §2.1 |
+
+### 11.2 C-01 — `GET /health`
+
+| Field | Value |
+|---|---|
+| Method / Path | `GET /health` |
+| Purpose | Process liveness plus catalog identity |
+| Path params | None |
+| Query params | None |
+| Request headers | `Accept: application/json` |
+| Request schema | None |
+| Validation | None |
+| Success | `200` |
+| Success schema | `{ status: "ok", catalogVersion: string, mealCount: number }` |
+| Error statuses | None by design. A server that cannot answer this is not running |
+| Error schemas | — |
+| Pagination/filter/sort | N/A |
+| Duplicate submission | N/A — read-only |
+| Tests | `health.integration.test.ts`: 200 and shape; `mealCount === 60`; **no dependency probing** (Ollama down must not affect it) |
+
+### 11.3 C-02 — `GET /api/v1/meals`
+
+| Field | Value |
+|---|---|
+| Method / Path | `GET /api/v1/meals` |
+| Purpose | Paged, filtered, searchable catalog listing |
+| Path params | None |
+| Query params | `page`, `pageSize`, `period`, `diet`, `maxPriceCents`, `query` — all optional, all allowlisted |
+| Request headers | `Accept: application/json` |
+| Request schema | Query object; `page` int ≥ 1 (default 1); `pageSize` int 1–50 (default 20); `period` ∈ `MealPeriod`; `diet` ∈ `DietTag`; `maxPriceCents` int ≥ 0; `query` string 1–100 |
+| Validation | Out-of-range or wrong-type → `400 invalid_request` with `details` naming the parameter. **An unknown query parameter is ignored, not an error** — the allowlist is the contract |
+| Success | `200` |
+| Success schema | `MealListResponse { meals: Meal[], page, pageSize, total }` |
+| Error statuses | `400` |
+| Error schemas | `ApiErrorBody` |
+| Pagination | Offset by `page`/`pageSize`; `total` is the count **after** filtering, before paging |
+| Filtering | Conjunctive across the four filters |
+| Sorting | Relevance (§4.7) when `query` is present; name ascending otherwise |
+| Duplicate submission | N/A — read-only |
+| Tests | Happy path; each filter alone and combined; boundary `pageSize` 1/50/51; `page` 0; unknown param ignored; `query` ranking order; `total` correctness under filtering; empty result is `200` with `meals: []`, never 404 |
+
+### 11.4 C-03 — `GET /api/v1/meals/{mealId}`
+
+| Field | Value |
+|---|---|
+| Method / Path | `GET /api/v1/meals/{mealId}` |
+| Purpose | One meal by stable id |
+| Path params | `mealId` — kebab-case string |
+| Query params | None |
+| Request headers | `Accept: application/json` |
+| Request schema | Path param only |
+| Validation | Unknown id → `404 meal_not_found`, **not** an empty success |
+| Success | `200` |
+| Success schema | `Meal` |
+| Error statuses | `404` |
+| Error schemas | `ApiErrorBody`, `retryable: false` |
+| Pagination/filter/sort | N/A |
+| Duplicate submission | N/A — read-only |
+| Tests | Known id returns the full record; unknown id 404; URL-encoded id round-trips; nutrition `null` fields survive serialisation as `null`, never `0` |
+
+### 11.5 C-04 — `POST /api/v1/recommendations`
+
+| Field | Value |
+|---|---|
+| Method / Path | `POST /api/v1/recommendations` |
+| Purpose | Top three meals for a meal period, deterministically scored, optionally explained |
+| Path params | None |
+| Query params | None |
+| Request headers | `Accept`, `Content-Type: application/json` |
+| Request schema | `recommendationRequestSchema` — `{ mealPeriod, aiEnabled, preferences: { diet, allergies, goal, budget, dislikedIngredients }, favoriteMealIds }` |
+| Validation | `z.strictObject`. **`mealPeriod` is supplied by the client; the server derives no time and holds no clock** (TSD §5.4). `allergies` uses canonical taxonomy values. Any extra field → `400 invalid_request` with `details` |
+| Success | `200` |
+| Success schema | `RecommendationResponse { mealPeriod, recommendations: Recommendation[] }`, each with `score`, `scoreReasons`, `explanation`, `explanationSource` |
+| Error statuses | `400` only. **No 503 on this endpoint.** An explanation that times out, fails schema validation, fails containment, or cannot reach the model degrades to `explanationSource: "fallback"` and the request still succeeds (PRD FR-009, PRD §13, TSD §5.4) |
+| Error schemas | `ApiErrorBody` |
+| Pagination/filter/sort | N/A — fixed at three, ordered by score desc then id asc |
+| Duplicate submission | N/A — pure computation over immutable inputs |
+| Tests | Allergen hard-rejection (a declared peanut allergy returns no peanut-tagged meal); determinism (identical input → identical scores and order); tie-break by id; `aiEnabled: false` → every `explanationSource: "fallback"`; Ollama stopped → still `200` with fallbacks; a `null` nutrient scores 0 on goal with the "not available" detail; extra field → 400 |
+
+### 11.6 C-05 — `POST /api/v1/chat`
+
+| Field | Value |
+|---|---|
+| Method / Path | `POST /api/v1/chat` |
+| Purpose | Answer a free-text question **from the user's eligible meals only** |
+| Path params | None |
+| Query params | None |
+| Request headers | `Accept`, `Content-Type: application/json` |
+| Request schema | `chatRequestSchema` — `{ question: string(1–500, trimmed), preferences: { diet, allergies, dislikedIngredients } }` |
+| Validation | `z.strictObject`, deliberately narrower than `UserPreferences`. **`goal` and `budget` are rejected**: retrieval does not read them, and a required field that changes nothing is a field that will eventually be believed. Client narrows before posting |
+| Success | `200` |
+| Success schema | `ChatResponse { answered, answer, citations: Citation[], source: "gemma" \| "local" }` |
+| Error statuses | `400 invalid_request`; `503 ai_disabled` (non-retryable); `503 ai_unavailable` (retryable); `503 ai_busy` (retryable) |
+| Error schemas | `ApiErrorBody`. **No answer text on any failure path** — there is no fallback prose |
+| Pagination/filter/sort | N/A. Context capped at 5 meals; citations capped at 5 |
+| Duplicate submission | N/A — stateless; no history is retained between requests |
+| Tests | Allergen exclusion from context **and** citations; `answered: false` + `200` + `source: "local"` when filters exclude everything, **with no model call**; same when no resolver matches; `goal`/`budget` → 400; a reply citing an unretrieved id discarded; a reply quoting an unresolved figure discarded; a safety claim discarded; a meal named but not in the prompt discarded; `AI_ENABLED=false` → `ai_disabled`; second concurrent request → `ai_busy` |
+
+### 11.7 Missing or inconsistent definitions
+
+None. All five endpoints are fully specified by TSD §5.4 and §3.3–§3.5. No blocker is raised in this
+section.
+
+---
+
+## 12. Shared Contracts and Dependency Boundaries
+
+### 12.1 Contract ownership
+
+| Artifact | Home | Consumed by | Changeable by |
+|---|---|---|---|
+| Enumerations, entities | `packages/contracts/src/core.ts` | domain, server, mobile | Contracts owner, via a TSD §3 amendment |
+| Zod schemas | `packages/contracts/src/schemas.ts` | server (edge), mobile (storage + responses) | Contracts owner |
+| Wire types | `packages/contracts/src/api.ts` | server, mobile | Contracts owner |
+| Error codes | `packages/contracts/src/errors.ts` | server, mobile | Contracts owner |
+| Rules and algorithms | `packages/domain/src/**` | server, mobile | Domain owner, via a TSD §4 amendment |
+| Prompt text + version | `apps/server/src/ai/prompt.ts` | server only | Backend owner, versioned by `CHAT_PROMPT_VERSION` |
+| Storage definitions | `apps/mobile/src/infrastructure/storage/definitions.ts` | mobile only | Frontend owner |
+
+### 12.2 Dependency direction — enforced, not aspirational
+
+```text
+contracts  ->  (zod only)
+domain     ->  contracts
+server     ->  contracts, domain
+mobile     ->  contracts, domain, catalog
+catalog    ->  (nothing)
+```
+
+Six rules checked at every phase gate:
+
+1. `packages/domain` imports no `express`, `react`, `react-native`, AsyncStorage, `fetch`, Ollama client, or clock.
+2. `packages/contracts` is the only package with a third-party runtime dependency (`zod`).
+3. No package imports from `apps/*`.
+4. `apps/mobile` and `apps/server` never import each other.
+5. AsyncStorage is imported by exactly one file.
+6. No cyclic imports.
+
+### 12.3 Why a single contracts package
+
+One definition of `Meal` is parsed at the server edge and at the storage edge by the same schema. That
+is what makes it structurally impossible for the two to disagree — the failure mode PRD v1.x had when
+nutrition lived in two places. Duplicating a type into either app is a gate failure, not a style
+preference.
+
+---
+
+## 13. UI UX Pro Max — Inspection, Update, and Capability Report
+
+Performed before any frontend section of this plan was written, as the planning brief §2.5 requires.
+
+### 13.1 Inspection
+
+| Item | Value |
+|---|---|
+| Official repository | `https://github.com/nextlevelbuilder/ui-ux-pro-max-skill` |
+| Inspected | 2026-09-13 |
+| Reachable / public | Yes. Default branch `main`, 255 commits |
+| Description | "An AI skill that provides design intelligence for building professional UI/UX across multiple platforms and frameworks" |
+| Top level | `.claude-plugin/`, `.claude/skills/`, `cli/`, `docs/`, `gallery/`, `preview/`, `projects/`, `scripts/`, `src/ui-ux-pro-max/`, `stack/`, `skill.json`, `CLAUDE.md`, five localized READMEs |
+| Documented install routes | (a) Claude marketplace: `/plugin marketplace add …` + `/plugin install …`; (b) **CLI, marked "Recommended"**: `npm install -g ui-ux-pro-max-cli` then `uipro init --ai claude` |
+| Documented global route | `uipro init --ai claude --global` → `~/.claude/skills/` |
+| Documented update route | `uipro update` / `uipro update --global`; `uipro versions` |
+| Upstream package | `ui-ux-pro-max-cli@2.15.0`, released 8/13/2026, bin `uipro`, npm publisher `mrgoonie` |
+
+**Route chosen: the CLI, globally.** The marketplace route requires `/plugin`, which opens an
+interactive terminal panel this session does not have; the CLI is the README's own recommendation and
+is the only route executable here. It also directly addresses the failure below, because it
+*generates* files rather than relying on symlinks.
+
+### 13.2 Pre-update state
+
+| Property | Finding |
+|---|---|
+| Location | `~/.claude/skills/ui-ux-pro-max/` — a plain user-level skill folder |
+| Install method | **Unknown.** Not a plugin, not in `installed_plugins.json`, not in any marketplace catalog, absent from `~/.agents/.skill-lock.json` |
+| Version | **Unidentifiable.** No frontmatter `version`, no `VERSION`, no manifest, no `.git` |
+| Contents | `SKILL.md` 45,434 B (SHA256 `4d89e171a3edc393…`), plus `data` (31 B) and `scripts` (34 B) |
+| **Defect** | `data` and `scripts` were **regular text files**, not directories and not symlinks — unmaterialized Git symlink placeholders reading `../../../src/ui-ux-pro-max/data` and `…/scripts`. The target `C:\Users\moham\src\ui-ux-pro-max` **does not exist** |
+| Consequence | `search.py`, every CSV catalog, and the design-system generator were **absent**. Every workflow documented in the skill was unexecutable |
+| Second copy | `~/.agents/skills/ui-ux-pro-max/` — byte-identical, same defect. Not read by Claude Code |
+| Staleness proof | Installed SKILL.md claimed 50+ styles / 161 palettes / 99 UX rules / 1 stack; upstream claims 79 / 192 / 119 / 22 |
+
+Two of the planning brief's §16 stop conditions were therefore met on arrival — the installed version
+could not be identified, and the integration could not be used. Both were recorded as blockers B-01
+and B-02 and cleared by the update below.
+
+### 13.3 Commands executed
+
+```bash
+npm install -g ui-ux-pro-max-cli@latest     # added 23 packages
+uipro --version                             # 2.15.0
+uipro --help ; uipro init --help            # flag discovery
+uipro versions                              # 30 versions; v2.15.0 (8/13/2026) [latest]
+uipro init --ai claude --global             # skipped: SKILL.md existed; installed 0 folders
+uipro init --ai claude --global --force     # installed: + .claude
+```
+
+**Discrepancy recorded:** the README documents `uipro init --dry-run`; **CLI 2.15.0 does not
+implement it**. `init` accepts only `--ai`, `--force`, `--offline`, `--global`, `--token`. The
+brief's preference for a dry run could not be satisfied, so the non-destructive run was attempted
+first; it changed nothing, and `--force` was used only after confirming the target directory
+contained no user-authored file.
+
+### 13.4 Post-update state and validation
+
+| # | Gate | Result |
+|---|---|---|
+| 1 | Global directory exists | `~/.claude/skills/ui-ux-pro-max/` — `SKILL.md`, `data/`, `scripts/` |
+| 2 | SKILL.md paths resolve | `data/` and `scripts/` are **real directories**. `SKILL.md` 45,434 → 55,507 B, SHA256 `98a17c9139cf9c4b…` |
+| 3 | `search.py` exists and runs | 9,123 B; executed against domains `style`, `product`, `ux` and stack `react-native` — all returned results |
+| 4 | Catalogs present and readable | 192 colors · 192 products · 192 ui-reasoning · 119 ux-guidelines · 105 icons · 88 styles · 74 typography · 44 react-performance · 34 landing · 32 app-interface · 25 charts · 17 motion · 1,934 google-fonts · 22 stack files (incl. `react-native.csv`) |
+| 5 | Design-system generator works | `--design-system -p "NutriTime AI" -f markdown` returned a complete system |
+| 6 | Claude Code discovers it | Confirmed — the session's skill listing refreshed to the new description |
+| 7 | Version matches upstream | `uipro --version` = 2.15.0 = npm `latest`. Capability counts now match the README exactly |
+| 8 | No shadowing | Project has no `.claude/skills/` directory |
+| 9 | Full capability set reachable | Scripts: `search.py`, `core.py`, `design_system.py`, `validate_data.py`, `reasoning_contract.py`, `tests/`. Domains: style, color, chart, landing, product, ux, typography, icons, gsap, react, web, google-fonts. Stacks: 22. Flags: `--domain`, `--stack`, `--max-results`, `--json`, `--full`, `--design-system`, `--project-name`, `--format`, `--persist`, `--page`, `--output-dir`, `--force`, `--variance`, `--motion`, `--density` |
+
+**All nine pass. B-01 and B-02 are cleared.** Frontend planning proceeded.
+
+### 13.5 Capabilities unavailable, optional, or unsupported
+
+| Capability | Status |
+|---|---|
+| `uipro init --dry-run` | Documented in README, **not implemented** in CLI 2.15.0 |
+| Marketplace plugin route | Officially supported; **not usable in this session** (`/plugin` needs an interactive terminal) |
+| `--token` (GitHub PAT for rate limits) | Available, not needed — no rate limiting was encountered |
+| Paid or private capability | **None claimed.** Everything reported above was executed and observed |
+
+### 13.6 Outstanding item
+
+`~/.agents/skills/ui-ux-pro-max/` was broken in the same way (byte-identical `SKILL.md`, SHA256
+`4d89e171…`, the same two dangling stubs). It is a cross-agent skills root that Claude Code does not
+read, so it neither shadowed nor degraded this project — but it was equally unusable for any other
+tool reading that root.
+
+**Repaired on your instruction** with `uipro init --ai universal --global --force`. Post-state:
+`SKILL.md` 28,066 B (SHA256 `798785fa…` — the universal template differs from the Claude one, which is
+expected), `data/` with 18 entries and `scripts/` with all five Python modules, both now real
+directories. `search.py` was executed there and returned results. `~/.agents/.skill-lock.json` is
+**untouched** — still version 3, still tracking only `design-taste-frontend` and `humanizer`, because
+`uipro` does not register itself in that lock file. No user-authored file was modified.
+
+---
+
+## 14. Frontend Design-System and UI/UX Strategy
+
+Two columns throughout. The left is authoritative and binding; the right is tool intelligence which
+is advisory until reconciled. Where they disagree, §4's hierarchy applies and the disagreement is
+logged in §7.3 — it is never merged away.
+
+### 14.1 What the documents already fix (binding, not negotiable)
+
+| Concern | Requirement | Source |
+|---|---|---|
+| Token architecture | Three layers: `primitive.ts` (private to the theme directory) → `semantic.ts` (roles, one interface, two maps so a missing dark token is a compile error) → `component.ts` | TSD §6.6 |
+| Dark mode | **Authored, not inverted** — own accent brightness, own status family, own scrim strength | TSD §6.6 |
+| Theme selection | `mode` is a **prop**, not internal state; the stored preference lives in `preferences.themeMode` | TSD §6.6 |
+| Type scale | Responds to OS font scale via `useWindowDimensions().fontScale` | TSD §6.6 |
+| Typeface | **Inter for headings and body**, falling back to system SF/Roboto. Hierarchy through weight, never a second family. No display serif as body text | TSD §6.6 (1.1.0) |
+| Colour literals | **Forbidden** in feature code | SDD §14, TSD §6.6 |
+| Screens / tabs | 10 screens, 5 tabs, fixed | PRD §11 |
+| Component inventory | 16 shared components with fixed prop signatures | TSD §6.7 |
+| Mandatory states | Loading · empty · local-only · validation error · AI unavailable, on **every** data-driven screen | PRD §12 |
+| State copy | Every message says what happened, what still works, what to do next. `stillAvailable` is a required prop on state components | PRD §12, TSD §6.7 |
+| Accessibility | Role + label on every control; **44 pt iOS / 48 dp Android / 24 px web** targets, build to 48 dp; font scaling without clipping; colour never the sole status carrier; WCAG AA in both themes | PRD §10.5 (2.1.0) |
+| Unknown nutrition | `NutritionBadge` renders "Not available", never `0` | PRD §6, FR-006; TSD §3.2 |
+
+### 14.2 Tool output, and its reconciliation
+
+| Tool recommendation | Verdict | Reason |
+|---|---|---|
+| Product type **"Calorie & Nutrition Counter"** (keywords: calorie, nutrition, macro, protein, carb, fat) | **Adopted** as the design frame | Correct match; no document conflict |
+| Style family **Flat Design** (+ Vibrant & Block-based; accessibility risk "low"; both modes supported) | **Adopted** | Compatible with TSD §6.6; imposes no token change |
+| Palette direction "healthy green + macro colours (protein blue, carb orange, fat yellow)" | **Adopted as input to P11**, expressed through §6.6's semantic roles | The *direction* is advisory; the *architecture* is fixed |
+| Anti-patterns: complex shadows, 3D effects, muted colours, low energy | **Adopted** as P11 review criteria | No conflict |
+| Pre-delivery checklist (contrast, focus, reduced motion, no emoji icons, responsive breakpoints) | **Adopted** as a named gate item in every frontend phase | Reinforces PRD §10.5 |
+| Pattern **"Hero + Testimonials + CTA"**, conversion focus, CTA placement, section order | **Rejected** — X-06 | A landing-page pattern for a five-tab touch application. PRD §11 fixes the information architecture |
+| Web idioms: `cursor-pointer`, hover states | **Rejected for native; partially applicable to the web export** | RN has no hover. On the web surface, hover is an enhancement only — PRD §10.5's "no hover-only interaction" governs |
+| ~~Playfair Display as body type~~ → **Flat Design Mobile (System Bold): Inter + system fallback** | **Adopted** — X-07 closed | The generator's Playfair-as-body line was a mismatched cross-product of two catalog rows. The typography catalog's coherent row for the adopted style family is Inter for both, falling back to SF/Roboto. Fixed in TSD 1.1.0 §6.6 |
+| Touch targets 44pt iOS / 48dp Android / 24 px web | **Adopted** — X-05 closed | PRD 2.1.0 §10.5 amended to the platform-specific rule; 48 dp is the single build-to value |
+| `--stack react-native`: React Navigation, typed params, `accessibilityLabel` on every interactive element, accessibility roles — verified against **RN 0.86.x** | **Adopted; already required** | Independently corroborates TSD §6.2 and §6.7. Zero conflict |
+| `--domain ux`: `role="alert"` for errors, inline errors bound by `aria-describedby`, validation on blur, empty states with an action, loading feedback matched to expected wait | **Adopted** | Sharpens PRD §12's five states into testable criteria |
+
+### 14.3 Mandatory workflow per frontend phase
+
+Binding on P11, P12, P13–P18, P21, P22, P23.
+
+| Step | Action |
+|---|---|
+| Capability | `search.py` — design-system generator, domain search, or stack guidelines |
+| Command | Exact invocation recorded in the phase's Part 1 (examples in §14.4) |
+| Inputs | The screen or component under construction, plus its PRD requirement id |
+| Expected output | Style/colour/typography guidance, UX guidelines, or stack rules |
+| Validation | Compare against §14.1. Conflict → §4 hierarchy → log in `design-system/DECISIONS.md` |
+| Recording | Approved decisions in `design-system/DECISIONS.md`; generated artifacts in `design-system/MASTER.md` and `design-system/pages/<page>.md` |
+| Blocker | `search.py` fails to run, a catalog is unreadable, or a tool recommendation would require changing PRD/SDD/TSD and you have not approved the amendment |
+
+### 14.4 Exact commands future phases must use
+
+```bash
+SKILL=~/.claude/skills/ui-ux-pro-max/scripts/search.py
+
+# P11 — generate and persist the design system
+python3 $SKILL "meal recommendation nutrition assistant mobile app" \
+  --design-system -p "NutriTime AI" -f markdown --persist \
+  --output-dir <repo-root>
+
+# P11 — per-screen overrides (repeat per screen in PRD §11)
+python3 $SKILL "<screen purpose>" --design-system -p "NutriTime AI" \
+  --page "<home|explore|meal-details|saved|meal-form|assistant|settings|onboarding|dietary-setup>" \
+  --persist --output-dir <repo-root>
+
+# P12, P13–P18 — stack rules before writing any component
+python3 $SKILL "<component or screen concern>" --stack react-native -n 5
+
+# P12, P23 — state and accessibility guidance
+python3 $SKILL "loading empty error state skeleton retry" --domain ux -n 5
+python3 $SKILL "form validation inline error touch target" --domain ux -n 5
+
+# P11 — palette and type, reconciled against TSD §6.6 before adoption
+python3 $SKILL "healthy nutrition green macro colors" --domain color -n 3
+python3 $SKILL "mobile app readable body text" --domain typography -n 3
+```
+
+### 14.5 Page and journey inventory
+
+| Screen | Route | Journey | States required |
+|---|---|---|---|
+| Splash | `Splash` | First launch → hydration | loading |
+| Onboarding | `Onboarding` | PRD §8.1 | — |
+| Dietary Setup | `DietarySetup` | PRD §8.1 | validation error |
+| Home | `Home` | PRD §8.2 | loading, empty, local-only, AI-fallback notice |
+| Explore | `Explore` | PRD §8.2 | loading, empty, local-only |
+| Meal Details | `MealDetails` | PRD §8.2 | loading, not-found, local-only |
+| Saved | `Saved` | PRD §8.3 | empty per section |
+| Create/Edit Meal | `MealForm` | PRD §8.3 | validation error, bound-exceeded |
+| Assistant | `Assistant` | PRD §8.4 | loading, unavailable, answered-false |
+| Settings | `Settings` | — | confirm-destructive |
+
+---
+
+## 15. AI / Ollama Behaviour and Prompt Architecture
+
+From PRD FR-009 and FR-015, SDD §9, TSD §5.5–§5.7. Nothing here is invented.
+
+### 15.1 Responsibilities
+
+| The model **may** | The model **may not** |
+|---|---|
+| Phrase an answer the domain already resolved, in ≤3 sentences | Decide which meal wins anything |
+| Restate a meal name exactly as the prompt spells it | Compare, rank, count, sort, or calculate |
+| Emit `citedMealIds` from the prompt's own id set | Invent a meal, ingredient, price, or nutrient |
+| *(nothing beyond the rows above — an unresolved question never reaches the model at all)* | Assert a meal is allergen-free, safe, or healthy |
+| Produce one short `reason` for a ranked meal (explanation lane) | Give medical or dietary advice; override any filter or score |
+
+**Measured basis** (SDD §9.1): 35 probes found `gemma3:4b` answering four of six comparison questions
+wrongly *with the correct data in context* — each a wrong number in fluent prose. The architecture
+exists because of that measurement, not as a precaution.
+
+### 15.2 What the model may receive
+
+| # | Category | Source of truth | Required? | Validation | Placement | Freshness | Never |
+|---|---|---|---|---|---|---|---|
+| 1 | Role and rules | `prompt.ts`, versioned by `CHAT_PROMPT_VERSION` | Required | Static, reviewed at P19 | `ROLE` + `RULES` | Per prompt version | — |
+| 2 | The resolved answer | `resolveAnswer()` (TSD §4.9) | Required | Domain-computed | `ANSWER`, neutralised, **not** fenced | Per request | Must not be recomputed or second-guessed by the model |
+| 3 | Permitted figures | `resolved.figures`, from **formatted** strings | Required (may be empty) | Domain-computed | `FIGURES` | Per request | Empty means **no** figure is permitted, not "skip the check" |
+| 4 | Meal blocks | `resolved.namedMeals` — id, name, description, meal periods, diet tags, ingredient names, prep minutes, price, calories, protein | Required unless the intent names no meal | `mealSchema` at boot | `MEALS`, fenced | Per request | **All five retrieved meals** — only the ones the answer names |
+| 5 | The user's question | Client request | Required | `chatRequestSchema`, 1–500 chars | `QUESTION`, fenced | Per request | Unfenced or unneutralised |
+| 6 | **User allergies** | — | **Never sent** | — | — | — | Retrieval consumes them. The model cannot see an unsafe meal, so it is never asked to reason about one |
+| 7 | **User identity, name, diet, goal, budget, dislikes** | — | **Never sent** | — | — | — | No user record exists server-side; none is transmitted |
+| 8 | **Errors and fallback copy** | A client/server copy module — file name is plan-introduced (A-09) | **Never sent** | — | Client/server only | — | The model never phrases a failure message |
+
+`null` nutrients render as the literal word `unknown`, never `0`.
+
+### 15.3 Message categories
+
+| Category | Condition | HTTP | Payload | Model called? |
+|---|---|---|---|---|
+| Success | Answer resolved and phrased | 200 | `answered: true`, `source: "gemma"` | Yes |
+| Missing user data | Not applicable — a repository always returns its `fallback` (TSD §6.4), so preferences are never absent. The constant holding those defaults is named by this plan (A-09) | — | — | — |
+| Invalid/incomplete input | Body fails schema | 400 | `invalid_request` + `details` | No |
+| No suitable result — filters exclude everything | `eligible` empty | 200 | `answered: false`, `source: "local"` | **No** |
+| No suitable result — no resolver matches | `UnresolvedAnswer` | 200 | `answered: false`, `source: "local"` | **No** |
+| Model timeout | Deadline exceeded | 503 | `ai_unavailable`, retryable, **no answer text** | Attempted |
+| Model unavailable | `AI_ENABLED=false` / unreachable | 503 | `ai_disabled` (non-retryable) / `ai_unavailable` (retryable) | No / attempted |
+| Invalid structured output | Schema or containment failure | 503 | `ai_unavailable`, retryable | Yes, discarded |
+| General application fallback | Any other failure | 503 + client error state | Fixed local copy | — |
+
+**No failure path ever returns generated prose.** Saying the assistant is unavailable is correct;
+substituting invented text is the outcome the architecture prevents.
+
+### 15.4 Containment — four checks plus a grammar constraint
+
+| Layer | Mechanism |
+|---|---|
+| 0 — generation | `citedMealIds.items` is an `enum` of exactly the prompt's ids, built per request. Ollama compiles `format` to a grammar, so an uncited id **cannot be sampled** |
+| 1 | Citations ⊆ prompt ids |
+| 2 | No denied claim — the FR-015 terms with inflections; whole-word matching on a flattened string; **negation is not an exemption** |
+| 3 | No unresolved figure — digits *and* spelled cardinals; string identity after normalisation; empty permitted set forbids every figure |
+| 4 | No unnamed meal — the answer must not name a meal absent from the prompt |
+
+Layer 0 does not replace layer 1: the grammar path is upstream behaviour across two unpinned
+projects, and a constraint that silently stopped being enforced would remove the guarantee with no
+signal. One opt-in integration test (`RUN_MODEL_TESTS=1`) records which world the build is in.
+
+Checks 2 and 3 also run over the explanation lane's `reason`. A failure there falls back to template
+text; a failure on the chat lane is 503.
+
+### 15.5 Execution, configuration, and testing
+
+| Concern | Rule |
+|---|---|
+| Concurrency | One AI call at a time, process-wide. A second returns `ai_busy` immediately. No queue |
+| Budgets | Chat 30 s; explanation 12 s. Not unified — a slow model must degrade recommendations promptly |
+| Cold start | ~60 s load will exceed the budget; the first request after a restart may legitimately 503 and then recover |
+| Generation params | Constants, not env: `numCtx 4096`, `numPredict 300`, `temperature 0`, `seed 7`. They change *what the model writes*, so they live beside the prompt |
+| Keep-alive | `AI_KEEP_ALIVE`, duration string, validated `/^\d+(ms\|s\|m\|h)$/`. A bare integer is **rejected at boot** — Ollama reads it as seconds |
+| Retry / repair | **None** on either lane. A schema violation is a failure |
+| Logging | Lane, duration, outcome (`ok`/`timeout`/`schema`/`contained`/`unreachable`). **Never** prompts, questions, answers, allergies, or names |
+| Fixtures | Recorded replies for: valid, malformed JSON, extra field, uncited id, denied claim, wrong figure, unnamed meal, truncated (`done_reason: "length"`), empty |
+| `AI_FAKE` | A real server code path, not a test mock: route, retrieval, resolution, prompt build and containment all execute; only the HTTP call is replaced by an echo of the resolved statement |
+| Acceptance | §19 evidence table; the six E2E flows; and a manual pass against a real `gemma3:4b` before P28 signs off |
+
+---
+
+## 16. Phase Dependency Map
+
+```mermaid
+flowchart TD
+    P00[P00 Ledger] --> P01[P01 Tooling]
+    P01 --> P02[P02 Contracts]
+    P02 --> P03[P03 Domain I]
+    P02 --> P04[P04 Domain II allergens]
+    P02 --> P05[P05 Domain III scoring]
+    P02 --> P06[P06 Domain IV resolvers]
+    P02 --> P07[P07 Catalog]
+    P04 --> P07
+    P04 --> P05
+    P05 --> P06
+    P03 --> P08[P08 Backend foundation]
+    P07 --> P08
+    P08 --> P09[P09 Meals API]
+    P05 --> P09
+    P08 --> P10[P10 Recommendations API]
+    P05 --> P10
+    P06 --> P10
+    P02 --> P11[P11 Design system]
+    P11 --> P12[P12 Mobile shell]
+    P09 --> P13[P13 Tracer slice Explore]
+    P12 --> P13
+    P13 --> P14[P14 Onboarding]
+    P13 --> P16[P16 Details + favourites]
+    P10 --> P15[P15 Home]
+    P14 --> P15
+    P12 --> P17[P17 Custom meals]
+    P13 --> P17
+    P14 --> P18[P18 Settings]
+    P08 --> P19[P19 AI foundation]
+    P06 --> P19
+    P19 --> P20[P20 Explanations]
+    P10 --> P20
+    P19 --> P21[P21 Assistant]
+    P13 --> P22[P22 Web surface]
+    P21 --> P22
+    P18 --> P23[P23 Accessibility]
+    P21 --> P24[P24 E2E suite]
+    P22 --> P24
+    P23 --> P24
+    P24 --> P25[P25 Performance]
+    P24 --> P26[P26 CI + build]
+    P25 --> P27[P27 Documentation]
+    P26 --> P27
+    P27 --> P28[P28 Final audit]
+```
+
+**Critical path:** P00 → P01 → P02 → P04 → P05 → P06 → P19 → P21 → P24 → P25/P26 → P27 → P28.
+
+**Safely parallel** (disjoint file ownership, verified against §9):
+
+| Set | Phases | Why no conflict |
+|---|---|---|
+| 1 | ~~P03 · P07~~ **withdrawn** | Listed as parallel in the first draft. It is not: P07 depends on P04, which depends on P03. Withdrawn during the §26 self-audit rather than quietly deleted |
+| 2 | P09 · P10 | Different route files; both read-only against domain |
+| 3 | P11 · P03–P07 | `design-system/` vs `packages/` |
+| 4 | P16 · P17 | Different feature directories; both depend only on P12/P13 |
+| 5 | P22 · P23 | Web-surface config vs accessibility metadata — overlapping *review*, disjoint *writes*; P23 runs second where they touch a component |
+
+**Serialisation rule.** Two phases may run in parallel only if their "expected files" lists are
+disjoint. Every pairing above has been checked. P13 is deliberately a single-threaded checkpoint: no
+feature slice starts until the tracer proves the full stack.
+
+---
+
+## 17. Master Todo List
+
+**226 tasks across 29 phases.** This section is the status board; §18 carries each task's inputs,
+expected changes, acceptance criteria, and evidence.
+
+**Todo integrity rules.** Task IDs are stable and never reused. This list is never shortened,
+collapsed, or rewritten during execution — only the Status column changes. A task that becomes
+unnecessary is retained with status `Deferred with Approval` and a one-line reason; it is never
+deleted. Completed and obsolete tasks stay for traceability.
+
+**Status values:** `Not Started` · `In Progress` · `Blocked` · `Completed` · `Deferred with Approval`.
+
+**Default stop condition** (applies to every task unless §18 overrides it for that task): *stop and
+record a blocker if the work requires a decision not derivable from PRD/SDD/TSD, requires a
+dependency not listed in TSD §2.1, requires changing a published contract, or cannot satisfy its
+acceptance criteria without weakening a test, suppressing a type error, or reducing a requirement.*
+
+### P00 — Planning ledger and conflict resolution
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-00-01 | Establish the source-of-truth hierarchy (§4) | — | Completed |
+| T-00-02 | Record decisions, assumptions, open questions (§7.1, §7.2, §7.4) | T-00-01 | Completed |
+| T-00-03 | Record conflicts X-01…X-07 with impact and resolution (§7.3) | T-00-01 | Completed |
+| T-00-04 | Record blockers B-01…B-04 and their blocked phases (§7.5) | T-00-03 | Completed |
+
+### P01 — Repository and tooling foundation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-01-01 | `git init`; create `.gitignore` (node_modules, dist, coverage, .env, .expo) | — | Completed |
+| T-01-02 | Root `package.json`: name, private, `engines` Node `>=22.13.0 <25`, `workspaces: ["apps/*","packages/*"]` | T-01-01 | Completed |
+| T-01-03 | `tsconfig.base.json` exactly per TSD §2.2 | T-01-02 | Completed |
+| T-01-04 | Per-package `tsconfig.json` files; `@/*` alias in `apps/mobile` only | T-01-03 | **Deferred with Approval** — a `tsconfig.json` whose `include` matches no file fails `tsc` with TS18003, and `packages/`/`apps/` do not exist until P02/P03/P07/P08/P12. Each per-package tsconfig is created by the phase that creates its package; P01 ships `tsconfig.base.json` and a root `tsconfig.json`. Reopened as a checklist item on T-02-01, T-03-01, T-07-01 |
+| T-01-05 | ESLint flat config incl. the six import-boundary rules of §12.2 | T-01-03 | Completed |
+| T-01-06 | Prettier config and ignore file | T-01-02 | Completed |
+| T-01-07 | `vitest.config.mts` with three projects (unit, integration, dom); the react-native-web alias lives **inside** the dom project, not as a fourth. E2E is Playwright, not Vitest | T-01-03 | Completed |
+| T-01-08 | Root scripts per TSD §2.4, plus three recorded additions: **`build:server`** (required by §19.5, §21.3 and DoD item 4; not in TSD §2.4), **`format`** (the write counterpart of `format:check`), and **`tsx` declared at the root** rather than in `apps/server`, because `dev:server` and `seed` are root scripts. **`typecheck` deviates**: TSD §2.4 chains four per-project invocations, which cannot run before those projects exist, so P01 ships `tsc --noEmit -p tsconfig.json` over a root project. It must return to TSD §2.4's per-project form at P12, because `apps/mobile` needs its own Expo base and `@/*` paths that a single root project cannot supply — carried as a checklist item on T-12-02 | T-01-02 | Completed |
+| T-01-09 | `.env.example` with the eight **server** variables of §21.1 plus the build-time **`USDA_DATASET_PATH`** (TSD §7.4, added by D-08) — nine in total, with the build-time one marked as not read by the running server. Documents the `AI_KEEP_ALIVE` unit-suffix hazard **and** the `OLLAMA_KEEP_ALIVE` name collision | T-01-02 | Completed |
+| T-01-10 | Install pinned dependencies per TSD §2.1; commit the lockfile | T-01-02 | Completed |
+
+### P02 — Shared contracts
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-02-01 | `packages/contracts` package skeleton (`private`, `main: src/index.ts`, dep `zod@4.5.4`) | T-01-10 | Not Started |
+| T-02-02 | Enumerations per TSD §3.1 incl. `CANONICAL_ALLERGENS` (10) and `SCORE_REASON_KINDS` (8) | T-02-01 | Not Started |
+| T-02-03 | Entity interfaces per TSD §3.2 | T-02-02 | Not Started |
+| T-02-04 | `nutritionSummarySchema` with range bounds (2000/200/300/200) and `mealSchema` | T-02-03 | Not Started |
+| T-02-05 | `userPreferencesSchema`, `clockTimeSchema`, `retrievalPreferencesSchema` | T-02-03 | Not Started |
+| T-02-06 | `chatRequestSchema`, `recommendationRequestSchema` (both `strictObject`) | T-02-05 | Not Started |
+| T-02-07 | `chatModelReplySchema`, `explanationReplySchema` | T-02-03 | Not Started |
+| T-02-08 | Error codes, `ApiErrorBody`, wire response types, barrel export | T-02-03 | Not Started |
+
+### P03 — Domain I: text, money, meal-period
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-03-01 | `packages/domain` skeleton; ESLint boundary rule proving purity | T-02-08 | Not Started |
+| T-03-02 | `text.ts`: `normalizeText`, `tokenize`, `tokenizeSegments`, `singularize`, `kebabCase`, `singularKebabCase`, `compareIds`, `containsTokenSequence` | T-03-01 | Not Started |
+| T-03-03 | `text.test.ts` per the §19.3 vector list | T-03-02 | Not Started |
+| T-03-04 | `money.ts`: `money`, `addMoney`, `sumMoney`, `formatMoney` — integer cents only | T-03-01 | Not Started |
+| T-03-05 | `money.test.ts` incl. a no-floating-point assertion | T-03-04 | Not Started |
+| T-03-06 | `meal-period.ts`: window constants, `parseClockTime`, signed-offset wrap, `mealPeriodForMinutes`, `mealPeriodForDate` | T-03-02 | Not Started |
+| T-03-07 | `meal-period.test.ts` — the seven boundary vectors of §19.3 | T-03-06 | Not Started |
+
+### P04 — Domain II: allergens and diet (safety-critical)
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-04-01 | `allergen-lexicon.ts`: `ALLERGEN_IMPLICATIONS`, `ALLERGEN_PHRASES` (longest-first, suppressors), `ALLERGEN_TOKENS` | T-03-03 | Not Started |
+| T-04-02 | `isCanonicalAllergen`, `normalizeAllergen` | T-04-01 | Not Started |
+| T-04-03 | Phrase-then-token inference with token claiming | T-04-02 | Not Started |
+| T-04-04 | `closeAllergenImplications` — fixpoint closure | T-04-02 | Not Started |
+| T-04-05 | `effectiveAllergenTags` — declared ∪ inferred, then closed | T-04-03, T-04-04 | Not Started |
+| T-04-06 | `conflictingAllergens` / `hasAllergenConflict` — the three independent match paths | T-04-05 | Not Started |
+| T-04-07 | `allergens.test.ts` — suppressors, phrase-beats-token, closure, unknown allergy by ingredient name, ambiguous term, non-canonical declared tag | T-04-06 | Not Started |
+| T-04-08 | `diet.ts`: `SATISFIED_BY` matrix, `isDietCompatible`, `unmetDietRequirement` | T-03-01 | Not Started |
+| T-04-09 | `diet.test.ts` — all 25 pairs plus both asymmetries named explicitly | T-04-08 | Not Started |
+
+### P05 — Domain III: scoring and relevance
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-05-01 | Weights, `SCORE_BOUNDS`, `GOAL_BANDS`, `BUDGET_BAND_MAX_CENTS`, `BUDGET_TOLERANCE`, `PREPARATION_TIME_BANDS`, `MAX_RECOMMENDATIONS` | T-04-09 | Not Started |
+| T-05-02 | The eight policies per the §4.6 rule table | T-05-01 | Not Started |
+| T-05-03 | `scoreMeal` with 0–100 clamp and `-0` normalisation | T-05-02 | Not Started |
+| T-05-04 | `recommend` pipeline: three hard rejects with reasons → score → stable sort → top 3 | T-05-03, T-04-06 | Not Started |
+| T-05-05 | `scoring.test.ts` — each band edge, `null` nutrient, 125% budget boundary, clamp, tie-break, every rejection reason | T-05-04 | Not Started |
+| T-05-06 | Relevance weights, `MIN_PREFIX_LENGTH`, `STOP_WORDS` | T-03-03 | Not Started |
+| T-05-07 | `queryMeals` — memoised index, token-vs-prefix exclusivity, phrase bonus, score-0 omission | T-05-06 | Not Started |
+| T-05-08 | `relevance.test.ts` per §19.3 | T-05-07 | Not Started |
+
+### P06 — Domain IV: chat retrieval and answer resolvers
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-06-01 | `chat-retrieval.ts` — the seven-step pipeline returning `{ eligible, context }` | T-05-08, T-04-06 | Not Started |
+| T-06-02 | `chat-retrieval.test.ts` — safety before ranking, dislike demotion, no-lexical-match fallback, 5-cap, empty eligible | T-06-01 | Not Started |
+| T-06-03 | `ANSWER_FIELDS` (6), field readers, `formatAnswerValue` | T-03-04 | Not Started |
+| T-06-04 | `answer-lexicon.ts` — sense, shape, greeting, criterion tables | T-06-03 | Not Started |
+| T-06-05 | Classifier: longest-phrase-first with token claiming; ambiguity and incompleteness reasons | T-06-04 | Not Started |
+| T-06-06 | `gather` with the all-candidates-or-refuse rule; the five resolvers | T-06-05 | Not Started |
+| T-06-07 | `figures` from formatted strings; `namedMeals` per intent; the eligible-vs-context scope rule | T-06-06 | Not Started |
+| T-06-08 | `answer.test.ts` — every intent, ambiguity, partial-`null` refusal, scope rule, empty `namedMeals` for count | T-06-07 | Not Started |
+
+### P07 — Catalog authoring, seed script, boot validation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-07-01 | `packages/catalog` skeleton; `seededCatalog: unknown` export | T-02-04 | Not Started |
+| T-07-02 | TheMealDB client: `filter.php` to select, `lookup.php` per meal, and the polymorphic-`meals` guard (array \| string \| object \| null) | T-07-01 | Not Started |
+| T-07-03 | Map to the `Meal` shape and **capture `provenance`** — upstream id, source URL, image source, licence flag (X-12) | T-07-02 | Not Started |
+| T-07-04 | Derive `allergenTags` via §4.4, then **hand-review every one of 60** | T-07-03, T-04-06 | Not Started |
+| T-07-05 | Assign `dietTags`, `mealPeriods`, `price`, `preparationMinutes` for 60 records | T-07-04 | Not Started |
+| T-07-06 | USDA dataset parser: read `fndds_ingredient_nutrient_value.csv` by path, emit the committed `nutrition-source.json` subset with `fdcId` and dataset vintage | T-07-01 | Not Started |
+| T-07-07 | Ingredient resolver: `normalizeText` + `singularize` + alias map (British→US, compound-phrase reductions) → `NutrientRow` | T-07-06, T-03-02 | Not Started |
+| T-07-08 | Measure→grams parser: unit table, fractions and mixed numbers, per-ingredient gram weights for countable and vague units | T-07-06 | Not Started |
+| T-07-09 | Derive `nutrition` per TSD §7.4 and set `nutritionProvenance`; **all-or-nothing** — any unresolved ingredient yields four `null`s and a reason | T-07-07, T-07-08, T-07-05 | Not Started |
+| T-07-10 | Validate all 60 against `mealSchema` including the `superRefine` rule; abort the write on any failure | T-07-09 | Not Started |
+| T-07-11 | `catalog.test.ts` — 60 records, unique kebab-case ids, schema-valid, no `0` for unknown, every derived figure traceable to an `fdcId`, three meals checked by hand | T-07-10 | Not Started |
+
+### P08 — Backend foundation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-08-01 | `apps/server` skeleton, `type: module`, deps per TSD §2.1 | T-01-10 | Not Started |
+| T-08-02 | Config schema for the eight env variables, parsed once into a frozen object | T-08-01, T-02-08 | Not Started |
+| T-08-03 | `AI_KEEP_ALIVE` validator `/^\d+(ms\|s\|m\|h)$/`; reject a bare integer with the named-intent message | T-08-02 | Not Started |
+| T-08-04 | Catalog load + `mealSchema` validation at boot; **exit non-zero** naming record index and field path | T-08-02, T-07-10 | Not Started |
+| T-08-05 | Middleware in order: cors, `express.json({limit:'64kb'})`, request log, routes, 404, error handler | T-08-02 | Not Started |
+| T-08-06 | `ApiError` → status mapping; fixed local messages; no upstream text in any body | T-08-05, T-02-08 | Not Started |
+| T-08-07 | `GET /health` returning `{status, catalogVersion, mealCount}`; no dependency probing | T-08-04 | Not Started |
+| T-08-08 | Structured one-line request logging; redaction rules of §15.5 | T-08-05 | Not Started |
+| T-08-09 | `boot.integration.test.ts` — health 200; invalid catalog exits non-zero; `AI_KEEP_ALIVE=30` exits non-zero | T-08-07, T-08-03 | Not Started |
+
+### P09 — Meals API
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-09-01 | Query-parameter schema with defaults and bounds; unknown params ignored | T-08-05 | Not Started |
+| T-09-02 | Conjunctive filtering by period, diet, `maxPriceCents` | T-09-01 | Not Started |
+| T-09-03 | Sort: relevance when `query` present, else name ascending | T-09-02, T-05-07 | Not Started |
+| T-09-04 | Pagination; `total` computed after filtering | T-09-03 | Not Started |
+| T-09-05 | `GET /api/v1/meals/:mealId` with 404 on unknown | T-08-07 | Not Started |
+| T-09-06 | `meals.integration.test.ts` per the C-02/C-03 test lists | T-09-04, T-09-05 | Not Started |
+
+### P10 — Recommendations API (no AI)
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-10-01 | Validate `recommendationRequestSchema`; reject extra fields | T-08-05, T-02-06 | Not Started |
+| T-10-02 | Use case: catalog → `recommend()` → top three | T-10-01, T-05-04 | Not Started |
+| T-10-03 | Response mapping incl. `scoreReasons` and `explanationSource: "fallback"` | T-10-02 | Not Started |
+| T-10-04 | Deterministic fallback explanation text (no model) | T-10-03 | Not Started |
+| T-10-05 | `recommendations.integration.test.ts` per the C-04 test list | T-10-04 | Not Started |
+
+### P11 — UI/UX design-system foundation (UI UX Pro Max)
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-11-01 | Run the generator and persist `design-system/MASTER.md` (§14.4) | T-01-01 | Not Started |
+| T-11-02 | Generate per-screen overrides for all 10 screens | T-11-01 | Not Started |
+| T-11-03 | Run `--domain color` and `--domain typography`; record raw output | T-11-01 | Not Started |
+| T-11-04 | Reconcile every recommendation against §14.1; create `design-system/DECISIONS.md` with adopt/reject and reason | T-11-02, T-11-03 | Not Started |
+| T-11-05 | `primitive.ts` — palette, space, radius, stroke, duration, easing, opacity, type scale, touch, zIndex | T-11-04 | Not Started |
+| T-11-06 | `semantic.ts` — `SemanticTokens` interface; light and dark maps, dark **authored** | T-11-05 | Not Started |
+| T-11-07 | `component.ts` — `buildComponentTokens` for the nine component groups | T-11-06 | Not Started |
+| T-11-08 | `contrast.test.ts` — WCAG AA pairings in both schemes | T-11-06 | Not Started |
+
+### P12 — Mobile shell
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-12-01 | Expo app scaffold; deps pinned per TSD §2.1; `index.ts` + `App.tsx` | T-01-10 | Not Started |
+| T-12-02 | `app.json` (scheme `nutritime`, `userInterfaceStyle: automatic`), `metro.config.js` for workspaces, `babel.config.js` | T-12-01 | Not Started |
+| T-12-03 | `ThemeProvider`, `useTheme`, `resolveScheme`; `mode` as a prop; font-scale response | T-12-02, T-11-07 | Not Started |
+| T-12-04 | Shared components batch 1 — `AppText`, `Icon`, `Divider`, `Chip`, `AccessibleButton`, `IconButton` | T-12-03 | Not Started |
+| T-12-05 | Shared components batch 2 — `EmptyState`, `ErrorState`, `OfflineState`, `StatusMessage`, `Toast` (all with `stillAvailable`) | T-12-04 | Not Started |
+| T-12-06 | Shared components batch 3 — `FormField`, `SearchField`, `Sheet`, `MealCard`, `NutritionBadge` | T-12-04 | Not Started |
+| T-12-07 | Storage envelope, `createRepository`, migration gate, quarantine ledger | T-12-01, T-02-05 | Not Started |
+| T-12-08 | `definitions.ts` for six keys; bounds with refusal semantics; a default-preferences constant supplying each key's `fallback` (name plan-introduced, A-09) | T-12-07 | Not Started |
+| T-12-09 | Hydration: one `multiGet`, per-key isolated decode, never rejects | T-12-08 | Not Started |
+| T-12-10 | `routes.ts` — `RootParamList`, param types, `ROUTE_KINDS`, screen/container split | T-12-02 | Not Started |
+| T-12-11 | Screen registry (`registerScreen`, `screenFor`, `useSyncExternalStore`), placeholder screen | T-12-10 | Not Started |
+| T-12-12 | Navigators: root stack with three boot phases, five-tab navigator, per-tab stacks, linking config | T-12-11 | Not Started |
+| T-12-13 | API client: per-route deadlines, three outcomes, internal abort controller, fixed local messages | T-12-01, T-02-08 | Not Started |
+
+### P13 — Tracer slice: Explore, end to end
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-13-01 | `ExploreScreen` shell registered through the registry | T-12-12, T-09-06 | Not Started |
+| T-13-02 | `SearchField` wiring with 300 ms debounce and stale-request abort | T-13-01, T-12-06 | Not Started |
+| T-13-03 | Period / diet / price-band filter chips | T-13-02 | Not Started |
+| T-13-04 | `FlatList` with stable keys, bounded initial render, memoised `MealCard` rows | T-13-03 | Not Started |
+| T-13-05 | Loading, empty and local-only states via the shared state components | T-13-04, T-12-05 | Not Started |
+| T-13-06 | `Explore.dom.test.tsx` — renders, searches, filters, shows each state | T-13-05 | Not Started |
+| T-13-07 | Create the `e2e/` harness — own `package.json` outside the workspace, Playwright config, `AI_FAKE=true` fixtures — **and** the first spec `explore.spec.ts`. The harness is built here, not in P24, because six earlier tasks produce Playwright evidence | T-13-06 | Not Started |
+
+### P14 — Slice: onboarding, dietary setup, preferences
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-14-01 | `preferences` store: state, actions, reducer, selectors, `project` | T-12-09 | Not Started |
+| T-14-02 | `onboarding` store and completion gate | T-12-09 | Not Started |
+| T-14-03 | `OnboardingScreen` | T-14-02, T-13-01 | Not Started |
+| T-14-04 | `DietarySetupScreen` — diet, allergies, goal, budget, dislikes, meal times | T-14-03, T-12-06 | Not Started |
+| T-14-05 | Client-side validation: `HH:mm`, canonical allergy values, inline errors bound to fields, blur-time validation | T-14-04 | Not Started |
+| T-14-06 | Boot-phase switch: hydrating → onboarding → app | T-14-02, T-12-12 | Not Started |
+| T-14-07 | Allergy change invalidates on-screen recommendations (FR-003) | T-14-01 | Not Started |
+| T-14-08 | Store + screen tests; `e2e/specs/onboarding.spec.ts` | T-14-06 | Not Started |
+
+### P15 — Slice: Home and recommendations
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-15-01 | Compute the meal period client-side via `mealPeriodForMinutes`; render it before any request | T-14-01, T-03-06 | Not Started |
+| T-15-02 | Build and post the recommendation request (`mealPeriod`, `aiEnabled`, narrowed preferences, `favoriteMealIds`) | T-15-01, T-12-13 | Not Started |
+| T-15-03 | `HomeScreen` with three `MealCard`s and one short reason each | T-15-02, T-12-06 | Not Started |
+| T-15-04 | Loading (200 ms), AI-progress (2 s), and fallback-explanation indicator | T-15-03 | Not Started |
+| T-15-05 | Empty and local-only states | T-15-03, T-12-05 | Not Started |
+| T-15-06 | Safety disclaimer surface (FR-007) | T-15-03 | Not Started |
+| T-15-07 | `Home.dom.test.tsx` incl. the peanut-allergy exclusion assertion | T-15-05 | Not Started |
+| T-15-08 | `e2e/specs/home-allergy.spec.ts` | T-15-07 | Not Started |
+
+### P16 — Slice: meal details and favourites
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-16-01 | `favorites` store with reference-preserving idempotent reducer | T-12-09 | Not Started |
+| T-16-02 | `MealDetailsScreen`: name, image, ingredients, instructions, price, prep time, tags, allergen notice | T-13-01, T-09-06 | Not Started |
+| T-16-03 | `NutritionBadge` rows rendering "Not available" for `null` | T-16-02, T-12-06 | Not Started |
+| T-16-04 | Favourite toggle wired to the store; idempotent | T-16-01, T-16-02 | Not Started |
+| T-16-05 | Bound-refusal message at 200 favourites, with no retry affordance | T-16-04, T-12-08 | Not Started |
+| T-16-06 | Loading, not-found and local-only states | T-16-02, T-12-05 | Not Started |
+| T-16-07 | Modal presentation and back behaviour | T-16-02, T-12-12 | Not Started |
+| T-16-08 | Store, screen and `e2e/specs/favorite-persists.spec.ts` tests | T-16-06 | Not Started |
+
+### P17 — Slice: custom meal CRUD
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-17-01 | `customMeals` store: create, update, delete, list | T-12-09 | Not Started |
+| T-17-02 | `SavedScreen` with favourites and custom sections | T-17-01, T-13-01 | Not Started |
+| T-17-03 | `MealFormScreen` create mode with UUID ids | T-17-02, T-12-06 | Not Started |
+| T-17-04 | Edit mode preloaded from the store | T-17-03 | Not Started |
+| T-17-05 | Validation: missing name, empty ingredient list, negative numbers, invalid price/time — inline, field-bound | T-17-03 | Not Started |
+| T-17-06 | Delete with confirmation | T-17-04 | Not Started |
+| T-17-07 | Bound refusal at 200 custom meals | T-17-03, T-12-08 | Not Started |
+| T-17-08 | Store, form and `e2e/specs/custom-meal-crud.spec.ts` tests | T-17-06 | Not Started |
+
+### P18 — Slice: settings and reset
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-18-01 | `ui` store: `lastTab`, disclaimer acknowledgement | T-12-09 | Not Started |
+| T-18-02 | `SettingsScreen`: edit preferences and meal times | T-18-01, T-14-04 | Not Started |
+| T-18-03 | AI enable/disable toggle bound to `preferences.aiEnabled` | T-18-02 | Not Started |
+| T-18-04 | Theme mode switch bound to `preferences.themeMode` | T-18-02, T-12-03 | Not Started |
+| T-18-05 | Clear individual data sets, each behind a confirmation | T-18-02, T-12-07 | Not Started |
+| T-18-06 | Reset all local data behind a confirmation | T-18-05 | Not Started |
+| T-18-07 | Screen tests incl. both destructive-confirmation paths | T-18-06 | Not Started |
+
+### P19 — AI foundation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-19-01 | `promptSafety.ts`: `neutraliseUntrusted`, `fenceUntrusted`, the three regex families | T-08-02 | Not Started |
+| T-19-02 | `promptSafety.test.ts` — control stripping, fence-marker redaction, angle-run collapse | T-19-01 | Not Started |
+| T-19-03 | Prompt builder: six sections in order; meal block field order; `unknown` for `null` | T-19-01, T-06-07 | Not Started |
+| T-19-04 | Per-request JSON schema with `citedMealIds.items` as an `enum` of prompt ids | T-19-03, T-02-07 | Not Started |
+| T-19-05 | Ollama client: `POST /api/generate`, exact body, two-stage decode, `done_reason: "length"` as failure | T-19-04, T-08-02 | Not Started |
+| T-19-06 | `GENERATION` constants (`numCtx` 4096, `numPredict` 300, `temperature` 0, `seed` 7) | T-19-05 | Not Started |
+| T-19-07 | AI lane: single-flight, `AiBusyError`, `AiTimeoutError`, abort cleanup in `finally` | T-19-05 | Not Started |
+| T-19-08 | `AI_FAKE` code path echoing the resolved statement | T-19-07 | Not Started |
+| T-19-09 | Containment: the four checks, figure extraction with spelled cardinals, denylist with inflections | T-19-03, T-06-07 | Not Started |
+| T-19-10 | `containment.test.ts` + provider fixtures (valid, malformed, extra field, uncited id, denied claim, wrong figure, unnamed meal, truncated, empty) | T-19-09 | Not Started |
+
+### P20 — Slice: recommendation explanations
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-20-01 | Explanation prompt and `explanationReplySchema` wiring | T-19-03, T-02-07 | Not Started |
+| T-20-02 | Explanation lane on `POST /api/v1/recommendations`, 12 s budget | T-20-01, T-10-04 | Not Started |
+| T-20-03 | Containment checks 2 and 3 over `reason`; failure → template fallback | T-20-02, T-19-09 | Not Started |
+| T-20-04 | `explanationSource` surfaced to the client and rendered by Home | T-20-03, T-15-04 | Not Started |
+| T-20-05 | `explanation.integration.test.ts` with `AI_FAKE` | T-20-03 | Not Started |
+| T-20-06 | Ollama-stopped test: recommendations still 200 with fallbacks inside budget | T-20-05 | Not Started |
+
+### P21 — Slice: grounded assistant
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-21-01 | `POST /api/v1/chat` handler, the five ordered steps of **TSD §5.4** (§11.6 gives the field contract, not the step order) | T-19-09, T-06-02 | Not Started |
+| T-21-02 | Deterministic `answered: false` paths — empty eligible, and unresolved intent — **with no model call** | T-21-01 | Not Started |
+| T-21-03 | Citations resolved from `namedMeals` by id, never parsed from text | T-21-01 | Not Started |
+| T-21-04 | `ai_disabled` / `ai_unavailable` / `ai_busy` mapping with no answer text | T-21-01, T-19-07 | Not Started |
+| T-21-05 | `AssistantScreen`: 500-char input, transcript as a local display concern only | T-21-01, T-12-06 | Not Started |
+| T-21-06 | Citation rendering beside the answer | T-21-05, T-21-03 | Not Started |
+| T-21-07 | Unavailable and answered-false UI states with their copy | T-21-05, T-12-05 | Not Started |
+| T-21-08 | `chat.integration.test.ts` — the full C-05 test list | T-21-04 | Not Started |
+| T-21-09 | `e2e/specs/assistant.spec.ts` (superlative + citations) and `assistant-disabled.spec.ts` | T-21-08, T-21-07 | Not Started |
+
+### P22 — Mobile-web surface
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-22-01 | Verify `expo export --platform web` produces a working build | T-13-07 | Not Started |
+| T-22-02 | Linking config mirroring the navigator tree; a path per screen | T-22-01, T-12-12 | Not Started |
+| T-22-03 | Direct-URL navigation into every deep-linkable screen | T-22-02 | Not Started |
+| T-22-04 | Browser back/forward across tabs and the modal | T-22-03 | Not Started |
+| T-22-05 | Runtime param validation for URL-sourced params (`readStringParam`, `readUnionParam`) | T-22-03 | Not Started |
+| T-22-06 | Storage on the web: bound refusal and quarantine verified against `localStorage` | T-22-01, T-12-08 | Not Started |
+| T-22-07 | No unintended horizontal scroll at 320/375/414/768 px | T-22-01 | Not Started |
+| T-22-08 | Bundle-size measurement and lazy image loading check | T-22-01 | Not Started |
+
+### P23 — Accessibility conformance
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-23-01 | Role and label audit across all interactive elements | T-18-07, T-21-07 | Not Started |
+| T-23-02 | Touch targets per PRD 2.1.0 §10.5 — 44 pt iOS / 48 dp Android / 24 px web; build to 48 dp | T-23-01 | Not Started |
+| T-23-03 | Font scaling without clipping on every core screen | T-23-01 | Not Started |
+| T-23-04 | Colour never the sole status carrier | T-23-01 | Not Started |
+| T-23-05 | Focus preserved on validation failure; async results announced | T-23-01 | Not Started |
+| T-23-06 | Reduced-motion respected | T-23-01 | Not Started |
+| T-23-07 | WCAG AA contrast verified in both themes; run the tool's pre-delivery checklist in full | T-23-04, T-11-08 | Not Started |
+
+### P24 — Integration and E2E suite completion
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-24-01 | Extend the P13 harness to the full suite: shared fixtures, the four-viewport matrix, reporting | T-13-07, T-21-09 | Not Started |
+| T-24-02 | Spec 1 — first launch → onboarding → Home recommendations | T-24-01 | Not Started |
+| T-24-03 | Spec 2 — peanut allergy excludes meals from Home and Explore | T-24-01 | Not Started |
+| T-24-04 | Spec 3 — favourite survives reload | T-24-01 | Not Started |
+| T-24-05 | Spec 4 — custom meal create → edit → delete | T-24-01 | Not Started |
+| T-24-06 | Spec 5 — assistant answers a superlative and shows citations | T-24-01 | Not Started |
+| T-24-07 | Spec 6 — AI disabled shows the unavailable message and does not hang | T-24-01 | Not Started |
+
+### P25 — Performance and reliability
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-25-01 | Measure app start to usable Home against ≤ 2.5 s | T-24-07 | Not Started |
+| T-25-02 | Measure local navigation, search and filtering against ≤ 150 ms | T-24-07 | Not Started |
+| T-25-03 | Measure recommendations without AI against ≤ 2 s | T-24-07 | Not Started |
+| T-25-04 | Measure warm chat latency and confirm the 30 s timeout behaviour | T-24-07 | Not Started |
+| T-25-05 | Cold-model behaviour: first request may 503 and then recover, with the UI saying so | T-25-04 | Not Started |
+| T-25-06 | Failure injection: server unreachable, Ollama stopped, corrupt storage entry | T-25-03 | Not Started |
+
+### P26 — CI, build, deployment preparation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-26-01 | GitHub Actions workflow: one job on push and PR | T-24-07, T-01-01 | Not Started |
+| T-26-02 | Steps: `npm ci` → `npm run check` → `build:server` → `build:web` → `test:e2e` with `AI_FAKE=true` | T-26-01 | Not Started |
+| T-26-03 | `npm audit --audit-level=high` step | T-26-02 | Not Started |
+| T-26-04 | Production server build verified by booting the artifact and calling `/health` | T-26-02 | Not Started |
+| T-26-05 | Web production build verified by serving `dist/` and loading a deep link | T-26-02, T-22-03 | Not Started |
+| T-26-06 | Document the local run procedure end to end (SDD §2.3 made executable) | T-26-04, T-26-05 | Not Started |
+
+### P27 — Documentation
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-27-01 | `README.md`: what it is, prerequisites, install, the three run modes, test commands | T-26-06 | Not Started |
+| T-27-02 | `.env.example` reconciled with the shipped config schema | T-27-01, T-08-02 | Not Started |
+| T-27-03 | `design-system/DECISIONS.md` finalised with every adopt/reject and reason | T-27-01, T-11-04 | Not Started |
+| T-27-04 | Verify PRD/SDD/TSD still describe the build; record any divergence as a defect, **do not edit the documents** | T-27-01 | Not Started |
+| T-27-05 | Update this plan's Status columns and record every approved deviation | T-27-04 | Not Started |
+
+### P28 — Final whole-application audit
+
+| ID | Task | Depends | Status |
+|---|---|---|---|
+| T-28-01 | Requirement coverage audit — all 15 FRs against implementation and tests | T-27-05 | Not Started |
+| T-28-02 | Contract audit — all five endpoints against §11 | T-28-01 | Not Started |
+| T-28-03 | Architecture audit — the six dependency rules; no cycles; no duplicated domain logic | T-28-01 | Not Started |
+| T-28-04 | Code hygiene — dead code, unused imports, orphaned files, stale comments, debug logs, `any`, unsafe casts, suppressions | T-28-03 | Not Started |
+| T-28-05 | Naming and size — PascalCase components, camelCase functions, kebab-case ids, every component ≤ 350 lines | T-28-04 | Not Started |
+| T-28-06 | AI audit — prompts, schemas, four containment checks, fallback behaviour, no leaked user data in logs | T-28-02 | Not Started |
+| T-28-07 | Design-system compliance — tokens used, no colour literals, both themes, tool checklist | T-28-05, T-23-07 | Not Started |
+| T-28-08 | Mobile-web and accessibility audit against §20 and §23 | T-28-07, T-22-08 | Not Started |
+| T-28-09 | Full evidence run: typecheck, lint, format, all test tiers, audit, both production builds, E2E | T-28-06 | Not Started |
+| T-28-10 | **Write the final audit report and issue GO / CONDITIONAL GO / NO-GO with evidence** | T-28-07, T-28-08, T-28-09 | Not Started |
+
+**T-28-10 is the final implementation-plan task in this document.**
+
+---
+
+## 18. Detailed Phase Plans
+
+### 18.0 Conventions applied to every phase
+
+Stated once here and binding on all 29 phases, so that §18 carries detail rather than boilerplate.
+
+**Standard quality gate (SQG).** Every phase ends with **all** of the following, without exception. Where a
+phase's Part 5 names specific items, those are the ones under **elevated scrutiny** for that phase — never a
+permitted subset; the rest still apply. P28 applies the SQG *and* its own stricter audit standard. A phase
+whose gate fails is left `Blocked` or `Incomplete`. Never weaken a test, suppress an error, change a contract silently,
+or reduce a requirement to obtain a pass.
+
+| # | Check |
+|---|---|
+| SQG-01 | Complies with PRD, SDD, TSD and the §11–§12 contracts |
+| SQG-02 | No unauthorized scope expansion — every change traces to a task in §17 |
+| SQG-03 | No dependency outside TSD §2.1 |
+| SQG-04 | No architecture or contract mismatch; the six §12.2 rules hold |
+| SQG-05 | No debug logs, no dead code, no unused imports |
+| SQG-06 | No orphaned files left by refactoring |
+| SQG-07 | No duplicate component, utility, route, schema, type, config, or business rule |
+| SQG-08 | Naming: PascalCase components, camelCase functions, kebab-case ids |
+| SQG-09 | Every new **file** ≤ 350 lines — PRD §10.4 says files, not only components; an exception is documented and approved |
+| SQG-10 | No explicit or implicit `any`; no unsafe cast; no blanket suppression |
+| SQG-11 | No invented nutritional, meal, user, educational, or product content |
+| SQG-12 | Every interactive element has a dark-mode variant |
+| SQG-13 | Every navigation target exists in `RootParamList` and every screen route is registered (X-04) |
+| SQG-14 | Loading, empty, success, error, unavailable and retry states handled where applicable |
+| SQG-15 | Mobile-web behaviour verified on the web export where the phase touches UI |
+| SQG-16 | Accessibility obligations satisfied |
+| SQG-17 | Applicable UI UX Pro Max guidance used and recorded in `design-system/DECISIONS.md` (frontend phases) |
+| SQG-18 | `npm run check` green; production builds succeed where the phase affects them. `npm audit --audit-level=high` is **run and reported** at P26 and P28 but does not block a phase gate — see X-08 |
+
+**Standard completion report (SCR).** Every phase produces: completed tasks by ID · files created,
+modified, deleted · requirement and contract coverage · commands executed with exact results · test
+evidence · UI UX Pro Max capabilities and outputs used · known limitations · approved deviations ·
+remaining risks · blockers · final status · **explicit confirmation that the next phase was not
+started**.
+
+**Default stop condition:** as defined in §17. Per-task overrides appear in the phase's task table.
+
+**Evidence convention:** "Evidence" means pasted command output or a named artifact path, never a
+claim. "Tests pass" is not evidence; the test runner's output is.
+
+**Subagent partitioning for execution.** Where a phase is parallelised, ownership is assigned as
+below. No two subagents ever write the same file.
+
+| Role | Owns | Prohibited from | Verifies | Stops when |
+|---|---|---|---|---|
+| Domain Engineer | `packages/domain`, `packages/contracts` | Any I/O, React, Express, UI | Its own unit tests pass and purity rules hold | A rule is underspecified by TSD §4 |
+| Backend Engineer | `apps/server` | Domain rule authorship, UI, storage | Integration tests and boot behaviour | A contract in §11 is ambiguous |
+| Frontend Engineer | `apps/mobile`, `design-system/` | Domain rules, server routes | Component and DOM tests, tool checklist | Tool guidance conflicts with PRD/SDD/TSD unapproved |
+| Catalog Author | `packages/catalog` | Everything else | Schema validation of all 60 records | A record cannot be authored within the range bounds |
+| QA Engineer | `e2e/` harness, config and fixtures; test strategy | Application source; another phase's spec file | The evidence table in §19.5 | A required acceptance criterion has no practical test |
+
+---
+
+### P00 — Planning ledger and conflict resolution
+
+| | |
+|---|---|
+| **Role** | Technical Program Manager |
+| **Objective** | Establish the hierarchy, ledger, conflicts and blockers before any construction decision |
+| **Value** | Prevents the single most expensive failure mode: a plan that silently resolves a contradiction and propagates it into 28 phases |
+| **Preconditions** | PRD, SDD, TSD readable |
+| **Dependencies** | None |
+| **Authoritative sources** | All three documents; the planning brief |
+| **Scope** | §4, §7 of this document |
+| **Out of scope** | Any technical decision the documents do not already contain |
+| **Deliverables** | §4, §7.1–§7.6 |
+| **Expected files** | `Plan.md` |
+
+**Part 1 — Reconnaissance.** Read PRD/SDD/TSD in full; enumerate the repository; locate agent
+instructions and memory; identify the absence of git, manifests, code and ADRs.
+
+**Part 2 — Impact.** No code. Risk: a missed conflict becomes an invented requirement later.
+Regression probability: none.
+
+**Part 3 — Tasks.** T-00-01 … T-00-04 (§17). Inputs: the three documents. Changes: `Plan.md` §4 and
+§7. Acceptance: every conflict carries sources, exact disagreement, impact, required decision, and
+blocked tasks. Evidence: §7.3 populated.
+
+**Part 4 — Verification.** Manual: each of X-01…X-07 names its two sources and its resolution
+authority.
+
+**Part 5 — Gate.** SQG-01, SQG-02, SQG-11. **Status: Completed.**
+
+---
+
+### P01 — Repository and tooling foundation
+
+| | |
+|---|---|
+| **Role** | Staff Software Engineer (build tooling) |
+| **Objective** | A workspace where `npm run check` runs and passes with zero source files |
+| **Value** | Every later gate depends on these commands existing; adding them later means retrofitting 28 phases of evidence |
+| **Preconditions** | P00 complete; Node ≥ 22.13 present |
+| **Dependencies** | P00 |
+| **Authoritative sources** | TSD §2.1, §2.2, §2.3, §2.4, §8.1 |
+| **Scope** | Workspace, TypeScript, lint, format, test runner, scripts, env example, git |
+| **Out of scope** | Any application source; CI workflow (P26); dependency upgrades beyond TSD §2.1 |
+| **Deliverables** | Root manifest, `tsconfig.base.json`, ESLint flat config, Prettier config, `vitest.config.mts`, scripts, `.gitignore`, `.env.example`, lockfile |
+| **Expected files** | `package.json`, `package-lock.json`, `tsconfig.base.json`, `eslint.config.mjs`, `.prettierrc`, `.prettierignore`, `vitest.config.mts`, `.gitignore`, `.env.example` |
+
+**Part 1 — Reconnaissance.** TSD §2.1 version table; §2.2 tsconfig verbatim; §2.3 import rules; §2.4
+scripts; §8.1 vitest projects and the RNW alias. Confirm no existing config to conflict with.
+
+**Part 2 — Impact.** Files: all new, repository root. Layers: none. Contracts: none. Data model:
+none. UI/accessibility: none. Risk: a wrong `moduleResolution` or a missing `noUncheckedIndexedAccess`
+silently weakens every later type guarantee. Regression: none (greenfield). Ownership: single owner,
+no parallelism.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-01-01 | — | `.git/`, `.gitignore` | `git status` clean but for intended files; `.env` ignored | `git status` output |
+| T-01-02 | TSD §2.1 | Root `package.json` | `engines` and `workspaces` exactly as specified | File contents |
+| T-01-03 | TSD §2.2 | `tsconfig.base.json` | Byte-equivalent to the TSD block | `diff` against the TSD block |
+| T-01-04 | TSD §2.2 | Five tsconfigs | `tsc --noEmit` resolves each project | Command output |
+| T-01-05 | §12.2 | `eslint.config.mjs` | A deliberate violation of each of the six rules is reported | Six failing fixtures, then removed |
+| T-01-06 | — | Prettier config | `format:check` passes | Command output |
+| T-01-07 | TSD §8.1 | `vitest.config.mts` | Three named projects; the RNW alias and the transitive `deps.inline` list both inside `dom`. **`passWithNoTests` deliberately NOT set** — P01's gate uses the CLI flag for its one run, so the exemption does not stand for P02–P27 where a mis-scoped glob would pass green. `setupFiles: ['./vitest.setup.dom.mts']` arrives with that file at P12 | `vitest --run` reports three projects |
+| T-01-08 | TSD §2.4 | Scripts block | Each script runs and exits 0 | Output per script |
+| T-01-09 | §21.1 | `.env.example` | Eight variables; keep-alive unit documented | File contents |
+| T-01-10 | TSD §2.1 | `node_modules`, lockfile | Installed versions match §2.1 exactly | `npm ls --depth=0` |
+
+*Stop-condition override, T-01-10:* if any pinned version in TSD §2.1 is unavailable or has an
+incompatible peer, stop and record a blocker. Do not substitute a nearby version.
+
+**Part 4 — Verification.** `npm ci` · `npm run format:check` · `npm run lint` · `npm run typecheck` ·
+`npm run test` (zero tests is acceptable here only) · `npm audit --audit-level=high`.
+
+**Part 5 — Gate.** SQG-02, SQG-03, SQG-08, SQG-18. Additional: the six import rules are provably
+enforced, not merely configured.
+
+---
+
+### P02 — Shared contracts
+
+| | |
+|---|---|
+| **Role** | Contracts Architect |
+| **Objective** | One definition of every shared type and schema, consumed by both applications |
+| **Value** | Makes it structurally impossible for the server and the client to disagree about a `Meal` |
+| **Preconditions** | P01 gate green |
+| **Dependencies** | P01 |
+| **Authoritative sources** | TSD §3.1–§3.5 |
+| **Scope** | Enumerations, entities, Zod schemas, error codes, wire types |
+| **Out of scope** | Any rule or algorithm (that is `domain`); any I/O |
+| **Deliverables** | `packages/contracts` |
+| **Expected files** | `src/core.ts`, `src/schemas.ts`, `src/api.ts`, `src/errors.ts`, `src/index.ts`, `package.json`, `tsconfig.json` |
+
+**Part 1 — Reconnaissance.** TSD §3 in full; §11 endpoint contracts; §10.1 nutrition bounds.
+
+**Part 2 — Impact.** Files: new package. Contracts: **this phase defines them all**; every later
+phase depends on them. Data model: establishes it. Risk: a schema that is too permissive silently
+disables a downstream guarantee — particularly the nutrition range bounds, which are the only defence
+against an authoring typo. Regression: none. Ownership: Domain Engineer; no parallel writes.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-02-01 | TSD §2.1 | Package skeleton | `zod` is the only runtime dependency | `package.json` |
+| T-02-02 | TSD §3.1 | `core.ts` enums | All seven enums present; `CANONICAL_ALLERGENS` has exactly 10 entries | File + a length assertion test |
+| T-02-03 | TSD §3.2 | Entity interfaces | `NutritionSummary` is four nullable numbers with no unit/basis field | File |
+| T-02-04 | TSD §3.3, §10.1 | `mealSchema` | Rejects calories 2001, protein −1, a non-integer, and an unknown extra field | Test output |
+| T-02-05 | TSD §3.3 | Preference schemas | `clockTimeSchema` rejects `24:00` and `8:00` | Test output |
+| T-02-06 | TSD §3.3 | Request schemas | `chatRequestSchema` rejects `goal` and `budget` | Test output |
+| T-02-07 | TSD §3.3 | Model reply schemas | `chatModelReplySchema` rejects a 6th citation and a 701-character answer | Test output |
+| T-02-08 | TSD §3.4, §3.5 | Errors, wire types, barrel | Five codes; barrel exports every public symbol | File + import smoke test |
+
+**Part 4 — Verification.** `npm run typecheck` · `npm run test -- contracts` · schema acceptance and
+rejection tests for each schema.
+
+**Part 5 — Gate.** SQG-01, SQG-04, SQG-07, SQG-10, SQG-18. Additional: no schema is exported without
+a rejection test.
+
+---
+
+### P03 — Domain I: text, money, meal-period
+
+| | |
+|---|---|
+| **Role** | Domain Engineer |
+| **Objective** | The three primitive modules every later rule composes from |
+| **Value** | Tokenization correctness decides allergen correctness; integer money decides price correctness |
+| **Preconditions** | P02 gate green |
+| **Dependencies** | P02 |
+| **Authoritative sources** | TSD §4.1–§4.3 |
+| **Scope** | `text.ts`, `money.ts`, `meal-period.ts` and their tests |
+| **Out of scope** | Allergens, diet, scoring, retrieval |
+| **Deliverables** | Three modules, three test files |
+| **Expected files** | `packages/domain/src/{text,money,meal-period}.ts` + `__tests__` |
+
+**Part 1 — Reconnaissance.** TSD §4.1 normalisation rules and the substring-matching prohibition;
+§4.2 money; §4.3 the signed-offset algorithm and the seven boundary vectors; PRD FR-004.
+
+**Part 2 — Impact.** Files: three new modules. Layers: domain only. Contracts: consumes `Money`.
+Risk: `singularize` is deliberately naive; over-generalising it would corrupt allergen matching.
+`containsTokenSequence` must be whole-token — a substring implementation makes `nut` match `minute`.
+Regression: none. Ownership: Domain Engineer. **Not** parallel with P07 — P07 depends on P04, which depends
+on this phase.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-03-01 | TSD §2.3 | Package skeleton + purity lint rule | A test import of `express` fails lint | Lint output |
+| T-03-02 | TSD §4.1 | `text.ts` | `"Crème Brûlée"` → `"creme brulee"`; segment split on every character in the punctuation class of TSD §4.1 | Test output |
+| T-03-03 | §19.3 | `text.test.ts` | `containsTokenSequence` rejects a substring match | Test output |
+| T-03-04 | TSD §4.2 | `money.ts` | `formatMoney(money(1010))` === `"$10.10"` | Test output |
+| T-03-05 | TSD §4.2 | `money.test.ts` | No test uses a float literal for money | Test source review |
+| T-03-06 | TSD §4.3 | `meal-period.ts` | Midnight wrap handled with no special case | Test output |
+| T-03-07 | TSD §4.3 | `meal-period.test.ts` | All seven vectors pass, including `anchor−91` → out and `anchor+120` → in | Test output |
+
+**Part 4 — Verification.** `npm run test -- domain/text domain/money domain/meal-period` ·
+`npm run typecheck`.
+
+**Part 5 — Gate.** SQG-01, SQG-05, SQG-07, SQG-10, SQG-18. Additional: `packages/domain` imports
+nothing that performs I/O — proved by the lint rule, not asserted.
+
+---
+
+### P04 — Domain II: allergens and diet (safety-critical)
+
+| | |
+|---|---|
+| **Role** | Domain Engineer (safety-critical) |
+| **Objective** | Deterministic allergen exclusion and diet compatibility |
+| **Value** | **This is the only module where a defect is a safety issue and the failure is silent.** Everything else in the product can be wrong and visibly so |
+| **Preconditions** | P03 gate green |
+| **Dependencies** | P03 |
+| **Authoritative sources** | TSD §4.4, §4.5; PRD FR-007, FR-015; SDD §9.2 |
+| **Scope** | Lexicon, inference, closure, effective tags, conflict detection, diet matrix |
+| **Out of scope** | Scoring; retrieval; any UI presentation of allergens |
+| **Deliverables** | `allergen-lexicon.ts`, `allergens.ts`, `diet.ts` and tests |
+| **Expected files** | `packages/domain/src/{allergen-lexicon,allergens,diet}.ts` + `__tests__` |
+
+**Part 1 — Reconnaissance.** TSD §4.4 step order (phrase pass, then token pass, then a second
+unsegmented phrase pass) and the asymmetry rationale; the suppressor mechanism; §4.5's two deliberate
+asymmetries; PRD FR-007's "AI cannot override a rejection".
+
+**Part 2 — Impact.** Files: three new modules plus data tables. Layers: domain. Contracts: consumes
+`CanonicalAllergen`. **Risk: the highest in the project.** A missing suppressor produces false
+positives that hide safe meals; a missing token produces false negatives that expose a user to an
+allergen. The asymmetry — suppression is segment-scoped, addition is not — exists because failing to
+add is the dangerous direction. Regression: none yet, but every later phase depends on this being
+right. Ownership: Domain Engineer, single-threaded. **Not parallelised, deliberately.**
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-04-01 | TSD §4.4 | Three lexicon tables | Phrases compiled longest-first; suppressors carry `tags: []` | Table + ordering test |
+| T-04-02 | TSD §4.4 | `isCanonicalAllergen`, `normalizeAllergen` | An ambiguous term returns `null`, not a guess | Test output |
+| T-04-03 | TSD §4.4 | Inference engine | `"coconut milk"` → `tree-nut` only; `"water chestnut"` → nothing | Test output |
+| T-04-04 | TSD §4.4 | Implication closure | `wheat` implies `gluten`, to a fixpoint | Test output |
+| T-04-05 | TSD §4.4 | `effectiveAllergenTags` | Declared ∪ inferred, closed; a non-canonical declared tag still resolves | Test output |
+| T-04-06 | TSD §4.4 | Conflict detection | All three match paths fire independently; an allergy the taxonomy never heard of still matches by ingredient name | Test output |
+| T-04-07 | §19.3 | `allergens.test.ts` | Every vector in §19.3's allergen row passes | Full test output |
+| T-04-08 | TSD §4.5 | `diet.ts` | `SATISFIED_BY` exactly as specified | File |
+| T-04-09 | TSD §4.5 | `diet.test.ts` | All 25 pairs asserted; both asymmetries named | Test output |
+
+*Stop-condition override, T-04-01 and T-04-03:* if a catalog ingredient name cannot be classified
+without guessing, stop and record it. Do not add a lexicon entry that is not derivable from TSD §4.4's
+rules.
+
+**Part 4 — Verification.** `npm run test -- domain/allergens domain/diet` · a deliberate
+false-negative probe: assert that a meal whose ingredient list names an allergen but whose
+`allergenTags` omit it is still rejected.
+
+**Part 5 — Gate.** SQG-01, SQG-10, SQG-11, SQG-18. Additional: no allergen decision anywhere in the
+codebase exists outside this module; grep proves it.
+
+---
+
+### P05 — Domain III: scoring and relevance
+
+| | |
+|---|---|
+| **Role** | Domain Engineer |
+| **Objective** | Deterministic ranking and one shared relevance implementation |
+| **Value** | Determinism is what makes recommendations testable; one relevance implementation is what stops the catalog screen and the assistant disagreeing |
+| **Preconditions** | P04 gate green |
+| **Dependencies** | P04 |
+| **Authoritative sources** | TSD §4.6, §4.7; PRD FR-008 |
+| **Scope** | Weights, eight policies, pipeline, relevance index and ranking |
+| **Out of scope** | Retrieval; resolvers; HTTP |
+| **Deliverables** | `scoring.ts`, `relevance.ts` and tests |
+| **Expected files** | `packages/domain/src/{scoring,relevance}.ts` + `__tests__` |
+
+**Part 1 — Reconnaissance.** TSD §4.6's weight table, goal bands, budget tolerance expressed as
+integer arithmetic, prep-time bands, clamp and tie-break; §4.7's mutually-exclusive token/prefix rule
+and the score-0 omission.
+
+**Part 2 — Impact.** Files: two new modules. Contracts: consumes `Meal`, `ScoreReason`. Risk: a
+floating-point budget tolerance makes the 125% boundary a coin flip; `-0` breaks `Object.is` in
+snapshot comparisons; a goal policy defaulting a `null` nutrient to 0 silently ranks unknown
+nutrition as "low calorie". Regression: none. Ownership: Domain Engineer.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-05-01 | TSD §4.6 | Constants | Values byte-match the TSD | `diff` |
+| T-05-02 | TSD §4.6 | Eight policies | Each returns points and a human detail string | Test output |
+| T-05-03 | TSD §4.6 | `scoreMeal` | Clamped 0–100; `-0` normalised to `0` | Test output |
+| T-05-04 | TSD §4.6 | `recommend` | Three hard rejects **before** scoring, each with its reason | Test output |
+| T-05-05 | §19.3 | `scoring.test.ts` | 125%-of-ceiling scores exactly 7; a `null` nutrient scores 0 with the "not available" detail | Test output |
+| T-05-06 | TSD §4.7 | Relevance constants | Stop-word set present | File |
+| T-05-07 | TSD §4.7 | `queryMeals` | Token and prefix are mutually exclusive; score-0 meals omitted entirely | Test output |
+| T-05-08 | §19.3 | `relevance.test.ts` | A stop-words-only query returns `[]` and earns no phrase bonus | Test output |
+
+**Part 4 — Verification.** `npm run test -- domain/scoring domain/relevance`; a determinism test that
+runs `recommend` twice on identical input and asserts deep equality of scores and order.
+
+**Part 5 — Gate.** SQG-01, SQG-07, SQG-10, SQG-18. Additional: no money arithmetic uses a float
+anywhere in the phase's diff.
+
+---
+
+### P06 — Domain IV: chat retrieval and answer resolvers
+
+| | |
+|---|---|
+| **Role** | Domain Engineer |
+| **Objective** | Retrieval that is safe before it is relevant, and a resolver set that computes the assistant's answer |
+| **Value** | This is the assistant. The model that comes later only phrases what this phase decides |
+| **Preconditions** | P05 gate green |
+| **Dependencies** | P05, P04 |
+| **Authoritative sources** | TSD §4.8, §4.9; SDD §9.1–§9.3; PRD FR-015, §7.4 |
+| **Scope** | Retrieval pipeline; fields, lexicon, classifier, `gather`, five resolvers, figures, `namedMeals` |
+| **Out of scope** | Prompts; the model; containment; HTTP |
+| **Deliverables** | `chat-retrieval.ts`, `answer.ts`, `answer-lexicon.ts` and tests |
+| **Expected files** | `packages/domain/src/{chat-retrieval,answer,answer-lexicon}.ts` + `__tests__` |
+
+**Part 1 — Reconnaissance.** TSD §4.8's seven steps and the demote-don't-exclude rule; §4.9's intent
+table, the all-candidates-or-refuse rule in `gather`, the **eligible-vs-context scope rule**, and
+figures derived from *formatted* strings; PRD §7.4's bounded question shapes.
+
+**Part 2 — Impact.** Files: three new modules. Contracts: consumes `Meal`. Risk: **the scope rule is
+the subtlest defect surface in the system** — resolving a superlative over `context` instead of
+`eligible` produces "the cheapest meal is X" where X is merely the cheapest of five, a true-sounding
+sentence that is false. Second risk: deriving `figures` from raw numbers rather than formatted strings
+makes containment reject correct answers. Regression: none. Ownership: Domain Engineer.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-06-01 | TSD §4.8 | `chat-retrieval.ts` | Allergen rejection precedes ranking; both outputs returned | Test output |
+| T-06-02 | §19.3 | Retrieval tests | A user whose every eligible meal has a disliked ingredient still gets an answer | Test output |
+| T-06-03 | TSD §4.9 | Fields and formatting | Exactly six fields; `"$10.10"`, `"22 min"`, `"540 kcal"`, `"31 g"` | Test output |
+| T-06-04 | TSD §4.9 | Lexicon tables | Compiled longest-phrase-first | Test output |
+| T-06-05 | TSD §4.9 | Classifier | `"preparation time"` beats `"time"` via token claiming; ambiguity returns `ambiguous-intent` | Test output |
+| T-06-06 | TSD §4.9 | `gather` + resolvers | A single `null` among candidates refuses with `field-partially-known` | Test output |
+| T-06-07 | TSD §4.9 | Figures + `namedMeals` + scope | Superlative resolves over `eligible`; listing over `context`; `count` yields empty `namedMeals` | Test output |
+| T-06-08 | §19.3 | `answer.test.ts` | Every intent plus every unresolved reason covered | Test output |
+
+*Stop-condition override, T-06-07:* if a question shape cannot be resolved without the model
+deciding something, stop. Widening what the model may decide is not an available option.
+
+**Part 4 — Verification.** `npm run test -- domain/chat-retrieval domain/answer`; a scope-rule test
+asserting that a superlative over a 60-meal eligible set does not return the winner of the 5-meal
+context when they differ.
+
+**Part 5 — Gate.** SQG-01, SQG-10, SQG-11, SQG-18. Additional: no resolver reads a field it has not
+proven non-`null` for every candidate.
+
+---
+
+### P07 — Catalog authoring, seed script, boot validation
+
+| | |
+|---|---|
+| **Role** | Catalog Author / Persistence Architect |
+| **Objective** | 60 validated meal records and the script that produces them |
+| **Value** | The catalog is the only data source in the product. Every recommendation and every answer is computed from it |
+| **Preconditions** | P02 gate green (needs `mealSchema`); P04 for tag derivation; the USDA archive present at `USDA_DATASET_PATH` |
+| **Dependencies** | P02, P04, P03 (text primitives, for the resolver) |
+| **Authoritative sources** | TSD §7.1–§7.4; §10.1 of this plan |
+| **Scope** | Seed script, provenance capture, USDA derivation, 60 records, validation |
+| **Out of scope** | Runtime fetching of any kind; any runtime nutrition lookup; committing the 16 MB archive |
+| **Deliverables** | `meals.json`, `nutrition-source.json`, `seed.ts` |
+| **Expected files** | `packages/catalog/{meals.json,nutrition-source.json,seed.ts,src/index.ts,package.json}` |
+
+**Part 1 — Reconnaissance.** TSD §7.2's six steps, especially step 3's "correct them by hand"; §10.1's
+range bounds; PRD FR-006's one-source rule.
+
+**Part 2 — Impact.** Files: two data files plus a script with three parsers. Contracts: every record
+must satisfy `mealSchema` including its `superRefine`. **Risk: third-highest in the project, and it
+has moved.** Nutrition is no longer typed in by hand, so a mistyped digit is no longer the threat —
+the nutrient table is published and versioned. The risk is now (a) **measure → grams**, where a wrong
+density or a misparsed fraction scales one ingredient, and (b) **the authored serving count**, which
+divides all four values and so scales the whole meal. A missed allergen tag remains caught only by
+§4.4's inference, which is why T-07-04's hand review is a task and not a note. Regression: none.
+Ownership: Catalog Author, single-threaded.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-07-01 | TSD §7.1 | Package skeleton | `seededCatalog` exported as `unknown` | File |
+| T-07-02 | TSD §7.2 | TheMealDB client | A `meals: null` reply yields an empty list, not a crash | Unit test against all four response shapes |
+| T-07-03 | TSD §7.2, §3.2 | Map + provenance | Every record carries `provenance`; nothing upstream is silently discarded | Sample record |
+| T-07-04 | TSD §4.4, §7.2 | Derived then reviewed tags | **All 60 reviewed by hand**, with the review recorded | Review log |
+| T-07-05 | TSD §7.2 | Tags, periods, price, prep | Every record has ≥1 meal period and ≥1 diet tag | Validation output |
+| T-07-06 | TSD §7.4 | USDA parser | `nutrition-source.json` holds only used ingredients, each with `fdcId` and vintage; the archive is not committed | File + `.gitignore` check |
+| T-07-07 | TSD §7.4, §4.1 | Ingredient resolver | Aliases resolve `aubergine`, `challots`, `cashews`; an unknown term returns no match rather than a near one | Unit test |
+| T-07-08 | TSD §7.4 | Measure parser | `1/4 cup`, `1 1/2 tsp`, `3 cloves`, `1 lb` convert; `1 tin` without a gram weight fails loudly | Unit test |
+| T-07-09 | TSD §7.4, §3.3 | Derivation | **One unresolved ingredient ⇒ four `null`s, `origin: unavailable`, reason names the ingredient.** No partial sums | Unit test + derived output |
+| T-07-10 | TSD §3.3 | Validation + write | The write aborts if any record fails, including the `superRefine` all-or-nothing rule | Command output |
+| T-07-11 | §19.3 | `catalog.test.ts` | 60 records; ids unique and kebab-case; schema-valid; no `0` for unknown; three meals' arithmetic verified by hand | Test output |
+
+*Stop-condition override, T-07-09:* if an ingredient does not resolve or its measure does not parse,
+write four `null`s with a reason. **Do not estimate, do not substitute a category average, do not sum
+what did resolve.** An invented or partial nutrition number is exactly the fabrication PRD §4 forbids,
+and a partial sum is worse than no number because it looks complete.
+
+*Stop-condition override, T-07-06:* if `USDA_DATASET_PATH` is unset or the archive is missing, stop
+and record a blocker. Do not fall back to any other nutrition source.
+
+**Part 4 — Verification.** `npm run seed` then `npm run test -- catalog`; assert the loaded record
+count is 60 and every id is unique.
+
+**Part 5 — Gate.** SQG-01, SQG-11, SQG-18. Additional: a grep for `"amount": 0` finds no record where
+0 means "unknown".
+
+---
+
+### P08 — Backend foundation
+
+| | |
+|---|---|
+| **Role** | Backend Architect |
+| **Objective** | A server that refuses to start on bad data and answers `/health` |
+| **Value** | Boot-time validation is what makes every later route able to assume a valid catalog |
+| **Preconditions** | P01 green; P07 for the catalog |
+| **Dependencies** | P01, P07 |
+| **Authoritative sources** | TSD §5.1–§5.3, §5.8; §21 of this plan |
+| **Scope** | App wiring, config, boot validation, middleware, error handling, health, logging |
+| **Out of scope** | Domain routes (P09, P10); anything AI (P19) |
+| **Deliverables** | Bootable server |
+| **Expected files** | `apps/server/src/{index.ts,app/*,routes/health.ts}` |
+
+**Part 1 — Reconnaissance.** TSD §5.1's five boot steps; §5.2's env table and the `AI_KEEP_ALIVE`
+rule; §5.3's middleware order; §5.8's logging prohibitions.
+
+**Part 2 — Impact.** Files: new app. Contracts: consumes the error taxonomy. Risk: middleware order
+is load-bearing — a body cap applied after the JSON parser is not a body cap. A config read outside
+the frozen object reintroduces environment coupling. Regression: none. Ownership: Backend Engineer.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-08-01 | TSD §2.1 | App skeleton | Only the five listed dependencies | `package.json` |
+| T-08-02 | TSD §5.2 | Config module | `process.env` read in exactly one file | Grep |
+| T-08-03 | TSD §5.2 | Keep-alive validator | `AI_KEEP_ALIVE=30` exits non-zero with the named-intent message | Command output |
+| T-08-04 | TSD §5.1 | Catalog boot load | An invalid record exits non-zero naming index and field path | Command output |
+| T-08-05 | TSD §5.3 | Middleware | A 65 KB body is rejected | Test output |
+| T-08-06 | TSD §3.5 | Error handler | No upstream text appears in any response body | Test output |
+| T-08-07 | §11.2 | `/health` | Returns `mealCount: 60`; unaffected by Ollama being stopped | Test output |
+| T-08-08 | TSD §5.8 | Logging | No prompt, question, allergy, or name is ever logged | Test output + grep |
+| T-08-09 | §19.4 | Boot tests | All three boot behaviours asserted | Test output |
+
+**Part 4 — Verification.** `npm run test -- server` · boot the server and `curl /health` · boot with a
+deliberately corrupted record and assert a non-zero exit.
+
+**Part 5 — Gate.** SQG-01, SQG-04, SQG-05, SQG-10, SQG-18. Additional: the server starts with Ollama
+stopped.
+
+---
+
+### P09 — Meals API
+
+| | |
+|---|---|
+| **Role** | Backend Engineer |
+| **Objective** | C-02 and C-03 fully implemented |
+| **Value** | The tracer slice and every catalog screen depend on these two endpoints |
+| **Preconditions** | P08 green |
+| **Dependencies** | P08, P05 (relevance) |
+| **Authoritative sources** | §11.3, §11.4; TSD §5.4 |
+| **Scope** | List with filter/sort/paginate; detail with 404 |
+| **Out of scope** | Recommendations; chat |
+| **Deliverables** | Two routes and their tests |
+| **Expected files** | `apps/server/src/routes/meals.ts` + tests |
+
+**Part 1 — Reconnaissance.** §11.3's parameter rules and the unknown-parameter-ignored decision;
+§11.4's 404 rule; TSD §4.7 for sorting.
+
+**Part 2 — Impact.** Files: one route module. Contracts: C-02, C-03. Risk: computing `total` before
+filtering produces a pager that lies. Regression: none. Ownership: Backend Engineer; parallel with
+P10 (different route files).
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-09-01 | §11.3 | Query schema | `pageSize=51` → 400; unknown param ignored | Test output |
+| T-09-02 | §11.3 | Filtering | Filters are conjunctive | Test output |
+| T-09-03 | TSD §4.7 | Sorting | Relevance order matches `queryMeals` exactly | Test output |
+| T-09-04 | §11.3 | Pagination | `total` reflects the filtered set | Test output |
+| T-09-05 | §11.4 | Detail route | Unknown id → 404 `meal_not_found` | Test output |
+| T-09-06 | §11.3–§11.4 | Integration tests | Empty result is 200 with `meals: []` | Test output |
+
+**Part 4 — Verification.** `npm run test -- server/meals`; `curl` each parameter combination.
+
+**Part 5 — Gate.** SQG-01, SQG-04, SQG-14, SQG-18.
+
+---
+
+### P10 — Recommendations API (no AI)
+
+| | |
+|---|---|
+| **Role** | Backend Engineer |
+| **Objective** | C-04 without any model involvement |
+| **Value** | Proves PRD's core promise — recommendations work with the model stopped |
+| **Preconditions** | P08 green; P05 for `recommend` |
+| **Dependencies** | P08, P05, P06 |
+| **Authoritative sources** | §11.5; TSD §5.4; PRD FR-007, FR-008, FR-009 |
+| **Scope** | Validation, use case, response mapping, deterministic fallback text |
+| **Out of scope** | Model-phrased explanations (P20) |
+| **Deliverables** | One route, fallback text, tests |
+| **Expected files** | `apps/server/src/routes/recommendations.ts`, `usecases/recommend.ts` |
+
+**Part 1 — Reconnaissance.** §11.5's request shape and the **no-clock** rule; TSD §4.6 for the
+pipeline; PRD FR-009's fallback requirement.
+
+**Part 2 — Impact.** Files: route + use case. Contracts: C-04. Risk: deriving the meal period
+server-side would reintroduce the two-homes defect this architecture removed. Regression: none.
+Ownership: Backend Engineer.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-10-01 | §11.5 | Request validation | An extra field → 400; `mealPeriod` required | Test output |
+| T-10-02 | TSD §4.6 | Use case | Exactly three returned; hard rejects applied first | Test output |
+| T-10-03 | §11.5 | Response mapping | `scoreReasons` present for debugging | Test output |
+| T-10-04 | PRD FR-009 | Fallback text | Deterministic and template-based, never generated | Source review + test |
+| T-10-05 | §11.5 | Integration tests | Peanut allergy returns no peanut-tagged meal | Test output |
+
+**Part 4 — Verification.** `npm run test -- server/recommendations`; a determinism test across two
+identical requests; grep the server for `Date.now()` and `new Date()` outside logging.
+
+**Part 5 — Gate.** SQG-01, SQG-04, SQG-11, SQG-18. Additional: the server reads no clock on this path.
+
+---
+
+### P11 — UI/UX design-system foundation
+
+| | |
+|---|---|
+| **Role** | UI/UX Architect |
+| **Objective** | A persisted, reconciled design system and the three token layers |
+| **Value** | Every screen after this phase inherits its colours, type and spacing from one place; colour literals never appear in feature code |
+| **Preconditions** | P01 green; UI UX Pro Max validated (§13.4) |
+| **Dependencies** | P01, P02 |
+| **Authoritative sources** | TSD §6.6; SDD §14; PRD §10.5, §12; §14 of this plan |
+| **Scope** | Tool runs, reconciliation, decision record, three token layers, contrast test |
+| **Out of scope** | Components (P12); screens (P13+) |
+| **Deliverables** | `design-system/MASTER.md`, per-screen overrides, `DECISIONS.md`, token modules |
+| **Expected files** | `design-system/**`, `apps/mobile/src/shared/theme/{primitive,semantic,component}.ts` |
+
+**Part 1 — Reconnaissance.** Run every command in §14.4. Read TSD §6.6's layer contract. Read §14.1's
+binding requirements and §14.2's reconciliation verdicts.
+
+**Part 2 — Impact.** Files: new design-system directory and three token modules. Risk: adopting tool
+output wholesale would import a landing-page pattern and a display-serif body font into a five-tab
+touch app (X-06, X-07). The mitigation is that every recommendation is recorded with an explicit
+adopt/reject verdict before any token is written. Accessibility impact: the palette decides whether
+AA is achievable. Ownership: Frontend Engineer; parallel with P03–P07.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-11-01 | §14.4 | `MASTER.md` | File exists and names the product type matched | Command output + file |
+| T-11-02 | §14.4 | 10 page overrides | One per PRD §11 screen | File listing |
+| T-11-03 | §14.4 | Colour and type output | Raw output recorded verbatim | `DECISIONS.md` |
+| T-11-04 | §14.1, §14.2 | `DECISIONS.md` | **Every** recommendation carries adopt or reject plus a reason | File review |
+| T-11-05 | TSD §6.6 | `primitive.ts` | Not importable outside the theme directory | Lint rule + test |
+| T-11-06 | TSD §6.6 | `semantic.ts` | A token missing from the dark map is a **compile** error | Deliberate omission fails `tsc` |
+| T-11-07 | TSD §6.6 | `component.ts` | Nine component groups covered | File |
+| T-11-08 | PRD §10.5 | `contrast.test.ts` | AA met in both schemes | Test output |
+
+*Stop-condition override, T-11-04:* if a tool recommendation would require changing PRD, SDD or TSD,
+stop and record it as a proposed amendment. Do not adopt it.
+
+**Part 4 — Verification.** `npm run test -- theme`; the deliberate-omission compile check; visual
+review of `MASTER.md` against §14.1.
+
+**Part 5 — Gate.** SQG-01, SQG-12, SQG-16, SQG-17, SQG-18. Additional: `DECISIONS.md` has a verdict
+for every line of tool output.
+
+---
+
+### P12 — Mobile shell
+
+| | |
+|---|---|
+| **Role** | Frontend Architect |
+| **Objective** | An application that boots to an empty Home with theme, storage, navigation and an API client |
+| **Value** | Every feature slice after this adds a screen, not infrastructure |
+| **Preconditions** | P11 green |
+| **Dependencies** | P11, P02 |
+| **Authoritative sources** | TSD §6.1–§6.7; PRD FR-001, §11, §12 |
+| **Scope** | Scaffold, theme wiring, 16 components, storage, navigation, registry, API client, boot phases |
+| **Out of scope** | Any feature screen; any domain rule |
+| **Deliverables** | A bootable app shell |
+| **Expected files** | `apps/mobile/**` (shared, state, infrastructure, navigation) |
+
+**Part 1 — Reconnaissance.** TSD §6.1's three boot phases; §6.2's route table, kinds and registry;
+§6.4's envelope, migration gate and bound semantics; §6.5's three outcomes and abort rule; §6.7's
+component signatures; PRD §12's five states. Run `--stack react-native` per §14.4 before writing any
+component.
+
+**Part 2 — Impact.** Files: the largest single phase. Layers: all client layers. Contracts: consumes
+every wire type. Risk: the registry indirection is what keeps `navigation/` from importing
+`features/`; implementing it as direct imports creates a dependency knot that later phases cannot
+undo cheaply. Storage bound semantics are easy to get backwards — refusing on read instead of write
+makes an over-long entry permanently unreadable. Accessibility: the 16 components carry the
+accessibility contract for the whole app. Ownership: Frontend Engineer. **Not parallelised** — too
+many shared files.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-12-01 | TSD §2.1 | Expo scaffold | Pinned versions only | `npm ls` |
+| T-12-02 | TSD §6 | Expo/Metro/Babel config | Workspace packages resolve from the app | Build output |
+| T-12-03 | TSD §6.6 | Theme provider | `mode` is a prop; font scale changes the type scale | Test output |
+| T-12-04 | TSD §6.7 | Components batch 1 | Every one accepts `testID`; roles and labels present | Test output |
+| T-12-05 | TSD §6.7, PRD §12 | Components batch 2 | Every state component accepts `stillAvailable` | Test output |
+| T-12-06 | TSD §6.7 | Components batch 3 | `NutritionBadge` renders "Not available" for `null` | Test output |
+| T-12-07 | TSD §6.4 | Storage core | Only `schemaVersion − 1` migrates; older quarantines | Test output |
+| T-12-08 | TSD §6.4 | Definitions + bounds | Write past 200 **refuses**; read truncates and reports `recovered` | Test output |
+| T-12-09 | TSD §6.1 | Hydration | One key's corruption never affects another; never rejects | Test output |
+| T-12-10 | TSD §6.2 | Route table | `ROUTE_KINDS` covers every `RouteName` | Compile check |
+| T-12-11 | TSD §6.2 | Registry | An unregistered screen renders a placeholder, not a crash | Test output |
+| T-12-12 | TSD §6.2 | Navigators | Five tabs; three boot phases; linking config | Test output |
+| T-12-13 | TSD §6.5 | API client | Three outcomes; no wire text in any message; caller signal forwarded, not passed through | Test output |
+
+**Part 4 — Verification.** `npm run test -- mobile` · `npm run build:web` · launch and confirm an
+empty Home renders in both themes.
+
+**Part 5 — Gate.** All SQG items. Additional: grep proves exactly one file imports AsyncStorage and
+no feature file contains a colour literal.
+
+---
+
+### P13 — Tracer slice: Explore, end to end
+
+| | |
+|---|---|
+| **Role** | Full-stack Engineer |
+| **Objective** | One narrow path proven through every layer before five more features are built on it |
+| **Value** | If the stack is wrong, this is the cheapest possible place to find out |
+| **Preconditions** | P09 and P12 green |
+| **Dependencies** | P09, P12 |
+| **Authoritative sources** | PRD FR-005, FR-010; §11.3; TSD §6.8 |
+| **Scope** | UI → validation → request → route → domain → response → state → tests, for Explore only |
+| **Out of scope** | Any other screen |
+| **Deliverables** | A working Explore screen and the first E2E spec |
+| **Expected files** | `apps/mobile/src/features/catalog/**`, `e2e/specs/explore.spec.ts` |
+
+**Part 1 — Reconnaissance.** §11.3's contract; TSD §6.8's state list for Explore; PRD §12's five
+states; `--domain ux` output for loading and empty states (§14.4).
+
+**Part 2 — Impact.** Files: one feature directory plus one spec. Layers: **all of them** — that is
+the point. Contracts: C-02. Risk: this is where a contract mismatch between client and server would
+first appear; finding it here is cheap, finding it in P21 is not. Mobile-web impact: first exercise
+of the web export. Ownership: Frontend Engineer with Backend support; single-threaded checkpoint.
+
+**Part 3 — Tasks**
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-13-01 | TSD §6.2 | Screen registered | Reachable via the Explore tab | Screenshot + test |
+| T-13-02 | TSD §6.5 | Debounced search | 300 ms debounce; a stale request is aborted | Test output |
+| T-13-03 | §11.3 | Filter chips | Each maps to an allowlisted parameter | Test output |
+| T-13-04 | TSD §6.8 | List | Stable keys; memoised rows | Test output |
+| T-13-05 | PRD §12 | States | Loading, empty and local-only all reachable and asserted | Test output |
+| T-13-06 | §19.2 | DOM tests | Search and filter change the rendered set | Test output |
+| T-13-07 | §19.4 | Harness + first spec | `npm run test:e2e` runs and the spec passes against the web export with `AI_FAKE=true` | Playwright report |
+
+**Part 4 — Verification.** `npm run test -- catalog` · `npm run build:web` · `npm run test:e2e -- explore`.
+
+**Part 5 — Gate.** All SQG items. Additional: the full vertical flow is demonstrated in one E2E run,
+and no feature phase begins until it passes.
+
+---
+
+### P14 — Slice: onboarding, dietary setup, preferences
+
+| | |
+|---|---|
+| **Role** | Frontend Engineer |
+| **Objective** | The user can state who they are, and the app remembers |
+| **Value** | Every downstream filter, score and retrieval reads these values. Nothing personalised works until this exists |
+| **Preconditions** | P13 green |
+| **Dependencies** | P13 |
+| **Authoritative sources** | PRD FR-002, FR-003, FR-004, §8.1; TSD §6.1, §6.3, §6.4 |
+| **Scope** | Two stores, two screens, client validation, boot-phase switch, allergy-change invalidation |
+| **Out of scope** | Server-side anything; recommendations rendering (P15) |
+| **Deliverables** | Working first-launch journey |
+| **Expected files** | `apps/mobile/src/features/onboarding/**`, `src/state/{preferences,onboarding}/**` |
+
+**Part 1 — Reconnaissance.** PRD §8.1's step order; TSD §6.3's three store invariants; §6.4's
+per-key `fallback` (A-09); `--domain ux "form validation inline error touch target"` per §14.4.
+
+**Part 2 — Impact.** Files: two feature dirs, two stores. Contracts: `userPreferencesSchema`. Risk: a
+reducer that returns a new object for an idempotent action causes a write on every render — the
+invariant exists for that reason. Accessibility: this is the app's first and most form-heavy screen.
+Ownership: Frontend Engineer.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-14-01 | TSD §6.3 | `preferences` store | An idempotent action returns `state` identically | Test asserting reference equality |
+| T-14-02 | TSD §6.3 | `onboarding` store | Completion persists across restart | Test output |
+| T-14-03 | PRD §8.1 | Onboarding screen | Name optional; preference fields required | Test output |
+| T-14-04 | PRD FR-003 | Dietary setup | All six preference fields editable | Test output |
+| T-14-05 | §14.2 | Validation | Errors inline, bound to the field, announced; validated on blur | Test output |
+| T-14-06 | TSD §6.1 | Boot switch | Protected screens do not exist during hydration | Test output |
+| T-14-07 | PRD FR-003 | Invalidation | Changing allergies discards on-screen recommendations | Test output |
+| T-14-08 | §19 | Tests + E2E | First-launch journey passes end to end | Playwright report |
+
+**Part 4.** `npm run test -- onboarding state` · `npm run test:e2e -- onboarding`.
+**Part 5.** All SQG. Additional: no preference value is readable anywhere except through the store.
+
+---
+
+### P15 — Slice: Home and recommendations
+
+| | |
+|---|---|
+| **Role** | Full-stack Engineer |
+| **Objective** | The product's primary answer: three meals for right now |
+| **Value** | This is what the application is for |
+| **Preconditions** | P10 and P14 green |
+| **Dependencies** | P10, P14 |
+| **Authoritative sources** | PRD FR-004, FR-007, FR-008, §8.2; §11.5 |
+| **Scope** | Client-side period detection, request, rendering, states, disclaimer |
+| **Out of scope** | Model-phrased explanations (P20) |
+| **Deliverables** | Working Home |
+| **Expected files** | `apps/mobile/src/features/recommendations/**` |
+
+**Part 1 — Reconnaissance.** §11.5's no-clock rule; TSD §4.3 for the client-side computation; PRD
+§10.1's 200 ms and 2 s thresholds; PRD §12's states.
+
+**Part 2 — Impact.** Files: one feature dir. Contracts: C-04. Risk: rendering the period only after
+the response arrives would break the reason the period is computed client-side at all. Regression:
+P14's preferences feed this directly. Ownership: Frontend Engineer.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-15-01 | TSD §4.3 | Period computed locally | Rendered **before** any request resolves and with the server down | Test output |
+| T-15-02 | §11.5 | Request builder | Sends `mealPeriod`; sends no timestamp and no `mealTimes` | Network assertion |
+| T-15-03 | PRD §13 | Three cards | Exactly three, each with one short reason | Test output |
+| T-15-04 | PRD §10.1 | Progressive feedback | Loading at 200 ms; AI progress at 2 s; fallback marked | Test output |
+| T-15-05 | PRD §12 | States | Empty and local-only reachable | Test output |
+| T-15-06 | PRD FR-007 | Disclaimer | Present without dominating the screen | Screenshot |
+| T-15-07 | §19.2 | DOM tests | Peanut allergy → no peanut meal rendered | Test output |
+| T-15-08 | §19.4 | E2E | Allergy exclusion visible end to end | Playwright report |
+
+**Part 4.** `npm run test -- recommendations` · `npm run test:e2e -- home-allergy`.
+**Part 5.** All SQG. Additional: no clock or timezone logic exists on the server path for this feature.
+
+---
+
+### P16 — Slice: meal details and favourites
+
+| | |
+|---|---|
+| **Role** | Frontend Engineer |
+| **Objective** | Full meal information and a persistent favourite |
+| **Value** | Detail is where PRD FR-006's "Not available" promise becomes visible |
+| **Preconditions** | P13 green |
+| **Dependencies** | P13, P09 |
+| **Authoritative sources** | PRD FR-011, FR-012; TSD §6.7, §6.8 |
+| **Scope** | Detail screen, nutrition rendering, favourite toggle, bound refusal, modal behaviour |
+| **Out of scope** | Custom meals (P17) |
+| **Deliverables** | Working detail and favourites |
+| **Expected files** | `apps/mobile/src/features/catalog/MealDetailsScreen.tsx`, `src/state/favorites/**` |
+
+**Part 1 — Reconnaissance.** §11.4; TSD §6.7's `NutritionBadge` signature; §6.4's bound semantics;
+PRD FR-006.
+
+**Part 2 — Impact.** Files: one screen, one store. Contracts: C-03. Risk: rendering `0` for a `null`
+nutrient is the exact fabrication PRD §6 forbids, and it is a one-character mistake. Mobile-web: modal
+presentation and back behaviour differ on the web surface. Ownership: Frontend Engineer; parallel with
+P17.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-16-01 | TSD §6.3 | `favorites` store | Toggle is idempotent and reference-preserving | Test output |
+| T-16-02 | PRD FR-011 | Detail screen | All nine listed fields rendered | Test output |
+| T-16-03 | PRD FR-006 | Nutrition rows | `null` renders "Not available"; never `0` | Test output |
+| T-16-04 | PRD FR-012 | Toggle | Persists across restart | Test output |
+| T-16-05 | TSD §6.4 | Bound message | At 200, the write is refused and **no retry is offered** | Test output |
+| T-16-06 | PRD §12 | States | Loading, not-found, local-only | Test output |
+| T-16-07 | TSD §6.2 | Modal + back | Back returns to the origin tab | Test output |
+| T-16-08 | §19 | Tests + E2E | Favourite survives a reload | Playwright report |
+
+**Part 4.** `npm run test -- catalog favorites` · `npm run test:e2e -- favorite-persists`.
+**Part 5.** All SQG.
+
+---
+
+### P17 — Slice: custom meal CRUD
+
+| | |
+|---|---|
+| **Role** | Frontend Engineer |
+| **Objective** | The user can author, edit and delete their own meals |
+| **Value** | The only write-heavy surface in the product, and the only place user-authored data exists |
+| **Preconditions** | P12 green |
+| **Dependencies** | P12, P13 |
+| **Authoritative sources** | PRD FR-013, §8.3; TSD §6.4, §6.7 |
+| **Scope** | Store, Saved screen, form create/edit, validation, delete, bound refusal |
+| **Out of scope** | Custom meals participating in recommendations (not required by any document) |
+| **Deliverables** | Full CRUD |
+| **Expected files** | `apps/mobile/src/features/saved-meals/**`, `src/state/customMeals/**` |
+
+**Part 1 — Reconnaissance.** PRD FR-013's four validation rules; TSD §6.4's refusal semantics;
+`--domain ux` form guidance.
+
+**Part 2 — Impact.** Files: one feature dir, one store. Risk: a delete that does not survive restart
+is the classic CRUD defect, and only a restart test catches it. Ownership: Frontend Engineer; parallel
+with P16.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-17-01 | TSD §6.3 | Store | Create, update, delete, list | Test output |
+| T-17-02 | PRD §11 | Saved screen | Two sections with independent empty states | Test output |
+| T-17-03 | PRD FR-013 | Create form | UUID ids | Test output |
+| T-17-04 | PRD FR-013 | Edit mode | Preloaded and saved correctly | Test output |
+| T-17-05 | PRD FR-013 | Validation | Missing name, empty ingredients, negative number, invalid price/time all rejected inline | Test output |
+| T-17-06 | PRD FR-013 | Delete | Confirmed, and **stays deleted after restart** | Test output |
+| T-17-07 | TSD §6.4 | Bound refusal | At 200, refused with a clear message | Test output |
+| T-17-08 | §19 | Tests + E2E | Create → edit → delete passes | Playwright report |
+
+**Part 4.** `npm run test -- saved-meals customMeals` · `npm run test:e2e -- custom-meal-crud`.
+**Part 5.** All SQG.
+
+---
+
+### P18 — Slice: settings and reset
+
+| | |
+|---|---|
+| **Role** | Frontend Engineer |
+| **Objective** | Edit every preference and destroy data safely |
+| **Value** | The only place the user can undo anything |
+| **Preconditions** | P14 green |
+| **Dependencies** | P14 |
+| **Authoritative sources** | PRD FR-014; TSD §6.3, §6.6 |
+| **Scope** | UI store, settings screen, AI toggle, theme switch, selective clear, full reset |
+| **Out of scope** | Account or cloud anything |
+| **Deliverables** | Working settings |
+| **Expected files** | `apps/mobile/src/features/settings/**`, `src/state/ui/**` |
+
+**Part 1 — Reconnaissance.** PRD FR-014's confirmation requirement; TSD §6.6's theme-mode ownership.
+
+**Part 2 — Impact.** Risk: a reset that clears a key the app then writes back from memory leaves the
+user with data they asked to destroy. Ownership: Frontend Engineer.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-18-01 | TSD §6.3 | `ui` store | `lastTab` and disclaimer flag persist | Test output |
+| T-18-02 | PRD FR-014 | Settings screen | Preferences and meal times editable | Test output |
+| T-18-03 | PRD FR-014 | AI toggle | Drives the request's `aiEnabled` | Test output |
+| T-18-04 | TSD §6.6 | Theme switch | Changes scheme immediately in both directions | Test output |
+| T-18-05 | PRD FR-014 | Selective clear | Each behind a confirmation | Test output |
+| T-18-06 | PRD FR-014 | Full reset | All six keys cleared; app returns to onboarding | Test output |
+| T-18-07 | §19.2 | Tests | Both destructive paths asserted, including cancellation | Test output |
+
+**Part 4.** `npm run test -- settings ui`.
+**Part 5.** All SQG. Additional: after a full reset, no stale in-memory state is written back.
+
+---
+
+### P19 — AI foundation
+
+| | |
+|---|---|
+| **Role** | AI Integration Architect |
+| **Objective** | Everything the model touches, except the two routes that use it |
+| **Value** | Containment is the boundary between a 4B model and a user-visible false statement |
+| **Preconditions** | P08 and P06 green |
+| **Dependencies** | P08, P06 |
+| **Authoritative sources** | TSD §5.5–§5.7; SDD §9.4–§9.7; §15 of this plan |
+| **Scope** | Prompt safety, prompt builder, per-request schema, Ollama client, generation constants, AI lane, `AI_FAKE`, containment, fixtures |
+| **Out of scope** | The chat route (P21); the explanation lane (P20) |
+| **Deliverables** | A complete, tested AI boundary |
+| **Expected files** | `apps/server/src/ai/**`, `apps/server/src/aiLane.ts` |
+
+**Part 1 — Reconnaissance.** TSD §5.6's six sections and field order; §5.7's four checks and the
+figure algorithm; §5.5's request body, two-stage decode and the `enum` constraint; §15.2's
+never-send list.
+
+**Part 2 — Impact.** Files: a new `ai/` directory. Contracts: `chatModelReplySchema`. **Risk:
+second-highest in the project.** An empty permitted-figure set must forbid every figure, not skip the
+check — treating empty as "skip" is the single most likely implementation error and it silently
+disables containment exactly when nutrition is unknown. Sending the user's allergy list into the
+prompt would defeat the retrieval-side guarantee. Ownership: Backend Engineer, single-threaded.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-19-01 | TSD §5.6 | `promptSafety.ts` | Fence markers redacted; angle runs collapsed | Test output |
+| T-19-02 | §19.3 | Safety tests | A fence-injection attempt is neutralised | Test output |
+| T-19-03 | TSD §5.6 | Prompt builder | `MEALS` contains **only** `namedMeals`; allergies never appear | Test asserting absence |
+| T-19-04 | TSD §5.5 | Per-request schema | `citedMealIds.items.enum` equals the prompt's ids | Test output |
+| T-19-05 | TSD §5.5 | Ollama client | `done_reason: "length"` is a failure, not a partial success | Test output |
+| T-19-06 | TSD §5.2 | `GENERATION` | Constants, not env-configurable | Source review |
+| T-19-07 | TSD §5.5 | AI lane | Second concurrent call → `ai_busy`; abort cleaned up in `finally` | Test output |
+| T-19-08 | TSD §5.5 | `AI_FAKE` | A real server path; route, retrieval, resolution and containment all execute | Test output |
+| T-19-09 | TSD §5.7 | Containment | **Empty permitted set forbids every figure** | Explicit test |
+| T-19-10 | §19.3 | Tests + fixtures | Nine fixtures, each with an asserted verdict | Test output |
+
+*Stop-condition override, T-19-09:* if any containment check cannot be implemented as specified, stop.
+Shipping three of four checks is not a partial success.
+
+**Part 4.** `npm run test -- server/ai` · the nine fixtures · optional `RUN_MODEL_TESTS=1` grammar
+probe against a real model.
+**Part 5.** All SQG. Additional: grep proves no prompt, question, answer, allergy or name is logged.
+
+---
+
+### P20 — Slice: recommendation explanations
+
+| | |
+|---|---|
+| **Role** | Full-stack Engineer |
+| **Objective** | A one-sentence model-phrased reason per recommendation, with deterministic fallback |
+| **Value** | Demonstrates the architecture's central claim — AI enhances, and its failure degrades rather than breaks |
+| **Preconditions** | P19 and P10 green |
+| **Dependencies** | P19, P10 |
+| **Authoritative sources** | PRD FR-009; TSD §5.7; SDD §9.6 |
+| **Scope** | Explanation prompt, lane, containment over `reason`, client rendering |
+| **Out of scope** | The assistant (P21) |
+| **Deliverables** | Explained recommendations |
+| **Expected files** | `apps/server/src/ai/explanation.ts`, Home rendering updates |
+
+**Part 2 — Impact.** Risk: a 12 s budget deliberately differs from chat's 30 s; unifying them would
+make a slow model delay every recommendation. Ownership: Backend + Frontend.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-20-01 | TSD §3.3 | Prompt + schema | `explanationReplySchema` enforced | Test output |
+| T-20-02 | TSD §5.5 | Lane wiring | 12 s budget, not 30 | Source + test |
+| T-20-03 | TSD §5.7 | Containment | A denied claim or bad figure falls back to template text | Test output |
+| T-20-04 | PRD FR-009 | Client rendering | Fallback is visibly marked | Test output |
+| T-20-05 | §19.4 | Integration tests | Pass under `AI_FAKE` | Test output |
+| T-20-06 | PRD §13 | Ollama-stopped test | Recommendations still 200 within budget | Test output |
+
+**Part 4.** `npm run test -- server/ai/explanation recommendations`; a manual run with Ollama stopped.
+**Part 5.** All SQG. Additional: a failed explanation never fails the request.
+
+---
+
+### P21 — Slice: grounded assistant
+
+| | |
+|---|---|
+| **Role** | AI Integration Architect + Frontend Engineer |
+| **Objective** | The assistant, end to end |
+| **Value** | The product's second core idea, and the one with the most ways to be subtly wrong |
+| **Preconditions** | P19 green |
+| **Dependencies** | P19, P06 |
+| **Authoritative sources** | PRD FR-015, §7.4, §8.4; §11.6; SDD §9; §15 |
+| **Scope** | Chat route, deterministic no-model paths, citations, error mapping, screen, states |
+| **Out of scope** | Conversation history of any kind |
+| **Deliverables** | Working assistant |
+| **Expected files** | `apps/server/src/routes/chat.ts`, `apps/mobile/src/features/assistant/**` |
+
+**Part 1 — Reconnaissance.** **TSD §5.4's** five ordered handler steps; §11.6's field contract; §15.3's message table; PRD §7.4's
+bounded shapes; TSD §4.9's scope rule.
+
+**Part 2 — Impact.** Risk: calling the model when the domain already answered wastes 11 s and
+reintroduces a fabrication surface for no gain; the two no-model paths must be proven by asserting the
+provider was **not** invoked, not merely that the response looks right. Ownership: Backend then
+Frontend.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-21-01 | TSD §5.4 | Route handler | The five steps execute in order | Test output |
+| T-21-02 | §15.3 | No-model paths | Provider **not invoked** — asserted with a spy | Test output |
+| T-21-03 | TSD §5.5 | Citations | Resolved by id from `namedMeals`, never parsed from text | Test output |
+| T-21-04 | §11.6 | Error mapping | No answer text on any 503 | Test output |
+| T-21-05 | PRD FR-015 | Assistant screen | 500-character limit enforced client-side | Test output |
+| T-21-06 | PRD §7.3 | Citation UI | Cited meals shown beside the answer | Test output |
+| T-21-07 | PRD §12 | States | Unavailable and answered-false have distinct copy | Test output |
+| T-21-08 | §11.6 | Integration tests | Every C-05 case | Test output |
+| T-21-09 | §19.4 | E2E | Superlative with citations; disabled path does not hang | Playwright report |
+
+**Part 4.** `npm run test -- server/chat assistant` · `npm run test:e2e -- assistant assistant-disabled`
+· a manual pass against a real `gemma3:4b`.
+**Part 5.** All SQG. Additional: no conversation history is transmitted or retained; the transcript is
+local display only.
+
+---
+
+### P22 — Mobile-web surface
+
+| | |
+|---|---|
+| **Role** | Frontend Architect (web) |
+| **Objective** | Make the web export a delivery surface, not a test artefact (D-01) |
+| **Value** | It is the surface you can open on any phone without installing anything |
+| **Preconditions** | P13 green; feature slices complete enough to navigate |
+| **Dependencies** | P13, P21 |
+| **Authoritative sources** | D-01; TSD §6.2 linking; PRD §10.1, §10.5; §20 |
+| **Scope** | Build, linking, direct URL, back/forward, param validation, web storage, layout, bundle |
+| **Out of scope** | PWA, service worker, offline caching, installability |
+| **Deliverables** | A verified web build |
+| **Expected files** | `apps/mobile/src/navigation/linking.ts`, build config |
+
+**Part 2 — Impact.** Risk: URL-sourced params are strings or arrays and bypass every compile-time
+guarantee — a repeated query key yields an array where the code expects a string. Web storage is
+`localStorage`, whose quota behaviour differs from native.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-22-01 | TSD §2.4 | Web build | `expo export --platform web` succeeds and runs | Build output |
+| T-22-02 | TSD §6.2 | Linking config | A path per deep-linkable screen | File + test |
+| T-22-03 | §20 | Direct URL | Every path loads its screen from a cold start | Playwright |
+| T-22-04 | §20 | Back/forward | Correct across tabs and the modal | Playwright |
+| T-22-05 | TSD §6.2 | Param validation | An array-valued query param is rejected, not coerced | Test output |
+| T-22-06 | TSD §6.4 | Web storage | Bound refusal and quarantine behave as on native | Test output |
+| T-22-07 | §20 | Layout | No horizontal scroll at 320/375/414/768 px | Playwright screenshots |
+| T-22-08 | §20 | Bundle | Size recorded; images lazy | Build report |
+
+**Part 4.** `npm run build:web` · `npm run test:e2e` at four viewports.
+**Part 5.** All SQG, with SQG-15 mandatory.
+
+---
+
+### P23 — Accessibility conformance
+
+| | |
+|---|---|
+| **Role** | Accessibility Specialist |
+| **Objective** | PRD §10.5 satisfied and evidenced across every screen |
+| **Value** | Accessibility retrofitted is accessibility half-done; this phase exists because the shared components made it cheap |
+| **Preconditions** | All feature slices complete |
+| **Dependencies** | P18, P21 |
+| **Authoritative sources** | PRD §10.5; TSD §6.7; §14.2; X-05 |
+| **Scope** | Roles, labels, targets, scaling, colour independence, focus, motion, contrast |
+| **Out of scope** | Changing PRD §10.5 (X-05 remains a proposed amendment) |
+| **Deliverables** | An audited, evidenced pass |
+| **Expected files** | Component and screen updates; `design-system/DECISIONS.md` |
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-23-01 | PRD §10.5 | Roles and labels | Every interactive element has both | Audit table |
+| T-23-02 | PRD 2.1.0 §10.5 | Targets | ≥ 48 dp everywhere, which satisfies iOS 44 pt and web 24 px | Measurement table |
+| T-23-03 | PRD §10.5 | Font scaling | No clipping at the largest OS setting | Screenshots |
+| T-23-04 | PRD §10.5 | Colour independence | Every status has a non-colour carrier | Audit table |
+| T-23-05 | §14.2 | Focus and announcement | Focus preserved on validation failure; async results announced | Test output |
+| T-23-06 | PRD §10.5 | Reduced motion | Respected | Test output |
+| T-23-07 | §14.2 | Contrast + checklist | AA in both themes; the tool's pre-delivery checklist run in full | Checklist output |
+
+**Part 4.** `npm run test -- a11y` · the contrast test · manual screen-reader traversal of the five tabs.
+**Part 5.** All SQG, with SQG-16 mandatory.
+
+---
+
+### P24 — Integration and E2E suite completion
+
+| | |
+|---|---|
+| **Role** | QA Architect |
+| **Objective** | The six flows of TSD §8.4, running green in a model-less environment |
+| **Value** | These are the only tests that prove the product works rather than that a unit does |
+| **Preconditions** | P21, P22, P23 green |
+| **Dependencies** | P21, P22, P23 |
+| **Authoritative sources** | TSD §8.3, §8.4; §19 |
+| **Scope** | The `e2e` package and six specs |
+| **Out of scope** | Snapshot-only assertions |
+| **Deliverables** | A complete E2E suite |
+| **Expected files** | `e2e/**` |
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-24-01 | TSD §8.1 | Harness extended | The P13 harness gains the viewport matrix and shared fixtures; it is not recreated | Config diff |
+| T-24-02 | TSD §8.4 | Spec 1 | First launch → onboarding → recommendations | Report |
+| T-24-03 | TSD §8.4 | Spec 2 | Peanut allergy excludes from Home **and** Explore | Report |
+| T-24-04 | TSD §8.4 | Spec 3 | Favourite survives reload | Report |
+| T-24-05 | TSD §8.4 | Spec 4 | Custom meal create → edit → delete | Report |
+| T-24-06 | TSD §8.4 | Spec 5 | Assistant answers a superlative with citations | Report |
+| T-24-07 | TSD §8.4 | Spec 6 | AI disabled shows the message and does not hang | Report |
+
+**Part 4.** `npm run test:e2e` with `AI_FAKE=true`.
+**Part 5.** All SQG. Additional: no spec asserts only a snapshot.
+
+---
+
+### P25 — Performance and reliability
+
+| | |
+|---|---|
+| **Role** | Performance Engineer |
+| **Objective** | Measure against PRD §10.1 and prove the degradation paths |
+| **Value** | The SLO table is a claim until something measures it |
+| **Preconditions** | P24 green |
+| **Dependencies** | P24 |
+| **Authoritative sources** | PRD §10.1, §10.2; SDD §10, §11 |
+| **Scope** | Five measurements, cold-start behaviour, three failure injections |
+| **Out of scope** | Optimisation work not justified by a measurement |
+| **Deliverables** | A measurement record |
+| **Expected files** | `docs/` measurement notes (or a Plan.md appendix) |
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-25-01 | PRD §10.1 | Startup measurement | ≤ 2.5 s recorded, or a documented miss | Timing output |
+| T-25-02 | PRD §10.1 | Interaction measurement | ≤ 150 ms | Timing output |
+| T-25-03 | PRD §10.1 | Recommendation measurement | ≤ 2 s without AI | Timing output |
+| T-25-04 | PRD §10.1 | Chat latency | Warm figure recorded; 30 s timeout behaves | Timing output |
+| T-25-05 | SDD §9.7 | Cold start | First request may 503 and recovers; UI says so | Recording |
+| T-25-06 | SDD §10 | Failure injection | Server down, Ollama down, corrupt entry — each degrades as specified | Test output |
+
+**Part 4.** Repeat each measurement three times; record median and worst.
+**Part 5.** All SQG. Additional: a missed target is recorded as a known limitation, **never** by
+relaxing the target.
+
+---
+
+### P26 — CI, build, deployment preparation
+
+| | |
+|---|---|
+| **Role** | Release Engineer |
+| **Objective** | One CI job that runs everything, and two verified production builds |
+| **Value** | The gate that keeps the previous 25 phases from regressing |
+| **Preconditions** | P24 green; git initialised |
+| **Dependencies** | P24, P01 |
+| **Authoritative sources** | TSD §2.4, §8.1; SDD §16; A-06 |
+| **Scope** | Workflow, audit step, both builds, local run procedure |
+| **Out of scope** | Hosting, blue/green, provider deployment (A-06) |
+| **Deliverables** | A green CI run |
+| **Expected files** | `.github/workflows/ci.yml` |
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-26-01 | TSD §8.1 | Workflow | One job, on push and PR | Run URL |
+| T-26-02 | TSD §2.4 | Steps | `npm ci` → `check` → builds → E2E with `AI_FAKE` | Run log |
+| T-26-03 | §19.5 | Audit step | `npm audit --audit-level=high` runs; findings recorded and triaged (X-08) | Run log |
+| T-26-04 | §19.5 | Server artefact | Boots and answers `/health` | Run log |
+| T-26-05 | §20 | Web artefact | Served, and a deep link loads | Run log |
+| T-26-06 | SDD §2.3 | Run procedure | A clean machine can follow it start to finish | Written procedure |
+
+**Part 4.** A full CI run from a clean checkout.
+**Part 5.** All SQG. Additional: CI passes without Ollama installed.
+
+---
+
+### P27 — Documentation
+
+| | |
+|---|---|
+| **Role** | Technical Writer / Staff Engineer |
+| **Objective** | A future reader can run, understand and modify the project |
+| **Value** | The README is the only entry point someone returning in six months has |
+| **Preconditions** | P26 green |
+| **Dependencies** | P26 |
+| **Authoritative sources** | SDD §2.3; §21; §14 |
+| **Scope** | README, env example reconciliation, design decisions, document divergence check, plan status update |
+| **Out of scope** | **Editing PRD, SDD or TSD** |
+| **Deliverables** | `README.md`, finalised `DECISIONS.md`, updated statuses |
+| **Expected files** | `README.md`, `.env.example`, `design-system/DECISIONS.md`, `Plan.md` |
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-27-01 | SDD §2.3 | README | Prerequisites, install, three run modes, test commands | File |
+| T-27-02 | TSD §5.2 | Env example | Matches the shipped config schema exactly | `diff` |
+| T-27-03 | §14 | Decisions | Every tool recommendation has a verdict | File review |
+| T-27-04 | All three docs | Divergence check | Any divergence recorded as a defect; **documents unchanged** | Defect list |
+| T-27-05 | §17 | Status update | Every task carries a terminal status | This file |
+
+*Stop-condition override, T-27-04:* if the implementation diverges from a document, record it. Do not
+edit the document to match the code — that would make the specification describe whatever was built.
+
+**Part 4.** Follow the README on a clean checkout and confirm the app runs.
+**Part 5.** All SQG. Additional: PRD, SDD and TSD are byte-identical to their state at plan time,
+unless you approved an amendment.
+
+---
+
+### P28 — Final whole-application audit
+
+| | |
+|---|---|
+| **Role** | Independent Code Auditor (not the implementer) |
+| **Objective** | An evidence-based verdict on release readiness |
+| **Value** | The only phase whose job is to disbelieve the previous 27 |
+| **Preconditions** | P27 green; all phases terminal |
+| **Dependencies** | P27 |
+| **Authoritative sources** | Everything |
+| **Scope** | The whole repository, every contract, every gate, every phase report |
+| **Out of scope** | Fixing what it finds — findings are recorded, and remediation is a new decision |
+| **Deliverables** | The final audit report |
+| **Expected files** | `docs/final-audit.md` |
+
+**Part 1 — Reconnaissance.** All 27 phase completion reports; every gate result; the full diff.
+
+**Part 2 — Impact.** Reviews everything; changes nothing.
+
+| ID | Inputs | Expected changes | Acceptance | Evidence |
+|---|---|---|---|---|
+| T-28-01 | §22 | Requirement audit | All 15 FRs traced to code and a passing test | Matrix with results |
+| T-28-02 | §11 | Contract audit | All five endpoints match their contract block | Per-endpoint results |
+| T-28-03 | §12.2 | Architecture audit | Six rules hold; no cycles; no duplicated domain logic | Tool output |
+| T-28-04 | SQG-05…07, 10 | Hygiene audit | Line-by-line on changed and critical code; risk-prioritised elsewhere | Findings list |
+| T-28-05 | SQG-08, 09 | Naming and size | Every **file** ≤ 350 lines across `packages/**` and `apps/**` — not components only | Measurement |
+| T-28-06 | §15 | AI audit | Four checks live; no user data in prompts or logs | Test + grep output |
+| T-28-07 | §14 | Design-system audit | No colour literals; both themes; checklist run | Grep + checklist |
+| T-28-08 | §20, §23 | Web and a11y audit | Both evidenced | Reports |
+| T-28-09 | §19.5 | Full evidence run | Every row of the evidence table produced | Command output |
+| T-28-10 | All | **Final report + verdict** | Report contains all 15 required parts | `docs/final-audit.md` |
+
+**Part 4.** The complete §19.5 evidence table, executed in one sitting from a clean checkout.
+
+**Part 5 — Gate.** The audit's own standard: **no claim without evidence.** "No bugs" and "no errors"
+are not permitted conclusions; the permitted conclusion is that all defined gates pass, with residual
+risks named. The verdict is `GO`, `CONDITIONAL GO` (with the conditions enumerated), or `NO-GO` (with
+the blocking defects enumerated).
+
+**T-28-10 is the final task of this plan.**
+
+---
+
+## 19. Testing and Acceptance Strategy
+
+### 19.1 Tiers, ownership, environments
+
+| Tier | Files | Environment | Owner | Pass criterion |
+|---|---|---|---|---|
+| Unit | `packages/*/src/**/*.test.ts`, `apps/*/src/**/*.test.ts` | node | Domain / Backend / Frontend engineer per package | Every vector in §19.3 asserted |
+| Integration | `**/*.integration.test.ts` | node + supertest, `AI_FAKE=true` | Backend Engineer | Every case in §19.4 |
+| Component (DOM) | `apps/mobile/src/**/*.dom.test.tsx` | jsdom, `react-native` → `react-native-web` | Frontend Engineer | Renders, interacts, and shows each required state |
+| E2E | `e2e/specs/*.spec.ts` | Playwright vs the web export, `AI_FAKE=true` | QA Engineer | All six flows |
+
+**No coverage thresholds** (TSD §8.1) — coverage is reported and read. **Snapshot-only tests are not
+accepted as proof of functional correctness**; a snapshot may accompany a behavioural assertion, never
+replace one.
+
+**Fixtures and test data.** The real 60-record catalog is the fixture for domain and integration
+tests — a synthetic catalog would test a catalog that does not ship. Model replies come from the nine
+recorded fixtures of T-19-10. Storage tests use an in-memory driver. No test reaches the network.
+
+### 19.2 Component test obligations
+
+Every screen in §14.5 has a DOM test proving it renders, responds to its primary interaction, and
+displays **each state listed for it in §14.5** — not a subset.
+
+### 19.3 Required unit vectors
+
+| Module | Vectors |
+|---|---|
+| `text` | Diacritic stripping; segment split on each punctuation class; `singularize` on `-ies`, `-ches`, `-ss`, `-us`; `containsTokenSequence` **rejecting a substring match** |
+| `money` | Cent arithmetic; formatting; no float literal anywhere in the test |
+| `meal-period` | `anchor−90` in · `anchor−91` out · `anchor+120` in · `anchor+121` out · equidistant → earlier period · midnight wrap with a 23:30 anchor · no window → `snack` |
+| `allergens` | Suppressor (`coconut milk` → tree-nut only; `water chestnut` → nothing); phrase beats token; wheat → gluten closure; unknown allergy matched by ingredient name; ambiguous term → `null`; non-canonical declared tag still resolves |
+| `diet` | All 25 pairs; vegan satisfies vegetarian but not the reverse; vegan satisfies halal-preference, vegetarian does not |
+| `scoring` | Each policy at each band edge; `null` nutrient → 0 with "not available"; exactly 125% of ceiling → 7; 0–100 clamp; tie-break by id; each of the three rejection reasons |
+| `relevance` | Token/prefix exclusivity; prefix below 3 chars ignored; phrase bonus; stop-words-only query → `[]`; score-0 omitted |
+| `chat-retrieval` | Safety before ranking; dislike demotes not excludes; no-lexical-match fallback; 5-cap; empty eligible |
+| `answer` | Every intent; ambiguity → unresolved; partial-`null` refusal; **superlative over `eligible`, listing over `context`**; figures from formatted strings; `count` yields empty `namedMeals` |
+| `containment` | Uncited id; each denylist phrase **including a negated one**; a wrong number in clean prose; a spelled cardinal; **empty permitted set forbids every figure**; an unnamed meal |
+| `promptSafety` | Control-character stripping; fence-marker redaction; angle-run collapse |
+| storage | Envelope round-trip; each of the five failure reasons quarantines; `schemaVersion−1` accepted and `−2` refused; bound refused on write, truncated on read |
+| stores | Reference preservation on an idempotent action; hydration does not clobber a pre-hydration edit |
+
+### 19.4 Required integration cases
+
+Each route's happy path · 400 on a malformed body with `details` naming the field · 400 when the chat
+body carries `goal` or `budget` · 404 on an unknown meal id · 503 `ai_disabled` when `AI_ENABLED=false`
+· 503 `ai_busy` on a second concurrent AI request · `answered: false` + 200 + `source: "local"` when
+filters exclude everything, **with the provider spy proving no call** · the same when no resolver
+matches · non-zero exit on an invalid catalog record · non-zero exit on `AI_KEEP_ALIVE=30` · a 65 KB
+body rejected.
+
+One **opt-in** case (`RUN_MODEL_TESTS=1`, excluded from CI): the grammar-constraint probe of §15.4.
+
+### 19.5 Evidence table — produced at every phase gate and in full at P28
+
+| Evidence | Command |
+|---|---|
+| Typecheck | `npm run typecheck` |
+| Lint | `npm run lint` |
+| Formatting | `npm run format:check` |
+| Unit tests | `npm run test -- --project unit` |
+| Integration tests | `npm run test -- --project integration` |
+| Component tests | `npm run test -- --project dom` |
+| End-to-end tests | `npm run test:e2e` |
+| Mobile viewport tests | `npm run test:e2e` at 320 / 375 / 414 / 768 px |
+| Accessibility checks | `npm run test -- a11y` + the tool's pre-delivery checklist |
+| UI UX Pro Max review | `python3 …/search.py … --domain ux` output recorded in `DECISIONS.md` |
+| Dependency audit | `npm audit --audit-level=high` |
+| Production build | `npm run build:server` and `npm run build:web` |
+
+Ten of the twelve rows are npm scripts, all created by T-01-08. The `test:e2e` harness it calls is created by
+T-13-07. The two non-script rows are `npm audit` (see X-08) and the UI UX Pro Max `search.py` invocation.
+**No script is invented at use time**; each has a creating task.
+
+### 19.6 Manual checks (no practical automation)
+
+Screen-reader traversal order on the five tabs (P23) · font scaling at the largest OS setting (P23) ·
+a real-model assistant pass against `gemma3:4b` (P21) · cold-model 503-then-recover behaviour (P25) ·
+following the README on a clean machine (P27).
+
+---
+
+## 20. Mobile Web Optimization Strategy
+
+Applies to the `expo export --platform web` surface, which D-01 makes first-class. Native-only items
+are marked.
+
+| Obligation | Acceptance criterion | Phase |
+|---|---|---|
+| Mobile-first layout | Every screen usable at 320 px without a horizontal scrollbar | P22 T-22-07 |
+| Supported viewports | 320 · 375 · 414 · 768 px, verified by screenshot | P22, P24 |
+| No unintended horizontal scroll | Body never scrolls horizontally; wide content scrolls inside its own container | P22 |
+| Touch targets | ≥ 48 dp, satisfying iOS 44 pt and web 24 px (PRD 2.1.0 §10.5) | P23 T-23-02 |
+| No hover-only interaction | Every hover affordance has a tap/focus equivalent | P23 |
+| Mobile form inputs | Correct `keyboardType` per field; no zoom-on-focus | P14, P17 |
+| Soft keyboard | Focused input stays visible; the form scrolls rather than being covered | P14, P17 |
+| Browser back | Correct across tabs and the modal | P22 T-22-04 |
+| Direct URL navigation | Every deep-linkable screen loads cold from its URL | P22 T-22-03 |
+| URL param safety | Array-valued or unexpected params rejected, never coerced | P22 T-22-05 |
+| Required states | Loading, empty, error, unavailable, retry on every data-driven screen | P13–P21 |
+| Orientation | Portrait-primary per `app.json`; no landscape-specific work required | P22 |
+| Asset optimisation | Images lazy-loaded with placeholders; no base64 in storage | P22 T-22-08 |
+| Bundle size | Measured and recorded; no threshold is invented, because no document sets one | P22 T-22-08 |
+| Semantic HTML | Delivered by react-native-web roles; the app exposes one `main` landmark | P22, P23 |
+| Keyboard navigation | Every control reachable and operable | P23 |
+| Focus management | Preserved on validation failure; moved deliberately, never on every blur | P23 T-23-05 |
+| Screen-reader labels | On every interactive element | P23 T-23-01 |
+| Colour contrast | WCAG AA in both themes | P23 T-23-07 |
+| Reduced motion | Respected | P23 T-23-06 |
+| Dark mode | Authored variants everywhere | P11, P23 |
+| Web storage parity | Bound refusal and quarantine verified against `localStorage` | P22 T-22-06 |
+
+**Explicitly not planned:** service worker, offline caching, installability, push, app manifest
+beyond what Expo emits. No document requires them.
+
+---
+
+## 21. Environment, CI, Build, and Deployment Strategy
+
+### 21.1 Environment schema
+
+| Variable | Type | Default | Validation |
+|---|---|---|---|
+| `PORT` | integer | `4000` | 1–65535 |
+| `AI_ENABLED` | boolean | `true` | — |
+| `AI_FAKE` | boolean | `false` | — |
+| `OLLAMA_BASE_URL` | url | `http://localhost:11434` | Trailing slashes stripped |
+| `OLLAMA_MODEL` | string | `gemma3:4b` | Non-empty |
+| `AI_KEEP_ALIVE` | duration | `30m` | `/^\d+(ms\|s\|m\|h)$/` — **a bare integer is rejected at boot** |
+| `USDA_DATASET_PATH` | path | *(unset)* | **Build-time only** (`npm run seed`), never read by the running server. Added by D-08; TSD §7.4 |
+| `OLLAMA_CHAT_TIMEOUT_MS` | integer | `30000` | 1000–120000 |
+| `OLLAMA_EXPLANATION_TIMEOUT_MS` | integer | `12000` | 1000–60000 |
+
+Parsed once into a frozen object; `process.env` is read in exactly one file. `.env` is gitignored;
+`.env.example` is committed. Generation parameters are **constants, not environment variables**
+(§15.5).
+
+### 21.2 CI
+
+One GitHub Actions job, on push and pull request:
+
+```text
+npm ci
+npm run check          # format:check && lint && typecheck && test
+npm run build:server
+npm run build:web
+npm run test:e2e       # AI_FAKE=true
+npm audit --audit-level=high
+```
+
+Ollama is not installed in CI — which is exactly what `AI_FAKE` exists for. The chat route, retrieval,
+resolution, prompt construction and containment all execute there; only the HTTP call is substituted.
+
+**Not planned:** matrix builds, branch protection (A-07: single developer), release automation,
+artefact publishing, deployment.
+
+### 21.3 Builds
+
+| Build | Command | Verification |
+|---|---|---|
+| Server | `npm run build:server` | Boot the artefact and call `/health` |
+| Web | `npm run build:web` | Serve `dist/` and load a deep link |
+| Native | `expo` development build | Manual, outside CI |
+
+### 21.4 Deployment
+
+Per A-06, the target is the developer's machine. P26 T-26-06 produces a written local run procedure.
+No hosting provider, no blue/green, no rollback runbook — none is required by any document, and
+inventing one would be scope expansion.
+
+---
+
+## 22. Requirements Traceability Matrix
+
+Every in-scope requirement maps to at least one implementation task and at least one verification
+activity.
+
+| FR | Requirement | Design source | Phase · tasks | Tests | Audit evidence |
+|---|---|---|---|---|---|
+| FR-001 | Startup and hydration | TSD §6.1, §6.4 | P12 · T-12-07…09 | `hydration.integration.test.ts`; E2E 1 | T-28-01 |
+| FR-002 | Onboarding | TSD §6.1, §6.3 | P14 · T-14-02, T-14-03, T-14-06 | `onboardingState.test.ts`; E2E 1 | T-28-01 |
+| FR-003 | Preferences | TSD §6.3, §6.4 | P14 · T-14-01, T-14-04, T-14-07 | `preferencesState.test.ts` | T-28-01 |
+| FR-004 | Meal-period detection | TSD §4.3 | P03 · T-03-06/07; P15 · T-15-01 | `meal-period.test.ts` (7 vectors) | T-28-01 |
+| FR-005 | Catalog retrieval | TSD §5.4, §6.5 | P09 · T-09-01…06; P12 · T-12-13 | `meals.integration.test.ts` | T-28-02 |
+| FR-006 | Nutrition data | TSD §3.3, §7.4, §6.7; §10.1 | P02 · T-02-04; P07 · T-07-06…T-07-09; P16 · T-16-03 | `mealSchema` range + `superRefine` tests; resolver, measure-parser and derivation unit tests; `NutritionBadge` DOM test | T-28-01, T-28-04 |
+| FR-007 | Recommendation safety | TSD §4.4, §4.6 | P04 · T-04-01…07; P05 · T-05-04; P10 · T-10-02 | `allergens.test.ts`; `recommendations.integration.test.ts`; E2E 2 | T-28-01, T-28-06 |
+| FR-008 | Scoring | TSD §4.6 | P05 · T-05-01…05 | `scoring.test.ts` (bands, clamp, tie-break, determinism) | T-28-01 |
+| FR-009 | AI explanation + fallback | TSD §5.5, §5.7 | P19 · T-19-01…10; P20 · T-20-01…06 | `explanation.integration.test.ts`; Ollama-stopped test | T-28-06 |
+| FR-010 | Explore and search | TSD §4.7, §5.4 | P05 · T-05-06…08; P09 · T-09-03; P13 · T-13-02/03 | `relevance.test.ts`; `Explore.dom.test.tsx`; E2E explore | T-28-01 |
+| FR-011 | Meal details | TSD §5.4, §6.8 | P16 · T-16-02, T-16-03 | `MealDetails.dom.test.tsx` | T-28-01 |
+| FR-012 | Favorites | TSD §6.3, §6.4 | P16 · T-16-01, T-16-04, T-16-05 | `favoritesState.test.ts`; E2E 3 | T-28-01 |
+| FR-013 | Custom meal CRUD | TSD §6.3, §6.4 | P17 · T-17-01…08 | `customMealsState.test.ts`; E2E 4 | T-28-01 |
+| FR-014 | Settings and reset | TSD §6.3, §6.6 | P18 · T-18-01…07 | `settings.dom.test.tsx` | T-28-01 |
+| FR-015 | Grounded assistant | TSD §4.8, §4.9, §5.5–§5.7 | P06 · T-06-01…08; P19 · T-19-01…10; P21 · T-21-01…09 | `chat-retrieval.test.ts`; `answer.test.ts`; `containment.test.ts`; `chat.integration.test.ts`; E2E 5, 6 | T-28-01, T-28-06 |
+
+**Non-functional coverage**
+
+| Requirement | Phase · tasks | Verification |
+|---|---|---|
+| PRD §10.1 latency | P25 · T-25-01…04 | Measured, three runs, median and worst |
+| PRD §10.2 reliability | P25 · T-25-05/06; P12 · T-12-07…09 | Failure injection; storage isolation tests |
+| PRD §10.3 security/privacy | P08 · T-08-08; P19 · T-19-03 | Log grep; prompt-absence test |
+| PRD §10.4 maintainability | P01 · T-01-05; P28 · T-28-04/05 | Lint rules; audit measurement |
+| PRD §10.5 accessibility | P23 · T-23-01…07 | Audit tables, contrast test, manual traversal |
+
+**Contract coverage:** C-01 → P08 T-08-07 · C-02, C-03 → P09 · C-04 → P10, P20 · C-05 → P21.
+
+**Unmapped requirements: none.** Every FR-001…FR-015 appears above with at least one task and one test.
+
+---
+
+## 23. Risk Register
+
+| ID | Risk | Likelihood | Impact | Mitigation | Owner | Phase |
+|---|---|---|---|---|---|---|
+| R-01 | Allergen inference misses a case — a user sees a meal containing their allergen | Medium | **Severe, and silent** | Effective tags = declared ∪ inferred; three independent conflict paths; phrase suppressors; the §19.3 vector list; P04 is single-threaded and not parallelised | Domain Engineer | P04 |
+| R-02 | Containment lets a false statement through | Medium | High | Four checks plus the grammar `enum`; the empty-permitted-set rule tested explicitly; nine fixtures; the domain resolves the answer so the model has nothing to decide | AI Architect | P19, P21 |
+| R-03 | A derived nutrition figure is wrong because a measure converted badly or a serving count was misjudged | Medium | High | Values come from a published, versioned table with an `fdcId` per figure; the all-or-nothing rule refuses partial sums; unit tests per measure form; three meals checked by hand; servings surfaced in the UI as authored | Catalog Author | P07 |
+| R-13 | `jsdom@30.0.1` (TSD §2.1) declares Node `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0`; the dev machine runs v24.10.0, so npm emits EBADENGINE | **Certain** (observed at P01) | Medium | Nothing before P12 uses jsdom, so P01–P11 are unaffected. Resolve before P12 by raising Node to ≥24.15.0 or re-pinning jsdom — a TSD §2.1 amendment either way | Frontend Engineer | P12 |
+| R-12 | The USDA supporting archive is dated 2022-10-28, older than the Foundation release | Low | Low | Composition of staple foods does not drift materially; the vintage is recorded in every record's `nutritionProvenance.dataset`, so a future refresh is a data change, not an archaeology exercise | Catalog Author | P07 |
+| R-04 | Resolver scope error — superlative computed over `context` not `eligible` | Medium | High | Explicit scope-rule test with divergent sets; called out in P06's impact analysis | Domain Engineer | P06 |
+| R-05 | Cold model exceeds the 30 s budget on first request | **High** | Low | Designed degradation: 503 then self-recovery; `AI_KEEP_ALIVE=30m`; the UI explains it | Backend Engineer | P19, P25 |
+| R-06 | Web surface diverges from native (storage, back, deep links) | Medium | Medium | P22 exists for exactly this; web storage parity tested rather than assumed | Frontend Architect | P22 |
+| R-07 | UI UX Pro Max guidance pulls the design toward a landing page | **Occurred** | Medium | X-06: pattern rejected with reason; every recommendation carries an adopt/reject verdict in `DECISIONS.md` | UI/UX Architect | P11 |
+| R-08 | Scope creep from the planning brief's generic template (database, PWA, idempotency) | Medium | Medium | X-02, X-03 and §6.4 record each as out of scope with a reason; SQG-02 fails any untraceable change | TPM | All |
+| R-09 | ~~PRD §10.5's universal 44×44 understates Android's 48 dp~~ | — | — | **CLOSED.** PRD amended to 2.1.0; the platform-specific rule is now the requirement | Accessibility | P23 |
+| R-10 | `uipro` is a third-party global npm package from a publisher differing from the repo owner | Low | Medium | Flagged before install; the skill is read-only design data; no project dependency takes it | TPM | §13 |
+| R-11 | Single developer — no second reviewer for the audit | **Certain** | Medium | P28 is run as an independent pass with fresh eyes and evidence-only conclusions; A-07 records the limitation honestly | Auditor | P28 |
+
+---
+
+## 24. Final Whole-Application Audit Phase
+
+P28 (§18). Its report must contain all fifteen parts:
+
+1. Executive summary
+2. Implemented scope
+3. Missing or incomplete scope
+4. Out-of-scope items confirmed absent
+5. Architecture compliance
+6. Contract compliance
+7. Test and build evidence
+8. AI/Ollama assessment
+9. UI/UX and design-system assessment
+10. Mobile-web assessment
+11. Accessibility assessment
+12. Known defects and limitations
+13. Technical debt
+14. Deployment readiness
+15. Residual risks, and the verdict — `GO` · `CONDITIONAL GO` (conditions enumerated) · `NO-GO`
+   (blocking defects enumerated)
+
+**Audit standard.** Line-by-line review of changed and critical code; risk-prioritised review of
+unchanged integration boundaries. **No claim without evidence.** "No bugs" and "no errors" are not
+permitted conclusions — the permitted conclusion is that all defined gates pass, with residual risks
+named.
+
+---
+
+## 25. Application Definition of Done
+
+The application is done when **all** of the following hold:
+
+1. All 15 functional requirements are implemented and each has a passing test (§22).
+2. All 5 endpoint contracts match §11 exactly.
+3. `npm run check` is green.
+4. Both production builds succeed and are verified by running them.
+5. All six E2E flows pass with `AI_FAKE=true`, and the assistant has passed one manual run against a real `gemma3:4b`.
+6. Every screen handles the states listed for it in §14.5, in both themes, with accessibility metadata.
+7. The six dependency rules of §12.2 hold; no cycles; no duplicated domain logic.
+8. No `any`, no unsafe cast, no blanket suppression; every **file** ≤ 350 lines (PRD §10.4).
+9. No invented meal, nutrition, user, or product content exists anywhere.
+10. `npm audit --audit-level=high` has been run, and its findings triaged and recorded (X-08).
+11. `README.md` lets a clean machine run the project.
+12. Every task in §17 carries a terminal status, with deferrals explained.
+13. P28 has issued `GO` or `CONDITIONAL GO` with its conditions recorded.
+
+---
+
+## 26. Planning Self-Audit
+
+Performed line by line over this document before it was finalised.
+
+| Check | Result |
+|---|---|
+| Internal consistency | **Pass** — one task-ID scheme; §17, §18 and §22 reference the same IDs |
+| Correct phase order | **Pass after correction** — the first pass certified this wrongly (defect 8). Four missing edges were added and one impossible parallel set withdrawn; the graph is now acyclic and complete against the dependencies §18 states |
+| Complete dependencies | **Pass** — every phase lists preconditions and dependencies; every task lists `Depends` |
+| Complete requirement coverage | **Pass** — all 15 FRs in §22, each with ≥1 task and ≥1 test; zero unmapped |
+| No duplicate or contradictory tasks | **Pass** — task IDs unique; no two tasks produce the same artifact |
+| No vague tasks | **Pass** — no task reads "finish", "add tests", "complete", "handle errors"; each names a file or behaviour |
+| No invented requirements | **Pass** — every task cites a PRD/SDD/TSD section. §6.4 records each brief-mandated item that has no document support as out of scope, with a reason |
+| No missing contracts | **Pass** — all five endpoints have full contract blocks in §11; §11.7 confirms nothing is missing |
+| No missing verification gates | **Pass after correction** — 13 phases appeared to apply an SQG subset (defect 4); the SQG now applies in full everywhere |
+| No conflicting subagent ownership | **Pass after correction** — `e2e/` was shared by six phases (defect 20); ownership is now split so each phase writes exactly one spec file |
+| UI UX Pro Max update evidence present | **Pass** — §13, with pre-state, commands, post-state and nine validation gates |
+| Frontend planning uses the full available capability set | **Pass** — generator, three domains, stack guidance, checklist; §13.5 records what is unavailable and why |
+| No application implementation performed | **Pass** — §1's boundary table; the repository still contains only four markdown files |
+| All assumptions and blockers labeled | **Pass** — A-01…A-07, B-01…B-04, X-01…X-07, Q-01…Q-05 |
+| Future sessions can execute one phase at a time | **Pass** — each phase carries preconditions, scope, out-of-scope, tasks with acceptance and evidence, a gate, and a report template |
+
+**Findings corrected during the first-pass self-audit**
+
+| Finding | Correction |
+|---|---|
+| The brief's `to`-path gate item does not apply to React Navigation | Restated as SQG-13 and logged as X-04 |
+| §17 initially lacked a stop condition per task | A default stop condition defined once in §17, with per-task overrides in §18 |
+| Explanation and chat budgets risked being unified | P20 T-20-02 asserts 12 s explicitly, with the reason |
+
+### 26.1 Independent audit and its corrections
+
+The first-pass self-audit above was **not sufficient**, and saying so is part of the record. An
+independent adversarial audit was then run against this document and the three source documents. It
+found **21 defects — one Critical, eight Major, twelve Minor** — including two cases where the
+self-audit had certified a property the document did not have. All 21 are corrected below.
+
+| # | Severity | Defect | Correction |
+|---|---|---|---|
+| 1 | **Critical** | §11.5 admitted a `503` on `POST /api/v1/recommendations`, contradicting PRD FR-009 and PRD §13 — an implementer could have built a failure path that breaks a binding acceptance criterion | C-04 error statuses reduced to `400` only, with the degradation rule stated |
+| 2 | Major | Six tasks produced Playwright evidence before T-24-01 created the harness — a real forward reference and cycle | Harness creation moved into T-13-07; T-24-01 now extends it and depends on it |
+| 3 | Major | §2 still said 214 tasks, and the self-audit claimed it had been corrected | §2 corrected; the false self-audit row removed rather than reworded |
+| 4 | Major | §18.0 said every phase applies the whole SQG, but 13 phases listed subsets | SQG restated as applying in full always; per-phase lists are now elevated scrutiny |
+| 5 | Major | `npm audit` was mandated as a gate although no document requires it and TSD §2.4 names a single gate | Recorded as deviation X-08; run and reported, never phase-blocking |
+| 6 | Major | `build:server` was required by four sections with no task creating it | Added to T-01-08, with the reason it is not in TSD §2.4 |
+| 7 | Major | T-01-07 demanded four Vitest projects; TSD §8.1 defines three plus Playwright | Corrected to three, with the RNW alias inside `dom` |
+| 8 | Major | §16 omitted four real edges and certified P03·P07 as parallel when P07 transitively depends on P03 | Four edges added; the parallel claim withdrawn in place, not deleted |
+| 9 | Major | `DEFAULT_PREFERENCES` and `assistantCopy.ts` were cited to TSD sections that do not contain them | Both recorded as plan-introduced under A-09; false citations removed |
+| 10 | Major | §15.1 let the model author a refusal, which TSD §5.4 makes unreachable and SDD §9.1 forbids | Row replaced — the model authors no prose of its own |
+| 11 | Minor | §2 and §16 gave different critical paths, and §2 used a non-existent edge | §2 now defers to §16 |
+| 12 | Minor | "25-item checklist" — the installed checklist has 34 items | Count removed |
+| 13 | Minor | SQG-09 said component ≤ 350 lines; PRD §10.4 says **files** | Corrected in SQG-09, T-28-05 and the Definition of Done |
+| 14 | Minor | Versioning attributed to SDD §7.1; colour literals and nutrition to PRD §10.4 — none contains them | Versioning recorded as A-08; the other two re-cited correctly |
+| 15 | Minor | A dependency-cycle checker was mandated although SDD §16 declines one | Recorded as X-10; kept as an ESLint rule, not a new tool |
+| 16 | Minor | P21 cited §11.6 five ordered steps; §11.6 is a field table | Re-cited to TSD §5.4 in all three places |
+| 17 | Minor | "nine punctuation classes" is derivable from nothing | Replaced with a reference to the actual character class |
+| 18 | Minor | §4 had no rank for the user directives D-01…D-06 actually rest on | Rank 0 added, with the consequence spelled out |
+| 19 | Minor | PRD §12 (five states everywhere) versus TSD §6.8 (fewer per screen) was an unrecorded conflict | Recorded as X-09; PRD wins, §14.5 is the minimum |
+| 20 | Minor | `e2e/` was owned by QA while six feature phases wrote into it | Ownership split: QA owns harness and fixtures, each phase owns one spec file |
+| 21 | Minor | T-28-10 could be reached without T-28-07 and T-28-08, whose output its report must contain | Both added to its dependencies |
+
+**What this says about the first pass.** Defects 3 and 8 matter most, because in both the self-audit
+*certified* a property the document did not have. A self-audit by the author of a document is worth
+running and is not worth trusting on its own.
+
+### 26.2 Amendments accepted after the audit
+
+Both proposed amendments were approved and applied to the source documents rather than carried as
+open items (D-07):
+
+| Amendment | Document change | Effect on this plan |
+|---|---|---|
+| **X-05 — touch targets** | `PRD.md` → **2.1.0**. §10.5 now reads 44 pt iOS / 48 dp Android / 24 px web, with 48 dp as the single build-to value | §14.1, §20 and T-23-02 updated; R-09 closed |
+| **X-07 — typeface** | `TSD.md` → **1.1.0**. §6.6 now fixes **Inter for headings and body**, falling back to system SF/Roboto, hierarchy carried by weight | §14.1 and §14.2 updated; the P11 decision record inherits a settled typeface instead of an open one |
+
+One correction worth stating plainly: the generator's original suggestion was *Inter heading, Playfair
+Display body*, which is a mismatched cross-product of two catalog rows and would have put a display
+serif in the body slot of a mobile application. The typography catalog's coherent row for the adopted
+style family is **Flat Design Mobile (System Bold)** — Inter for both, system fallback — and that is
+what was adopted. Accepting an amendment meant accepting the *decision to fix a typeface*, not
+accepting a recommendation that was visibly wrong.
+
+**Residual weaknesses, stated rather than hidden**
+
+- P07's 60-record authoring is the least automatable task in the plan and the most exposed to human error. The range bounds are a floor, not a proof of correctness.
+- A-03 (Ollama available) is unverified until P19. If it fails, P19–P21 can still be completed under `AI_FAKE`, but real-model acceptance defers to a later session.
+- R-11: with one developer, P28's independence is procedural rather than structural.
+
+---
+
+## 27. Final Planning Report
+
+**Project documents inspected.** `PRD.md` v2.0.0 (17,732 B), `SDD.md` v2.0.0 (34,232 B), `TSD.md`
+v1.0.0 (77,250 B), the project directory and its `.claude/settings.local.json`, the user-level
+`~/.claude/CLAUDE.md`, and the (empty) project memory directory. No repository agent instructions, ADR
+files, manifests, source, tests, or CI configuration exist — confirmed by exhaustive listing, not
+assumed.
+
+**Skills and plugins inspected and used.** `superpowers` 6.3.0 (commit `b36e082`) — the
+`brainstorming` skill was used earlier in this session for document work; no Superpowers skill was
+invoked for this plan, because the planning brief supplied its own process. `ui-ux-pro-max` —
+inspected, repaired, updated, validated and used (§13, §14). No other skill, plugin, or MCP server
+was used, and none is claimed.
+
+**UI UX Pro Max evidence.** Repository `github.com/nextlevelbuilder/ui-ux-pro-max-skill`, inspected
+2026-09-13, public, branch `main`, 255 commits. Upstream `ui-ux-pro-max-cli@2.15.0` (npm `latest`,
+released 8/13/2026). Prior installed version **unidentifiable**; prior state **non-functional**
+(dangling symlink stubs, no `search.py`, no catalogs). Repaired with
+`npm install -g ui-ux-pro-max-cli@latest` and `uipro init --ai claude --global --force`. Post-state:
+`SKILL.md` 55,507 B (SHA256 `98a17c9139cf…`), real `data/` and `scripts/` directories, 13 CSV
+catalogs plus 22 stack files, five Python modules. **All nine validation gates pass.** Discrepancies
+recorded: `--dry-run` is documented but not implemented in 2.15.0; the npm publisher differs from the
+GitHub owner. Outstanding: the `~/.agents` copy remains broken pending Q-01.
+
+**Major planning decisions and their sources.** D-01 platform (user) · D-02 no database (user; SDD
+§17) · D-03 global tool repair (user) · D-04 no prior-build reference (user) · D-05 ledger location
+(brief §1.3) · D-06 SDD §17 as the decision record (SDD §17). Phase ordering derives from TSD §10,
+expanded into vertical slices per the brief §6, with P13 inserted as a tracer checkpoint.
+
+**Conflicts and blockers.** Ten conflicts (X-01…X-10), all recorded with sources, impact and resolution;
+none silently resolved and **none left open** — X-05 and X-07 were accepted and applied (D-07),
+amending PRD §10.5 to 2.1.0 and TSD §6.6 to 1.1.0. X-08, X-09 and X-10 were found by the independent
+audit, not by the self-audit. Four blockers (B-01…B-04): B-01 and B-02 **cleared** by the tool
+repair; B-03 and B-04 are expected greenfield conditions resolved by P01. Five questions were raised (Q-01…Q-05); **three are now answered** — Q-01
+(the `.agents` copy, repaired), Q-02 and Q-03 (both amendments accepted). Q-04 and Q-05 retain their
+stated defaults. Nine assumptions (A-01…A-09), two of which (A-08, A-09) record policies and symbols this plan
+introduced rather than inherited.
+
+**Requirement coverage.** 15 of 15 functional requirements mapped to tasks and tests. 5 of 5 endpoint
+contracts specified. 5 non-functional requirement groups mapped. **Zero unmapped requirements.**
+
+**Scale.** 29 phases · 226 tasks · 15 requirements · 5 contracts · 10 screens · 9 domain modules ·
+6 storage keys · 16 shared components · 6 E2E flows · 12 evidence commands.
+
+**Self-audit result: PASS, but only after an independent audit.** The author pass corrected three
+findings and missed twenty-one others, twice certifying a property the document did not have. An
+independent adversarial audit then found 21 defects — one Critical, eight Major, twelve Minor — every
+one of which is now corrected and listed in §26.1. Three residual weaknesses remain, stated openly.
+
+**Confirmation.** Application implementation was **not** started. No source file, manifest, config,
+test, or repository was created. `PRD.md`, `SDD.md` and `TSD.md` are unmodified. The only changes made
+to this machine were the UI UX Pro Max tool repair under `~/.claude/skills/` and one global npm
+package — both explicitly permitted as tool maintenance, neither touching the project.
+
+**Phase P01 has not been started.** It requires a separate, explicit instruction.
