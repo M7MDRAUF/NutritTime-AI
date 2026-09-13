@@ -1000,15 +1000,15 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-04-01 | `allergen-lexicon.ts`: `ALLERGEN_IMPLICATIONS`, `ALLERGEN_PHRASES` (longest-first, suppressors), `ALLERGEN_TOKENS` | T-03-03 | Not Started |
-| T-04-02 | `isCanonicalAllergen`, `normalizeAllergen` | T-04-01 | Not Started |
-| T-04-03 | Phrase-then-token inference with token claiming | T-04-02 | Not Started |
-| T-04-04 | `closeAllergenImplications` — fixpoint closure | T-04-02 | Not Started |
-| T-04-05 | `effectiveAllergenTags` — declared ∪ inferred, then closed | T-04-03, T-04-04 | Not Started |
-| T-04-06 | `conflictingAllergens` / `hasAllergenConflict` — the three independent match paths | T-04-05 | Not Started |
-| T-04-07 | `allergens.test.ts` — suppressors, phrase-beats-token, closure, unknown allergy by ingredient name, ambiguous term, non-canonical declared tag | T-04-06 | Not Started |
-| T-04-08 | `diet.ts`: `SATISFIED_BY` matrix, `isDietCompatible`, `unmetDietRequirement` | T-03-01 | Not Started |
-| T-04-09 | `diet.test.ts` — all 25 pairs plus both asymmetries named explicitly | T-04-08 | Not Started |
+| T-04-01 | `allergen-lexicon.ts`: `ALLERGEN_IMPLICATIONS`, `ALLERGEN_PHRASES` (longest-first, suppressors), `ALLERGEN_TOKENS` | T-03-03 | Completed |
+| T-04-02 | `isCanonicalAllergen`, `normalizeAllergen` | T-04-01 | Completed |
+| T-04-03 | Phrase-then-token inference with token claiming | T-04-02 | Completed |
+| T-04-04 | `closeAllergenImplications` — fixpoint closure | T-04-02 | Completed |
+| T-04-05 | `effectiveAllergenTags` — declared ∪ inferred, then closed | T-04-03, T-04-04 | Completed |
+| T-04-06 | `conflictingAllergens` / `hasAllergenConflict` — the three independent match paths | T-04-05 | Completed |
+| T-04-07 | `allergens.test.ts` — suppressors, phrase-beats-token, closure, unknown allergy by ingredient name, ambiguous term, non-canonical declared tag | T-04-06 | Completed |
+| T-04-08 | `diet.ts`: `SATISFIED_BY` matrix, `isDietCompatible`, `unmetDietRequirement` | T-03-01 | Completed |
+| T-04-09 | `diet.test.ts` — all 25 pairs plus both asymmetries named explicitly | T-04-08 | Completed |
 
 ### P05 — Domain III: scoring and relevance
 
@@ -2778,7 +2778,9 @@ activity.
 | R-02 | Containment lets a false statement through | Medium | High | Four checks plus the grammar `enum`; the empty-permitted-set rule tested explicitly; nine fixtures; the domain resolves the answer so the model has nothing to decide | AI Architect | P19, P21 |
 | R-03 | A derived nutrition figure is wrong because a measure converted badly or a serving count was misjudged | Medium | High | Values come from a published, versioned table with an `fdcId` per figure; the all-or-nothing rule refuses partial sums; unit tests per measure form; three meals checked by hand; servings surfaced in the UI as authored | Catalog Author | P07 |
 | R-14 | `money()` accepts amounts `moneySchema` rejects: the constructor enforces integer and non-negative, the schema additionally caps at 100,000 cents. TSD §4.2 states no maximum | Medium | Medium | Recorded at P03 rather than inventing a bound. P05 and P07 construct prices through `money()`; a price above the cap passes the constructor and fails validation at the boundary — the right place to catch it, a confusing place to debug it | Domain Engineer | P05, P07 |
-| R-15 | `tokenizeSegments` treats neither `.` nor a newline as a segment separator, matching TSD §4.1 exactly. Ingredient strings routinely contain both, and P04's allergen suppressors depend on segment boundaries | Medium | **High** — a phrase matching across a sentence break could suppress a real allergen | Flagged at P03, evaluated at P04 against the actual catalog strings. Any change is a TSD §4.1 amendment, not a quiet edit | Domain Engineer | P04 |
+| R-15 | ~~`tokenizeSegments` splits on neither `.` nor a newline~~ | — | — | **CLOSED at P04 by measurement.** All 992 live TheMealDB ingredient names were checked: none contains a dot or a newline. Only commas (2) and one parenthesised name occur, both already in the separator class. TSD §4.1 needs no amendment | Domain Engineer | P04 |
+| R-16 | A misspelled declared `allergenTag` resolves to no canonical allergen. `allergenTags` is `z.array(z.string())`, so `"treenut"` validates but matches nothing; the record is rescued only if its ingredients independently betray the allergen | Medium | **High** — a silent false negative in the safety-critical path | T-07-04 is a hand review, so a typo is the expected failure. P07 must validate declared tags against the taxonomy at seed time and fail the write on an unrecognised one | Catalog Author | P07 |
+| R-17 | `singularize` maps `quiches` to `quich`, which reaches no token, so a plural of a `-ches` stem ending in `e` folds to nothing | Low | Low | Both words normally appear singular in the catalog. Recorded rather than special-cased, because widening the rule risks mangling stems that currently fold correctly | Domain Engineer | P07 |
 | R-13 | `jsdom@30.0.1` (TSD §2.1) declares Node `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0`; the dev machine runs v24.10.0, so npm emits EBADENGINE | **Certain** (observed at P01) | Medium | Nothing before P12 uses jsdom, so P01–P11 are unaffected. Resolve before P12 by raising Node to ≥24.15.0 or re-pinning jsdom — a TSD §2.1 amendment either way | Frontend Engineer | P12 |
 | R-12 | The USDA supporting archive is dated 2022-10-28, older than the Foundation release | Low | Low | Composition of staple foods does not drift materially; the vintage is recorded in every record's `nutritionProvenance.dataset`, so a future refresh is a data change, not an archaeology exercise | Catalog Author | P07 |
 | R-04 | Resolver scope error — superlative computed over `context` not `eligible` | Medium | High | Explicit scope-rule test with divergent sets; called out in P06's impact analysis | Domain Engineer | P06 |
