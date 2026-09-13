@@ -82,7 +82,9 @@ const ASYNC_STORAGE = {
 /** Rule 1's "no clock" - covers the constructor, not only Date.now. */
 const NO_CLOCK = [
   {
-    selector: "NewExpression[callee.name='Date']",
+    // Only the zero-argument form reads a clock. `new Date(2026, 0, 1)` is a fixed
+    // instant, which a test legitimately constructs to pass in as a parameter.
+    selector: "NewExpression[callee.name='Date'][arguments.length=0]",
     message: 'The domain is pure: no clock. Take the time as a parameter.',
   },
   {

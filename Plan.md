@@ -988,13 +988,13 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-03-01 | `packages/domain` skeleton; ESLint boundary rule proving purity | T-02-08 | Not Started |
-| T-03-02 | `text.ts`: `normalizeText`, `tokenize`, `tokenizeSegments`, `singularize`, `kebabCase`, `singularKebabCase`, `compareIds`, `containsTokenSequence` | T-03-01 | Not Started |
-| T-03-03 | `text.test.ts` per the §19.3 vector list | T-03-02 | Not Started |
-| T-03-04 | `money.ts`: `money`, `addMoney`, `sumMoney`, `formatMoney` — integer cents only | T-03-01 | Not Started |
-| T-03-05 | `money.test.ts` incl. a no-floating-point assertion | T-03-04 | Not Started |
-| T-03-06 | `meal-period.ts`: window constants, `parseClockTime`, signed-offset wrap, `mealPeriodForMinutes`, `mealPeriodForDate` | T-03-02 | Not Started |
-| T-03-07 | `meal-period.test.ts` — the seven boundary vectors of §19.3 | T-03-06 | Not Started |
+| T-03-01 | `packages/domain` skeleton; ESLint boundary rule proving purity | T-02-08 | Completed |
+| T-03-02 | `text.ts`: `normalizeText`, `tokenize`, `tokenizeSegments`, `singularize`, `kebabCase`, `singularKebabCase`, `compareIds`, `containsTokenSequence` | T-03-01 | Completed |
+| T-03-03 | `text.test.ts` per the §19.3 vector list | T-03-02 | Completed |
+| T-03-04 | `money.ts`: `money`, `addMoney`, `sumMoney`, `formatMoney` — integer cents only | T-03-01 | Completed |
+| T-03-05 | `money.test.ts` incl. a no-floating-point assertion | T-03-04 | Completed |
+| T-03-06 | `meal-period.ts`: window constants, `parseClockTime`, signed-offset wrap, `mealPeriodForMinutes`, `mealPeriodForDate` | T-03-02 | Completed |
+| T-03-07 | `meal-period.test.ts` — the seven boundary vectors of §19.3 | T-03-06 | Completed |
 
 ### P04 — Domain II: allergens and diet (safety-critical)
 
@@ -2777,6 +2777,8 @@ activity.
 | R-01 | Allergen inference misses a case — a user sees a meal containing their allergen | Medium | **Severe, and silent** | Effective tags = declared ∪ inferred; three independent conflict paths; phrase suppressors; the §19.3 vector list; P04 is single-threaded and not parallelised | Domain Engineer | P04 |
 | R-02 | Containment lets a false statement through | Medium | High | Four checks plus the grammar `enum`; the empty-permitted-set rule tested explicitly; nine fixtures; the domain resolves the answer so the model has nothing to decide | AI Architect | P19, P21 |
 | R-03 | A derived nutrition figure is wrong because a measure converted badly or a serving count was misjudged | Medium | High | Values come from a published, versioned table with an `fdcId` per figure; the all-or-nothing rule refuses partial sums; unit tests per measure form; three meals checked by hand; servings surfaced in the UI as authored | Catalog Author | P07 |
+| R-14 | `money()` accepts amounts `moneySchema` rejects: the constructor enforces integer and non-negative, the schema additionally caps at 100,000 cents. TSD §4.2 states no maximum | Medium | Medium | Recorded at P03 rather than inventing a bound. P05 and P07 construct prices through `money()`; a price above the cap passes the constructor and fails validation at the boundary — the right place to catch it, a confusing place to debug it | Domain Engineer | P05, P07 |
+| R-15 | `tokenizeSegments` treats neither `.` nor a newline as a segment separator, matching TSD §4.1 exactly. Ingredient strings routinely contain both, and P04's allergen suppressors depend on segment boundaries | Medium | **High** — a phrase matching across a sentence break could suppress a real allergen | Flagged at P03, evaluated at P04 against the actual catalog strings. Any change is a TSD §4.1 amendment, not a quiet edit | Domain Engineer | P04 |
 | R-13 | `jsdom@30.0.1` (TSD §2.1) declares Node `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0`; the dev machine runs v24.10.0, so npm emits EBADENGINE | **Certain** (observed at P01) | Medium | Nothing before P12 uses jsdom, so P01–P11 are unaffected. Resolve before P12 by raising Node to ≥24.15.0 or re-pinning jsdom — a TSD §2.1 amendment either way | Frontend Engineer | P12 |
 | R-12 | The USDA supporting archive is dated 2022-10-28, older than the Foundation release | Low | Low | Composition of staple foods does not drift materially; the vintage is recorded in every record's `nutritionProvenance.dataset`, so a future refresh is a data change, not an archaeology exercise | Catalog Author | P07 |
 | R-04 | Resolver scope error — superlative computed over `context` not `eligible` | Medium | High | Explicit scope-rule test with divergent sets; called out in P06's impact analysis | Domain Engineer | P06 |
