@@ -250,7 +250,11 @@ undocumented internal memory is relied on anywhere in this plan.
 | X-11 | PRD FR-006 required per-serving nutrition; TheMealDB publishes none at any access tier, and the plan's own T-07-05 stop condition forbade estimating | PRD FR-006 vs the recipe source | P07 could not be completed as written — either nutrition was invented or the product shipped hollow | **CLOSED.** USDA FoodData Central adopted as a **build-time dataset** (D-08): 1,882 ingredients, all four macros, per 100 g. PRD 2.2.0, SDD 2.1.0 and TSD 1.2.0 amended; TSD §7.4 defines the derivation contract. No runtime dependency is added, so SDD §2.1 is unchanged | — |
 | X-12 | TheMealDB requires attribution and the preservation of source, image-source and licence metadata; `Meal` had nowhere to put any of it, and no document mentioned attribution | Upstream licence vs TSD §3.2 | Shipping without attribution breaches the terms we rely on | **CLOSED.** `Meal` gains `provenance` (TSD 1.2.0 §3.2); PRD 2.2.0 FR-011 displays attribution; §15 records both sources' licence terms | — |
 
-**No unresolved conflict currently blocks any phase, and none remains open.** X-05 and X-07 were the
+| X-13 | Plan.md §12.2 rule 2 ("contracts is the only package with a third-party runtime dependency") cannot be expressed in ESLint `no-restricted-imports`: a deny-all-then-allow pattern also swallows the package's own relative imports | Plan §12.2 vs the linter | Rule 2 was unenforced in source after P02 replaced P01's broken allowlist | **Split enforcement.** ESLint keeps an I/O denylist; the manifest half is asserted in `packages/contracts/src/package.test.ts`, which reads `package.json` and requires `dependencies === { zod: '4.5.4' }`. Stronger about what ships, weaker against an arbitrary source import. Recorded at P02 | — |
+| X-14 | TSD §3.2 describes `CustomMeal` as "same shape as Meal, with nutrition optional", but neither the TSD type nor the implementation makes it optional, and `ValueSchema<CustomMeal> = mealSchema` does not compile | TSD §3.2 prose vs TSD §3.2 type | P12 T-12-07 requires a schema per stored value and there is none for custom meals | **OPEN.** Raised at P02, resolved at P12: either `customMealSchema` is authored or the TSD prose is corrected. Not blocking P03–P07 | P12 |
+
+**No unresolved conflict currently blocks any phase, and none remains open.** X-14 is open but
+blocks only P12. X-05 and X-07 were the
 last two; both were accepted and applied to the source documents (D-07), taking PRD to 2.1.0 and TSD
 to 1.1.0. Every X row above now carries a closed resolution.
 
@@ -971,14 +975,14 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-02-01 | `packages/contracts` package skeleton (`private`, `main: src/index.ts`, dep `zod@4.5.4`) | T-01-10 | Not Started |
-| T-02-02 | Enumerations per TSD §3.1 incl. `CANONICAL_ALLERGENS` (10) and `SCORE_REASON_KINDS` (8) | T-02-01 | Not Started |
-| T-02-03 | Entity interfaces per TSD §3.2 | T-02-02 | Not Started |
-| T-02-04 | `nutritionSummarySchema` with range bounds (2000/200/300/200) and `mealSchema` | T-02-03 | Not Started |
-| T-02-05 | `userPreferencesSchema`, `clockTimeSchema`, `retrievalPreferencesSchema` | T-02-03 | Not Started |
-| T-02-06 | `chatRequestSchema`, `recommendationRequestSchema` (both `strictObject`) | T-02-05 | Not Started |
-| T-02-07 | `chatModelReplySchema`, `explanationReplySchema` | T-02-03 | Not Started |
-| T-02-08 | Error codes, `ApiErrorBody`, wire response types, barrel export | T-02-03 | Not Started |
+| T-02-01 | `packages/contracts` package skeleton (`private`, `main: src/index.ts`, dep `zod@4.5.4`) | T-01-10 | Completed |
+| T-02-02 | Enumerations per TSD §3.1 incl. `CANONICAL_ALLERGENS` (10) and `SCORE_REASON_KINDS` (8) | T-02-01 | Completed |
+| T-02-03 | Entity interfaces per TSD §3.2 | T-02-02 | Completed |
+| T-02-04 | `nutritionSummarySchema` with range bounds (2000/200/300/200) and `mealSchema` | T-02-03 | Completed |
+| T-02-05 | `userPreferencesSchema`, `clockTimeSchema`, `retrievalPreferencesSchema` | T-02-03 | Completed |
+| T-02-06 | `chatRequestSchema`, `recommendationRequestSchema` (both `strictObject`) | T-02-05 | Completed |
+| T-02-07 | `chatModelReplySchema`, `explanationReplySchema` | T-02-03 | Completed |
+| T-02-08 | Error codes, `ApiErrorBody`, wire response types, barrel export | T-02-03 | Completed |
 
 ### P03 — Domain I: text, money, meal-period
 

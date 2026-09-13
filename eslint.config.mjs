@@ -129,22 +129,29 @@ export default tseslint.config(
     },
   },
 
-  // Rule 2 - contracts may import zod and its own relative files, and nothing else.
-  // Expressed as an allowlist: deny everything, then re-permit zod.
+  // Rule 2 - contracts carries no I/O. The other half of the rule - that zod is its ONLY
+  // third-party runtime dependency - is not expressible in no-restricted-imports without a
+  // plugin (a deny-all-then-allow pattern also swallows relative imports). It is asserted
+  // directly against package.json in contracts/src/package.test.ts, which is a stronger
+  // check than a lint pattern: it reads the actual manifest.
   {
     files: ['packages/contracts/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
-        {
-          patterns: [
-            {
-              group: ['*', '*/*', '@*/*', '!zod', '!zod/*'],
-              message: 'contracts may import only zod and its own relative files.',
-            },
-            ...APP_ESCAPES,
-          ],
-        },
+        { paths: [...IO_PATHS, ASYNC_STORAGE], patterns: [...IO_PATTERNS, ...APP_ESCAPES] },
+      ],
+    },
+  },
+
+  // Contracts tests may read the manifest from disk. Restated without the Node-builtin
+  // ban rather than switched off, so the I/O-package and app-escape rules both survive.
+  {
+    files: ['packages/contracts/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: [...IO_PATHS, ASYNC_STORAGE], patterns: APP_ESCAPES },
       ],
     },
   },
