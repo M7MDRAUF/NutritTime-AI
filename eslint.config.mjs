@@ -100,7 +100,20 @@ const NO_CLOCK = [
 export default tseslint.config(
   // e2e/ is a separate workspace with its own toolchain (TSD 8.1); it is linted by its own
   // config at P24, not by this one.
-  { ignores: ['node_modules/**', 'dist/**', 'coverage/**', '.expo/**', 'e2e/**'] },
+  // Nested globs, not top-level ones. `dist/**` matches only a `dist` at the repository root,
+  // so `apps/server/dist` - which `npm run build:server` writes - was being linted as source
+  // and reported `process is not defined` in compiled output. Latent since P01; it could not
+  // fire until a nested build directory existed.
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '**/.expo/**',
+      '**/web-build/**',
+      'e2e/**',
+    ],
+  },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -159,8 +172,20 @@ export default tseslint.config(
   },
 
   // Rule 3 - every other package: no reaching into apps, and no I/O in catalog either.
+  //
+  // `packages/design-system` is named here because it was the one package in `packages/` that
+  // Rule 3 did not cover, so nothing stopped a token module importing from `apps/`. Found by
+  // the P11 verification; nothing did, but it was unenforced (A-11-04).
   {
-    files: ['packages/catalog/**/*.ts'],
+    files: ['packages/catalog/**/*.ts', 'packages/design-system/**/*.ts'],
+    rules: { 'no-restricted-imports': ['error', { patterns: APP_ESCAPES }] },
+  },
+
+  // `boundary.test.ts` reads the source tree from disk to prove no module imports `primitive`
+  // past the barrel's deliberate omission. It is a test, so the I/O denylist does not reach it
+  // anyway - named explicitly so the carve-out is visible rather than incidental.
+  {
+    files: ['packages/design-system/src/theme/boundary.test.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: APP_ESCAPES }] },
   },
 

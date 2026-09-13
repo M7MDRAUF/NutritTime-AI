@@ -251,6 +251,8 @@ undocumented internal memory is relied on anywhere in this plan.
 | X-12 | TheMealDB requires attribution and the preservation of source, image-source and licence metadata; `Meal` had nowhere to put any of it, and no document mentioned attribution | Upstream licence vs TSD §3.2 | Shipping without attribution breaches the terms we rely on | **CLOSED.** `Meal` gains `provenance` (TSD 1.2.0 §3.2); PRD 2.2.0 FR-011 displays attribution; §15 records both sources' licence terms | — |
 
 | X-13 | Plan.md §12.2 rule 2 ("contracts is the only package with a third-party runtime dependency") cannot be expressed in ESLint `no-restricted-imports`: a deny-all-then-allow pattern also swallows the package's own relative imports | Plan §12.2 vs the linter | Rule 2 was unenforced in source after P02 replaced P01's broken allowlist | **Split enforcement.** ESLint keeps an I/O denylist; the manifest half is asserted in `packages/contracts/src/package.test.ts`, which reads `package.json` and requires `dependencies === { zod: '4.5.4' }`. Stronger about what ships, weaker against an arbitrary source import. Recorded at P02 | — |
+| X-17 | Plan §18's P11 expected-files row and TSD §6.6 both place the theme modules at `apps/mobile/src/shared/theme/`, but P11 built them as `packages/design-system` — a package, which is where my own execution brief put them | Plan §18 + TSD §6.6 vs the P11 brief | The tokens exist somewhere the documents do not name | **The documents win.** The modules are re-homed into `apps/mobile/src/shared/theme/` at **P12**, when `apps/mobile` first exists. The package form was not wrong engineering — it lets the contrast tests run without Expo — but it is not what the documents say, and a brief I wrote does not outrank them | P12 |
+| X-18 | TSD §6.6 uses `ColorScheme` and declares it nowhere — `grep -n ColorScheme TSD.md` returns exactly one line | TSD §6.6 internal | A type the document depends on has no definition | Declared locally as `'light' \| 'dark'`, which is the only reading §6.6 admits. TSD should declare it | P12 |
 | X-15 | TSD §7.4 declares `NutrientRow.fdcId: string`. The archive does not honour it: **44 of its 1,882 ingredients publish no FDC ID on any macro** — olive oil, unsalted butter and the canola, corn, peanut and soybean oils among them, which a recipe catalog cannot avoid. A further ingredient is missing one on a single macro, and 2 draw their macros from different FDC records | TSD §7.4 vs the published data | Either the type is wrong or every oil is unusable | **Implemented as `fdcId: string \| null`.** An empty string would be a fabricated identifier wearing the shape of a real one, which this project refuses everywhere else; `usdaCode` keeps such a row traceable and `sourceLabel` keeps its provenance. Where macros come from different records the collapse is deterministic and emits a `traceabilityNotes` entry — never silent. **TSD §7.4 should be amended to match the data**; recorded rather than amended unilaterally | P07 → TSD |
 | X-16 | TSD §2.3 and Plan §12.2 both state `catalog -> (nothing)`, but TSD §7.4 step 1 mandates deriving ingredient keys with §4.1's `normalizeText` and `singularize`, which live in `@nutritime/domain` | TSD §2.3 vs TSD §7.4 | The two instructions cannot both be followed | **Resolved toward §7.4, the more specific instruction.** `packages/catalog` declares `@nutritime/contracts` and `@nutritime/domain`, and `eslint.config.mjs` carves out `packages/catalog/seed.ts` + `src/seed/**` for the file-system access the build-time script needs. **The edge is build-time only**: `src/index.ts` exports `seededCatalog` and imports nothing from the seed modules, so nothing that ships to a device or a request path carries it. TSD §2.3's graph should gain a build-time edge | P07 → TSD |
 | X-14 | TSD §3.2 describes `CustomMeal` as "same shape as Meal, with nutrition optional", but neither the TSD type nor the implementation makes it optional, and `ValueSchema<CustomMeal> = mealSchema` does not compile | TSD §3.2 prose vs TSD §3.2 type | P12 T-12-07 requires a schema per stored value and there is none for custom meals | **OPEN.** Raised at P02, resolved at P12: either `customMealSchema` is authored or the TSD prose is corrected. Not blocking P03–P07 | P12 |
@@ -1075,6 +1077,9 @@ needs to read whole.** A long file of unrelated functions fails that test and ge
 | `packages/domain/src/answer.test.ts` | 490 | Test file: the scope rule is asserted across all five kinds together |
 | `packages/domain/src/allergen-lexicon.ts` | 423 | One safety-critical word list. Splitting it is how a token goes missing |
 | `packages/contracts/src/schemas.test.ts` | 403 | Test file: one schema per block |
+| `packages/design-system/src/theme/contrast.test.ts` | 459 | Test file: every foreground/background pairing in both schemes. Splitting it by scheme would hide the pairing that differs between them, which is exactly the bug it found |
+| `packages/design-system/src/theme/component.ts` | 392 | One table: nine component groups built from the semantic tokens. A reviewer checking a control's tokens needs the group beside its siblings |
+| `packages/design-system/src/theme/semantic.ts` | 387 | Two complete colour maps, light and dark, plus the interface they both satisfy. The dark map is authored, so the two have to be read side by side |
 
 **Not approved, and therefore a standing constraint:** any NEW non-table module over 350 lines gets
 split. T-28-05 re-checks this table against the tree and fails on any file that grew into the list
@@ -1085,15 +1090,15 @@ without being added to it.
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-08-01 | `apps/server` skeleton, `type: module`, deps per TSD §2.1 | T-01-10 | Not Started |
-| T-08-02 | Config schema for the eight env variables, parsed once into a frozen object | T-08-01, T-02-08 | Not Started |
-| T-08-03 | `AI_KEEP_ALIVE` validator `/^\d+(ms\|s\|m\|h)$/`; reject a bare integer with the named-intent message | T-08-02 | Not Started |
-| T-08-04 | Catalog load + `mealSchema` validation at boot; **exit non-zero** naming record index and field path | T-08-02, T-07-10 | Not Started |
-| T-08-05 | Middleware in order: cors, `express.json({limit:'64kb'})`, request log, routes, 404, error handler | T-08-02 | Not Started |
-| T-08-06 | `ApiError` → status mapping; fixed local messages; no upstream text in any body | T-08-05, T-02-08 | Not Started |
-| T-08-07 | `GET /health` returning `{status, catalogVersion, mealCount}`; no dependency probing | T-08-04 | Not Started |
-| T-08-08 | Structured one-line request logging; redaction rules of §15.5 | T-08-05 | Not Started |
-| T-08-09 | `boot.integration.test.ts` — health 200; invalid catalog exits non-zero; `AI_KEEP_ALIVE=30` exits non-zero | T-08-07, T-08-03 | Not Started |
+| T-08-01 | `apps/server` skeleton, `type: module`, deps per TSD §2.1 | T-01-10 | Completed |
+| T-08-02 | Config schema for the eight env variables, parsed once into a frozen object | T-08-01, T-02-08 | Completed |
+| T-08-03 | `AI_KEEP_ALIVE` validator `/^\d+(ms\|s\|m\|h)$/`; reject a bare integer with the named-intent message | T-08-02 | Completed |
+| T-08-04 | Catalog load + `mealSchema` validation at boot; **exit non-zero** naming record index and field path | T-08-02, T-07-10 | Completed |
+| T-08-05 | Middleware in order: cors, `express.json({limit:'64kb'})`, request log, routes, 404, error handler | T-08-02 | Completed |
+| T-08-06 | `ApiError` → status mapping; fixed local messages; no upstream text in any body | T-08-05, T-02-08 | Completed |
+| T-08-07 | `GET /health` returning `{status, catalogVersion, mealCount}`; no dependency probing | T-08-04 | Completed |
+| T-08-08 | Structured one-line request logging; redaction rules of §15.5 | T-08-05 | Completed |
+| T-08-09 | `boot.integration.test.ts` — health 200; invalid catalog exits non-zero; `AI_KEEP_ALIVE=30` exits non-zero | T-08-07, T-08-03 | Completed |
 
 ### P09 — Meals API
 
@@ -1120,14 +1125,14 @@ without being added to it.
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-11-01 | Run the generator and persist `design-system/MASTER.md` (§14.4) | T-01-01 | Not Started |
-| T-11-02 | Generate per-screen overrides for all 10 screens | T-11-01 | Not Started |
-| T-11-03 | Run `--domain color` and `--domain typography`; record raw output | T-11-01 | Not Started |
-| T-11-04 | Reconcile every recommendation against §14.1; create `design-system/DECISIONS.md` with adopt/reject and reason | T-11-02, T-11-03 | Not Started |
-| T-11-05 | `primitive.ts` — palette, space, radius, stroke, duration, easing, opacity, type scale, touch, zIndex | T-11-04 | Not Started |
-| T-11-06 | `semantic.ts` — `SemanticTokens` interface; light and dark maps, dark **authored** | T-11-05 | Not Started |
-| T-11-07 | `component.ts` — `buildComponentTokens` for the nine component groups | T-11-06 | Not Started |
-| T-11-08 | `contrast.test.ts` — WCAG AA pairings in both schemes | T-11-06 | Not Started |
+| T-11-01 | Run the generator and persist `design-system/MASTER.md` (§14.4) | T-01-01 | Completed |
+| T-11-02 | Generate per-screen overrides for all 10 screens | T-11-01 | Completed |
+| T-11-03 | Run `--domain color` and `--domain typography`; record raw output | T-11-01 | Completed |
+| T-11-04 | Reconcile every recommendation against §14.1; create `design-system/DECISIONS.md` with adopt/reject and reason | T-11-02, T-11-03 | Completed |
+| T-11-05 | `primitive.ts` — palette, space, radius, stroke, duration, easing, opacity, type scale, touch, zIndex | T-11-04 | Completed |
+| T-11-06 | `semantic.ts` — `SemanticTokens` interface; light and dark maps, dark **authored** | T-11-05 | Completed |
+| T-11-07 | `component.ts` — `buildComponentTokens` for the nine component groups | T-11-06 | Completed |
+| T-11-08 | `contrast.test.ts` — WCAG AA pairings in both schemes | T-11-06 | Completed |
 
 ### P12 — Mobile shell
 

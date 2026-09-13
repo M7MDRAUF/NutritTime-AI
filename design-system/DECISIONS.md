@@ -1,0 +1,464 @@
+# P11 — Design-System Decision Record
+
+**Phase:** P11 · **Tasks:** T-11-03, T-11-04 · **Date:** 2026-09-13
+
+Every recommendation the UI UX Pro Max generator produced in this phase carries an **Adopt** or
+**Reject** verdict below, with a reason. A recommendation with no verdict is the failure mode this
+file exists to prevent, so the raw output is reproduced verbatim in §1 and §2 and every line of it is
+accounted for in §3 to §6.
+
+Authority, per `Plan.md` §4: **PRD > SDD > TSD > Plan > tool output**. The generator proposes;
+`Plan.md` §14.1 decides. Nothing below amends a document; two proposed amendments are recorded in §8
+instead.
+
+---
+
+## 0. Tool provenance
+
+| Item            | Value                                                                                                                              |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Skill           | `~/.claude/skills/ui-ux-pro-max/`                                                                                                  |
+| `SKILL.md`      | 55,507 B, SHA256 `98a17c9139cf9c4b8694d4602f191ad147c8a9fe0f6f6c82f61b0fe8b98a9998`                                                |
+| `scripts/`      | Real directory — `core.py`, `design_system.py`, `reasoning_contract.py`, `search.py`, `validate_data.py`, `tests/`                 |
+| `data/`         | Real directory — 18 entries including `colors.csv`, `typography.csv`, `styles.csv`, `products.csv`, `ux-guidelines.csv`, `stacks/` |
+| Interpreter     | `python` 3.14.7 (Windows). `python3` on this PATH is the 3.13.14 Store alias; both run `search.py`, `python` was used              |
+| Generator state | **Working.** `--design-system`, `--persist`, `--page` and `--domain` all executed and all exited 0                                 |
+
+The §13.4 validation still holds: the two dangling symlink placeholders recorded in §13.2 are gone
+and both directories carry real contents. The SHA256 matches §13.2's post-repair value exactly, so
+the skill has not changed since it was validated. **No output below was hand-fabricated.**
+
+### Commands executed
+
+```bash
+SKILL=~/.claude/skills/ui-ux-pro-max/scripts/search.py
+
+# T-11-01
+python $SKILL "meal recommendation nutrition assistant mobile app" \
+  --design-system -p "NutriTime AI" -f markdown --persist --output-dir <repo-root>
+
+# T-11-02, once per screen (ten runs)
+python $SKILL "<screen purpose>" --design-system -p "NutriTime AI" \
+  --page "<slug>" --persist --output-dir <repo-root>
+
+# T-11-03
+python $SKILL "healthy nutrition green macro colors" --domain color -n 3
+python $SKILL "mobile app readable body text" --domain typography -n 3 --full
+
+# Corroboration for X-07 (§4.2 below)
+python $SKILL "flat design mobile system bold inter" --domain typography -n 3 --full
+```
+
+### Two layout deviations from `Plan.md` §14.4, both recorded rather than worked around
+
+1. **`--persist` writes a project-slug subdirectory.** The CLI's own `--help` states it saves to
+   `design-system/<project-slug>/MASTER.md`, and it wrote
+   `design-system/nutritime-ai/{MASTER.md,pages/}`. `Plan.md` §14.3 and §18's P11 Deliverables both
+   name the **flat** paths `design-system/MASTER.md` and `design-system/pages/<page>.md` — and so
+   does the generator's own emitted header, which tells the reader to
+   "check `design-system/pages/[page-name].md`". The tool's directory layout contradicts the tool's
+   own output text. Resolved toward `Plan.md` and the emitted header: the eleven generated files were
+   moved to the flat layout and `design-system/nutritime-ai/` was removed. Content is unmodified.
+2. **§14.4's page-slug list names nine screens; PRD §11 names ten.** The example list omits `splash`.
+   T-11-02's acceptance row is "One per PRD §11 screen" and the §14.4 comment says "repeat per screen
+   in PRD §11", so the slug list is an incomplete example, not a limit. `splash.md` was generated as
+   the tenth. PRD outranks the Plan's example either way.
+3. **Prettier reformatted the generated markdown, and changed three characters of it.** The root
+   `.prettierignore` names `PRD.md`, `SDD.md`, `TSD.md` and `Plan.md` explicitly and says so in a
+   comment — "Named explicitly so `README.md` and `design-system/*.md` are still formatted" — so
+   these files are prettier's by the project's own decision, and P11's gate requires
+   `prettier --check` clean. Formatting the eleven generated files was whitespace-only in ten of
+   them. In `MASTER.md` prettier also **lowercased three hex literals inside CSS code fences**:
+   `#EA580C` to `#ea580c`, `#ECFDF5` to `#ecfdf5`, `#E2E8F0` to `#e2e8f0`. Nothing else changed —
+   `diff -w -B` against the pre-format copy reports only those three lines and the table separators,
+   and the ten page files report nothing at all. It is still a formatter editing a generated
+   artifact, which is the condition `.prettierignore` already carves out for
+   `packages/catalog/meals.json`. The generator's own uppercase spelling of all three survives
+   verbatim in §1 below, so no evidence is lost. Proposed as amendment **A-11-03** in §8 rather
+   than acted on: `.prettierignore` is outside this phase's ownership.
+
+---
+
+## 1. T-11-03 raw output — `--domain color`
+
+```
+$ python $SKILL "healthy nutrition green macro colors" --domain color -n 3
+
+## UI Pro Max Search Results
+**Domain:** color | **Query:** healthy nutrition green macro colors
+**Source:** colors.csv | **Found:** 3 results
+
+### Result 1
+- **Product Type:** Calorie & Nutrition Counter
+- **Primary:** #059669
+- **On Primary:** #000000
+- **Secondary:** #10B981
+- **On Secondary:** #000000
+- **Accent:** #EA580C
+- **On Accent:** #000000
+- **Background:** #ECFDF5
+- **Foreground:** #0F172A
+- **Card:** #FFFFFF
+- **Card Foreground:** #0F172A
+- **Muted:** #F0F8F6
+- **Muted Foreground:** #475569
+- **Border:** #E1F2ED
+- **Destructive:** #DC2626
+- **On Destructive:** #FFFFFF
+- **Ring:** #059669
+- **Notes:** Healthy green + macro orange
+
+### Result 2
+- **Product Type:** API Developer Portal
+- **Primary:** #0F172A
+- **On Primary:** #FFFFFF
+- **Secondary:** #1E293B
+- **On Secondary:** #FFFFFF
+- **Accent:** #22C55E
+- **On Accent:** #0F172A
+- **Background:** #020617
+- **Foreground:** #F8FAFC
+- **Card:** #0E1223
+- **Card Foreground:** #F8FAFC
+- **Muted:** #1A1E2F
+- **Muted Foreground:** #94A3B8
+- **Border:** #334155
+- **Destructive:** #EF4444
+- **On Destructive:** #000000
+- **Ring:** #FFFFFF
+- **Notes:** Code dark + endpoint green + syntax colors
+
+### Result 3
+- **Product Type:** Public Transit Guide
+- **Primary:** #2563EB
+- **On Primary:** #FFFFFF
+- **Secondary:** #0891B2
+- **On Secondary:** #000000
+- **Accent:** #EA580C
+- **On Accent:** #000000
+- **Background:** #F8FAFC
+- **Foreground:** #0F172A
+- **Card:** #FFFFFF
+- **Card Foreground:** #0F172A
+- **Muted:** #F1F5FD
+- **Muted Foreground:** #475569
+- **Border:** #E4ECFC
+- **Destructive:** #DC2626
+- **On Destructive:** #FFFFFF
+- **Ring:** #2563EB
+- **Notes:** Transit blue + line colors
+```
+
+## 2. T-11-03 raw output — `--domain typography`
+
+```
+$ python $SKILL "mobile app readable body text" --domain typography -n 3 --full
+
+## UI Pro Max Search Results
+**Domain:** typography | **Query:** mobile app readable body text
+**Source:** typography.csv | **Found:** 3 results
+
+### Result 1
+- **Font Pairing Name:** Academic/Archival
+- **Category:** Serif + Serif
+- **Heading Font:** EB Garamond
+- **Body Font:** Crimson Text
+- **Mood/Style Keywords:** academic, old-school, university, research, serious, traditional
+- **Best For:** University sites, archives, research papers, history
+- **Google Fonts URL:** https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=EB+Garamond:wght@400;500;600;700;800&display=swap
+- **CSS Import:** @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600;700&family=EB+Garamond:wght@400;500;600;700;800&display=swap');
+- **Tailwind Config:** fontFamily: { classic: ['EB Garamond', 'serif'], text: ['Crimson Text', 'serif'] }
+- **Notes:** Classic academic aesthetic. Very legible.
+
+### Result 2
+- **Font Pairing Name:** Bauhaus Geometric
+- **Category:** Geometric Sans + Single Weight
+- **Heading Font:** Outfit
+- **Body Font:** Outfit
+- **Mood/Style Keywords:** bauhaus, geometric, constructivist, bold, uppercase, architectural, mechanical, poster, tactile
+- **Best For:** Bauhaus mobile apps, bold editorial mobile, design-forward branding apps, art/culture platforms
+- **Google Fonts URL:** https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap
+- **CSS Import:** @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;900&display=swap');
+- **Tailwind Config:** fontFamily: { display: ['Outfit', 'sans-serif'], body: ['Outfit', 'sans-serif'] }
+- **Notes:** Single-family system: Outfit 900 uppercase tracking-tighter for heroes; Outfit 700 uppercase for buttons/nav; Outfit 500 for body. Scale aggressively: text-4xl-text-5xl headlines on mobile.
+
+### Result 3
+- **Font Pairing Name:** SaaS Mobile Boutique (Calistoga + Inter)
+- **Category:** Display Serif + Sans + Mono
+- **Heading Font:** Calistoga
+- **Body Font:** Inter
+- **Mood/Style Keywords:** saas, boutique, electric, warm, editorial, bold, premium, fintech, business, dual font, human warmth
+- **Best For:** B2B SaaS mobile, fintech apps, analytics dashboards, marketing tools, operations platforms
+- **Google Fonts URL:** https://fonts.googleapis.com/css2?family=Calistoga:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap
+- **CSS Import:** @import url('https://fonts.googleapis.com/css2?family=Calistoga:ital@0;1&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+- **Tailwind Config:** fontFamily: { display: ['Calistoga', 'serif'], body: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }
+- **Notes:** Tri-stack: Calistoga (adds human warmth) for heroes 36-42pt leading-1.1; Inter 400-600 for body/UI 16-18pt; JetBrains Mono 12pt uppercase tracking-[1.5] for data labels and section badges. Scale: Hero 36-42pt, Section H2 28-32pt, Body 16-18pt, Label 12pt. Avoid italic Calistoga except editorial callouts.
+```
+
+### 2.1 Corroborating run — the row TSD 1.1.0 §6.6 actually fixed
+
+`Plan.md` §14.2 and X-07 assert that the coherent catalog row for the adopted style family is **Flat
+Design Mobile (System Bold): Inter for both**. None of the three results above is that row, so the
+claim was verified directly rather than assumed. It is row 64 of `data/typography.csv`:
+
+```
+$ python $SKILL "flat design mobile system bold inter" --domain typography -n 3 --full
+
+### Result 1
+- **Font Pairing Name:** Flat Design Mobile (System Bold)
+- **Category:** Sans + Sans
+- **Heading Font:** Inter
+- **Body Font:** Inter
+- **Mood/Style Keywords:** flat, clean, system, bold, geometric, cross-platform, icon, poster, minimal, functional, responsive
+- **Best For:** Cross-platform apps, dashboards, system UI, onboarding, marketing pages, informational apps, icon-heavy interfaces
+- **Google Fonts URL:** https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap
+- **Tailwind Config:** fontFamily: { sans: ['Inter', 'sans-serif'] }
+- **Notes:** System-first strategy: Inter as primary, falls back to system SF/Roboto on iOS/Android. Scale: Headlines fontWeight 800 letterSpacing -0.5; Subheadings fontWeight 600 fontSize 18; Body fontWeight 400 lineHeight 24; Labels fontWeight 700 uppercase letterSpacing 1. Thick weights carry all hierarchy since there are no shadows. Use aggressive size contrast (poster rule: body 16pt vs headline 40pt+). Avoid italic.
+```
+
+X-07's account of the generator's error is **confirmed**: `--design-system` paired "Heading: Inter"
+with "Body: Playfair Display", which is row 78 (_Bold Typography Mobile (Inter Poster)_), whose own
+notes restrict Playfair to "pull quotes" only. The generator promoted a pull-quote face to body type.
+TSD 1.1.0 §6.6's four rules — 800 at −0.5 letter spacing, 600 for subheadings, 400 at 24 px line
+height, 700 uppercase at +1 — are row 64's notes transcribed exactly. The TSD is a faithful reading
+of the catalog, and this file inherits it without re-deciding.
+
+---
+
+## 3. Verdicts — the colour recommendation
+
+Every ratio below was computed with the WCAG 2.x relative-luminance formula, not estimated. The same
+formula is implemented independently in `packages/design-system/src/theme/contrast.test.ts`, which is
+the executable form of this table.
+
+### 3.1 Result 1 — "Calorie & Nutrition Counter"
+
+| Recommendation                                                                                    | Verdict                                                            | Reason                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Result 1 as the palette source (Result 2 "API Developer Portal", Result 3 "Public Transit Guide") | **Adopt Result 1; reject 2 and 3**                                 | §14.2 already fixed the product type as Calorie & Nutrition Counter. Results 2 and 3 are different products; adopting a transit blue would contradict the settled design frame                                                                                                                                                                                                                                    |
+| `Primary: #059669`                                                                                | **Adopt**                                                          | Carries the "healthy green" direction §14.2 adopted. `accent.brand` in both `component.ts` fills and `border.brand`                                                                                                                                                                                                                                                                                               |
+| **`On Primary: #000000`**                                                                         | **Adopt — counter-intuitively correct**                            | Black on `#059669` is **5.57:1**; white on the same green is **3.77:1** and _fails_ AA. The instinct to "fix" this to white would have broken PRD §10.5. The generator is right and the value is adopted verbatim                                                                                                                                                                                                 |
+| `Secondary: #10B981`, `On Secondary: #000000`                                                     | **Adopt, re-roled**                                                | §14.1 fixes the role vocabulary as `surface`/`content`/`accent`/…; there is no "secondary colour" role. `#10B981` becomes `accent.brandPressed` — the pressed state must move _away_ from black, and black on `#10B981` is **8.28:1**, better than the resting 5.57                                                                                                                                               |
+| `Accent/CTA: #EA580C`, `On Accent: #000000`                                                       | **Adopt**                                                          | Black on `#EA580C` is **5.90:1**; white is 3.56 and fails. `accent.cta`                                                                                                                                                                                                                                                                                                                                           |
+| `Background: #ECFDF5`                                                                             | **Adopt**                                                          | `surface.canvas` (light)                                                                                                                                                                                                                                                                                                                                                                                          |
+| `Foreground: #0F172A`                                                                             | **Adopt**                                                          | `content.primary` (light) — 16.95:1 on the canvas                                                                                                                                                                                                                                                                                                                                                                 |
+| `Card: #FFFFFF` / `Card Foreground: #0F172A`                                                      | **Adopt**                                                          | `surface.raised` + `content.primary`, 17.85:1                                                                                                                                                                                                                                                                                                                                                                     |
+| `Muted: #F0F8F6`                                                                                  | **Adopt**                                                          | `surface.sunken` (light)                                                                                                                                                                                                                                                                                                                                                                                          |
+| `Muted Foreground: #475569`                                                                       | **Adopt**                                                          | `content.tertiary` (light). 7.02:1 on the sunken surface — the _lowest_ of the three light text tones and still comfortably AA                                                                                                                                                                                                                                                                                    |
+| `Border: #E1F2ED`                                                                                 | **Adopt for dividers only; reject as a control boundary**          | **1.10:1** against the canvas. WCAG 2.2 §1.4.11 requires 3:1 for "visual information required to identify user interface components", so a text field whose only boundary is this border is unidentifiable. Kept as `border.subtle` for decorative dividers (§1.4.11 does not reach purely decorative separators) and a new `border.default` of `#64748B` (**4.41:1** at worst) carries field and chip boundaries |
+| `Destructive: #DC2626` + `On Destructive: #FFFFFF`                                                | **Adopt as a fill; reject as a text tone — replaced by `#B91C1C`** | White on `#DC2626` is 4.83:1 and passes. But the same value used as _destructive text_ on `surface.sunken` is **4.48:1 — it fails AA by 0.02**. One `status.danger` token has to serve both, so it is red-700 `#B91C1C`: 6.00:1 as text at worst, 6.47:1 with white as a fill. Strictly better in both directions and one token instead of two                                                                    |
+| `Ring: #059669`                                                                                   | **Adopt**                                                          | `border.focus` (light). **3.58:1** canvas / 3.77 raised / 3.49 sunken — clears §1.4.11's 3:1 on every light surface                                                                                                                                                                                                                                                                                               |
+| `Notes: "Healthy green + macro orange"`                                                           | **Adopt**                                                          | Restates the §14.2 palette direction                                                                                                                                                                                                                                                                                                                                                                              |
+
+### 3.2 Macro colours — protein blue, carb orange, fat yellow
+
+Adopted as a direction by §14.2; the generator supplied no hexes for them, so they were derived from
+the same catalog families and then verified.
+
+| Token            | Light     | Dark      | Verdict and reason                                                                                                                                                                                                                                                                                                                                        |
+| ---------------- | --------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accent.protein` | `#1E40AF` | `#60A5FA` | **Adopt.** 8.08:1 at worst light, 5.52:1 at worst dark                                                                                                                                                                                                                                                                                                    |
+| `accent.carb`    | `#C2410C` | `#FDBA74` | **Adopt.** 4.80:1 at worst light. Same orange family as `accent.cta`, one step darker so it is legible as text                                                                                                                                                                                                                                            |
+| `accent.fat`     | `#92400E` | `#FBBF24` | **Adopt with an honest caveat.** §14.2's direction says "fat yellow". At AA on a light surface, yellow is _unavoidably_ a dark amber-brown — amber-600 `#D97706` is 2.95:1 on `surface.sunken` and fails. The hue family is kept; the light end of it is not available for text. The dark scheme, where the constraint inverts, gets the bright `#FBBF24` |
+
+One colour per macro serves both the text and the swatch, so a swatch can never be a shade the text
+is not. `NutritionBadge` always renders a label beside the value (TSD §6.7), so PRD §10.5's "colour
+is never the only carrier of status" holds regardless of how close carb and fat read.
+
+### 3.3 The dark map — authored, and why it could not be derived
+
+TSD §6.6 requires dark to be **authored, not inverted**, with its own accent brightness, its own
+status family and its own scrim strength. Result 1 supplies no dark values at all, so there was
+nothing to adopt or reject here — every dark token in `semantic.ts` is authored and verified:
+
+| Requirement                     | What was authored                                                                                                                                                                                                                                                                            |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Own surfaces                    | `#0A1714` canvas / `#12231E` raised / `#06100D` sunken / `#18302A` overlay — a green-cast near-black, not `#ECFDF5` inverted. The sunken surface is **darker** than the canvas, where light's is lighter: recessed means recessed in both schemes, which an inversion would flip into raised |
+| Own accent brightness           | `accent.brand` is `#34D399` (green-400), not light's `#059669` (green-600). The dark label on it is `#04140F`, not `#000000`                                                                                                                                                                 |
+| Own status family               | `#34D399` / `#FBBF24` / `#F87171` / `#60A5FA` — four bright tints, against light's four dark ones. Not one is the inverse of its light counterpart                                                                                                                                           |
+| Own scrim strength              | Light `#0F172A80` (50%); dark `#000000B3` (70%) — pure black and stronger, because a slate-blue scrim over a dark canvas does not read as a scrim at all                                                                                                                                     |
+| Own effects                     | `effect.elevationFloating` is 2 in light and **0** in dark: a shadow is invisible against `#0A1714`, so dark separates a sheet from its canvas with `surface.overlay` and `border.subtle` instead                                                                                            |
+| One role that does **not** flip | `content.onImage` is light in both maps — the single exception, and it exists because what sits under it is a remote photograph rather than a surface this theme chooses. See S-11                                                                                                           |
+| Own content tones               | `#E8F5F0` / `#A9C4BB` / `#8AA9A0` — a soft mint white, not `#FFFFFF`, which glares against a near-black canvas                                                                                                                                                                               |
+
+The tightest dark pairing is `content.tertiary` `#8AA9A0` on `surface.overlay` `#18302A` at
+**5.53:1**. No dark pairing is below AA.
+
+---
+
+## 4. Verdicts — the typography recommendation
+
+### 4.1 The three `--domain typography` results
+
+| Recommendation                                                               | Verdict                                                                     | Reason                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Result 1 **Academic/Archival** — EB Garamond + Crimson Text, "Serif + Serif" | **Reject**                                                                  | Two serif faces as heading _and_ body. TSD §6.6 (1.1.0) fixes Inter for both and states "A display serif is not used for body text at any size, on any screen". Its "Best For" is university sites and research papers. Adopting it would require amending the TSD, which the T-11-04 stop-condition forbids                                      |
+| Result 2 **Bauhaus Geometric** — Outfit + Outfit, single family              | **Reject the face; note that its _architecture_ is the one TSD §6.6 chose** | A single family carrying the whole hierarchy through weight is exactly TSD §6.6's rule. The family is wrong — Outfit is not Inter, and Inter is fixed by X-07/D-07 — but this result independently corroborates the one-family decision. Its "Scale aggressively: text-4xl–text-5xl headlines on mobile" is rejected with the poster rule in §4.3 |
+| Result 3 **SaaS Mobile Boutique** — Calistoga + Inter + JetBrains Mono       | **Reject**                                                                  | A tri-stack with a display serif for heroes. Same §6.6 prohibition as Result 1, and a third family for data labels that §6.6's "hierarchy through weight, never a second family" rules out. Inter as _body_ is right, and is already fixed                                                                                                        |
+| Result 3's scale: Hero 36–42pt, H2 28–32pt, Body 16–18pt, Label 12pt         | **Partially adopt**                                                         | The _shape_ is sound and matches row 64 within a point or two. Body is fixed at 16/24 by §6.6, so the scale is anchored there rather than to this row                                                                                                                                                                                             |
+
+**No `--domain typography` result was adopted as a font pairing.** The generator was queried for
+"mobile app readable body text" and returned two serif-bodied pairings out of three. That is the
+same class of error X-07 recorded, and it is recorded again here rather than treated as noise.
+
+### 4.2 The `--design-system` typography block — X-07, reproduced exactly
+
+| Recommendation                                                                                                                      | Verdict                                      | Reason                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Heading Font: Inter`                                                                                                               | **Adopt**                                    | TSD 1.1.0 §6.6                                                                                                                                                                                                                                                                                                                                                                         |
+| **`Body Font: Playfair Display`**                                                                                                   | **Reject — X-07**                            | This is the mismatched cross-product X-07 identified, and the generator produced it again verbatim. Its source row's own notes say "Playfair Display Italic **only for pull quotes**"; the generator promoted a pull-quote face to body type. TSD §6.6 forbids a display serif as body text at any size. Already closed as an accepted amendment (D-07) — no new amendment is proposed |
+| `Mood: editorial, poster, luxury, type-as-hero, manifesto, high-contrast`                                                           | **Reject**                                   | The mood of row 78, which was rejected. "Type-as-hero" and "manifesto" are the vocabulary of the landing-page frame X-06 discarded                                                                                                                                                                                                                                                     |
+| Google Fonts URL loading Inter **+ JetBrains Mono + Playfair Display**                                                              | **Reject the URL; adopt an Inter-only load** | Three families where §6.6 fixes one. Row 64's own URL is `family=Inter:wght@400;600;700;800` and is what P12 loads                                                                                                                                                                                                                                                                     |
+| `CSS Import: @import url(…)`                                                                                                        | **Reject**                                   | A CSS `@import` is not a mechanism React Native has. Inter loads through `expo-font` at P12; the web export can use the same Google Fonts URL. Recorded as a surface note, not a token                                                                                                                                                                                                 |
+| Row 64: Headlines 800 / letterSpacing −0.5; Subheadings 600 / 18; Body 400 / lineHeight 24; Labels 700 uppercase / letterSpacing +1 | **Adopt — already binding**                  | Transcribed into TSD 1.1.0 §6.6 and implemented in `primitive.ts`'s `typeScale`                                                                                                                                                                                                                                                                                                        |
+| Row 64: "falls back to system SF/Roboto on iOS/Android"                                                                             | **Adopt**                                    | TSD §6.6's fallback rule. `typeScale` exports the family stack, so no feature file names a face                                                                                                                                                                                                                                                                                        |
+| Row 64: "Avoid italic"                                                                                                              | **Adopt**                                    | No italic variant is in `typeScale`. A token that does not exist cannot be reached from feature code                                                                                                                                                                                                                                                                                   |
+
+### 4.3 Rejected: the poster rule
+
+| Recommendation                                                                        | Verdict    | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Row 64: "Use aggressive size contrast (**poster rule: body 16pt vs headline 40pt+**)" | **Reject** | A 40 pt headline is a marketing-page device. PRD §11 fixes a five-tab touch application with a typed native stack; the largest thing on Home is a screen title above a scrollable list. X-06 already discarded the landing-page frame for exactly this reason, and PRD §10.5 requires the scale to survive OS font scaling "without clipping" — a 40 pt headline at a 2× accessibility font scale is 80 pt, which clips on every phone. `typeScale.display` is 34/40 instead: the largest step that still holds at the top font scale |
+| Row 64: "Thick weights carry all hierarchy since there are no shadows"                | **Adopt**  | Consistent with §6.6's weight-driven hierarchy and with Flat Design's no-shadow rule                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+---
+
+## 5. Verdicts — the `--design-system` MASTER.md blocks
+
+`MASTER.md` is persisted as the generator wrote it, save for prettier's formatting pass (§0,
+deviation 3: three hex literals lowercased inside CSS fences, nothing else). T-11-01's acceptance is
+that the file exists and names the matched product type, and it names "Calorie & Nutrition Counter".
+It is an input, not a specification. Reading it without this section would import CSS, hover states and a
+testimonials carousel into a React Native app.
+
+| Block                                                                                            | Verdict                                                            | Reason                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Category: Calorie & Nutrition Counter`                                                          | **Adopt**                                                          | Confirms §14.2's product-type match                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **Spacing Variables** — 4 / 8 / 16 / 24 / 32 / 48 / 64                                           | **Adopt verbatim**                                                 | A clean 4-based scale with no document conflict. `space.xs`…`space.xxxl`. One addition: `space.none = 0`, so "no gap" is a token rather than a literal — the only way to honour SDD §14's no-literals rule at a zero value                                                                                                                                                                                                                                                           |
+| **Shadow Depths** — `--shadow-sm` … `--shadow-xl`                                                | **Reject**                                                         | The generator contradicts itself: this table appears in the same file as `Style: Flat Design`, whose Key Effects read "No gradients/shadows" and whose anti-patterns list "Complex shadows". §14.2 adopted those anti-patterns as P11 review criteria, so the anti-pattern wins over the table. Replaced by two authored values — `effect.elevationSurface = 0` for cards and `effect.elevationFloating = 2` for the sheet and the toast, the only two surfaces that genuinely float |
+| Button radius 8, card radius 12, modal radius 16                                                 | **Adopt**                                                          | `radius.sm` / `radius.md` / `radius.lg`. Two additions: `radius.xs = 4` for inner elements and `radius.pill = 999` for `Chip` and `NutritionBadge`, neither of which the generator's four component specs covers                                                                                                                                                                                                                                                                     |
+| Button padding `12px 24px`, input padding `12px 16px`, font-weight 600                           | **Adopt as a starting point, overridden by X-05**                  | 12 + 12 + a 24 px line box is 48 dp, which is the build-to target — but the _token_ is `touch.buildTo = 48` with padding derived from it, not the reverse, so a future copy change cannot shrink a target below the minimum                                                                                                                                                                                                                                                          |
+| `transition: all 200ms ease` / "clean transitions (150–200ms ease)"                              | **Adopt the durations; reject `all`**                              | `duration.fast = 150`, `duration.base = 200`. Animating `all` is the layout-thrashing anti-pattern the skill's own Performance section lists                                                                                                                                                                                                                                                                                                                                         |
+| `input:focus { outline: none }`                                                                  | **Reject**                                                         | Removing the focus ring is the first item under the skill's own CRITICAL accessibility list and violates PRD §10.5. `focusRing` in `component.ts` is always visible and 3:1                                                                                                                                                                                                                                                                                                          |
+| `box-shadow: 0 0 0 3px #05966920` (focus)                                                        | **Adopt the geometry; reject the alpha**                           | A 3 px ring at `border.focus` is adopted as `focusRing.width = 3`. `#05966920` is 12.5% alpha, which lands far below §1.4.11's 3:1. The ring is drawn at full `border.focus` (3.49:1 at worst)                                                                                                                                                                                                                                                                                       |
+| `.card:hover`, `.btn-primary:hover`, `cursor: pointer`, `transform: translateY(-1px)`            | **Reject for native; hover is enhancement-only on the web export** | §14.2's standing verdict. React Native has no hover and no cursor. PRD §10.5's "no hover-only interaction" governs the web surface. `translateY` on hover is also the layout-shifting-hover anti-pattern in the generator's own Additional Forbidden Patterns                                                                                                                                                                                                                        |
+| `backdrop-filter: blur(4px)` on the modal overlay                                                | **Reject**                                                         | Not a React Native style property; it needs `expo-blur`, a dependency TSD §2.1 does not pin. `scrim.sheet` carries the separation instead                                                                                                                                                                                                                                                                                                                                            |
+| `.modal { max-width: 500px; width: 90% }`                                                        | **Reject**                                                         | A CSS desktop-modal measure. `Sheet` (TSD §6.7) is a bottom sheet on a phone                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `Style: Flat Design` + keywords + Key Effects                                                    | **Adopt**                                                          | §14.2's settled style family                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Page Pattern: "Hero + Testimonials + CTA"**, Conversion Strategy, CTA Placement, Section Order | **Reject — X-06**                                                  | A landing-page pattern with a testimonials carousel, for a five-tab touch app. PRD §11 fixes the information architecture. No token is derived from it                                                                                                                                                                                                                                                                                                                               |
+| Anti-patterns: complex shadows, 3D effects, muted colours, low energy                            | **Adopt**                                                          | §14.2 adopted these as P11 review criteria. The shadow-table rejection above is this criterion being applied                                                                                                                                                                                                                                                                                                                                                                         |
+| Forbidden: emojis as icons                                                                       | **Adopt**                                                          | TSD §6.7 fixes an `Icon` component with a typed `IconName`; an emoji cannot satisfy it                                                                                                                                                                                                                                                                                                                                                                                               |
+| Forbidden: missing `cursor: pointer`                                                             | **Reject for native**                                              | See hover, above                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Forbidden: layout-shifting hovers, low-contrast text, instant state changes, invisible focus     | **Adopt**                                                          | Each restates a §14.1 or PRD §10.5 obligation                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Checklist: "Light mode: text contrast 4.5:1 minimum"                                             | **Adopt and strengthen**                                           | PRD §10.5 requires **both** themes. The generator asks for light only. `contrast.test.ts` asserts both                                                                                                                                                                                                                                                                                                                                                                               |
+| Checklist: `prefers-reduced-motion` respected                                                    | **Adopt**                                                          | `duration.instant = 0` exists so the reduced-motion path is a token swap, not a branch in every component                                                                                                                                                                                                                                                                                                                                                                            |
+| Checklist: "Responsive: 375px, 768px, 1024px, 1440px"                                            | **Defer to P22, not rejected**                                     | Breakpoints are a web-export concern (§20), and P11's scope is tokens. No breakpoint token is invented here                                                                                                                                                                                                                                                                                                                                                                          |
+| Checklist: no content behind fixed navbars; no horizontal scroll                                 | **Adopt as P12/P22 gate items**                                    | Safe-area and layout concerns, outside P11's token scope                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `> LOGIC: check design-system/pages/[page-name].md … its rules override this Master`             | **Adopt with one correction**                                      | The precedence is real and §14.3 records it, but a page override never outranks PRD/SDD/TSD. Tool output is rank 5 whether it is in MASTER.md or a page file                                                                                                                                                                                                                                                                                                                         |
+
+---
+
+## 6. Verdicts — the ten per-screen overrides (T-11-02)
+
+All ten files exist in `design-system/pages/`. The generator classified each screen by a `Page Type`
+it inferred from the purpose string, and four of those classifications are wrong for this product.
+The wrong ones are named here so a P13–P18 reader does not act on them.
+
+| Screen          | Generator's `Page Type` | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `home`          | Landing / Marketing     | **Reject the type.** Home is an authenticated five-tab feed (PRD §8.2), not a landing page. Its "Dynamic hero > Relevant features > Tailored testimonials > Smart CTA" section order is X-06 again, as is "A/B test color variations per segment" — there is no analytics or experiment system in this product (PRD §4)                                                                                                                                               |
+| `meal-details`  | Product Detail          | **Reject the recommendations, keep the type.** "WebGL/Three.js 3D, realistic shadows, physics lighting, parallax (3–5 layers)" contradicts Flat Design's own anti-patterns _and_ needs three unpinned dependencies. "Purchase" in its section order does not exist — NutriTime AI sells nothing (PRD §4)                                                                                                                                                              |
+| `splash`        | Settings / Profile      | **Reject the type.** Misclassified. Its "Forms: Toggle to show/hide password" recommendation is inapplicable — the product has no accounts and no passwords (PRD §10.3)                                                                                                                                                                                                                                                                                               |
+| `onboarding`    | General                 | **Reject most.** "Hero (community value prop) > Popular topics > Active members showcase > Join CTA" and "Member photos add humanity" describe a community product. There are no members, no accounts and no social features. **Adopt** "Provide Skip and Back buttons" — it sharpens PRD §8.1                                                                                                                                                                        |
+| `assistant`     | General                 | **Adopt.** 800 px max width, single column, low density, "typing indicators, streaming text, context cards" all fit PRD §8.4's chat surface. The only clean page file of the ten                                                                                                                                                                                                                                                                                      |
+| `dietary-setup` | Empty State             | **Adopt the recommendations, reject the type.** A setup form is not an empty state, but every recommendation is sound and testable: error summary at the top of the form, focus moved to it after a failed submit, each item linked to its invalid field, inline errors retained, `label`/`for` pairing, no placeholder-only inputs. This is the strongest page file in the set and it maps straight onto TSD §6.7's `FormField` and PRD §12's validation-error state |
+| `explore`       | Search Results          | **Adopt.** "'No results' with suggestions", "predictions as the user types", "no blank screen or '0 results'" — all sharpen PRD §12's empty state for `Explore`. Search-as-you-type is already PRD §10.1's ≤150 ms local path                                                                                                                                                                                                                                         |
+| `saved`         | Search Results          | **Adopt the touch rule, reject the effects.** "Avoid horizontal swipe on main content" protects the tab swipe. "Cursor scale on hover, magnetic pull, cursor morphing, trail effects, blend mode cursors" is a desktop-pointer package with no meaning on a phone                                                                                                                                                                                                     |
+| `meal-form`     | General                 | **Adopt the form rules, reject the layout.** "Show loading then success/error state", `label`/`for`, no placeholder-only inputs — all required by TSD §6.7. Reject "Max Width 1400px or full-width", "12-column grid", "High content density" and "parallax images, page-flip transitions": a phone form is one column                                                                                                                                                |
+| `settings`      | Settings / Profile      | **Adopt.** "Confirm before delete/irreversible actions", "Brief success message", "Avoid: Delete without confirmation", "Avoid: Silent success" — precisely PRD §8/§12's confirm-destructive state for Reset                                                                                                                                                                                                                                                          |
+
+Cross-cutting items repeated across the page files:
+
+| Repeated recommendation                                                                                    | Verdict                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Keep tab order aligned with visual order and test every action without a pointer"                         | **Adopt** — PRD §10.5                                                                                                                                                                   |
+| "Check `prefers-reduced-motion`"                                                                           | **Adopt** — already a token (`duration.instant`)                                                                                                                                        |
+| "Use sequential heading levels h1–h6" / "no div soup"                                                      | **Adopt, translated.** React Native has no headings. TSD §6.7's `AppText` has a `level` prop; the native equivalent is `accessibilityRole="header"` plus `aria-level` on the web export |
+| "Use `max-width: 100%` on images" / "Fixed width images overflow"                                          | **Adopt, translated** — `resizeMode` and a flex width, not a CSS max-width                                                                                                              |
+| "Test at 320 375 414 768 1024 1440"                                                                        | **Defer to P22**                                                                                                                                                                        |
+| "Avoid: Override system gestures"                                                                          | **Adopt** — TSD §6.2's navigation gestures                                                                                                                                              |
+| "Avoid: Expect z-index to work across contexts"                                                            | **Adopt** — the reason `zIndex` is a primitive scale rather than a per-component number                                                                                                 |
+| "Effects: Lensing and refraction, adaptive translucency, fluid morph transitions" (splash, settings)       | **Reject** — needs `expo-blur`; contradicts Flat Design                                                                                                                                 |
+| "Effects: Hard offset shadows (4px 4px 0px black), instant 0ms transitions, dot grid pattern" (onboarding) | **Reject** — neo-brutalist styling from a different style family, and "instant 0ms transitions" is the generator's own anti-pattern                                                     |
+| "Effects: Voice recognition UI, gesture detection, AI predictions" (home)                                  | **Reject** — no voice input exists (PRD §4)                                                                                                                                             |
+| "Inline critical CSS defer non-critical", "Large blocking CSS files"                                       | **Reject for native; P22 note** — there is no CSS in a React Native bundle                                                                                                              |
+| "CTA Placement: …" (home, onboarding, meal-details)                                                        | **Reject** — X-06                                                                                                                                                                       |
+| "No unique components for this page" (all ten)                                                             | **Adopt** — TSD §6.7's 16 shared components are the whole inventory. P11 invents no component                                                                                           |
+
+---
+
+## 7. Where the documents were silent, and what was chosen
+
+Rank 6 of `Plan.md` §4 — ambient convention, recorded as an assumption.
+
+| #    | Silence                                                                                                                                   | Choice                                                                                                                                 | Why                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S-01 | `easing`'s shape. §6.6 names the export; nothing fixes its type                                                                           | Four readonly 4-tuples of cubic-bézier control points                                                                                  | One value feeds React Native's `Easing.bezier(...)` and the web export's `cubic-bezier(...)`. A named string would need a lookup table per platform                                                                                                                                                                                                                                               |
+| S-02 | `opacity`'s members                                                                                                                       | `opaque` 1, `pressed` 0.9, `disabled` 0.4, `scrim` 0.5                                                                                 | `pressed` and `scrim` are the generator's own values (`opacity: 0.9`, `rgba(0,0,0,0.5)`). `disabled` is chosen; WCAG 1.4.3 exempts inactive controls from contrast, and the test records that exemption explicitly rather than silently skipping the pairing                                                                                                                                      |
+| S-03 | `zIndex`'s members                                                                                                                        | `base` 0, `raised` 1, `header` 10, `scrim` 100, `sheet` 110, `toast` 200                                                               | Ordered by the surfaces TSD §6.7 actually defines. Gaps between bands so P12 can insert without renumbering                                                                                                                                                                                                                                                                                       |
+| S-04 | `stroke`'s members                                                                                                                        | `hairline` 1, `regular` 2, `focus` 3                                                                                                   | The generator's own three widths: 1 px input border, 2 px secondary-button border, 3 px focus ring                                                                                                                                                                                                                                                                                                |
+| S-05 | The `effect` group's members. §6.6 names the group; nothing fixes its contents                                                            | `shadowColor`, `elevationSurface`, `elevationFloating`, `skeleton`, `ripple`, `highlight`                                              | `skeleton` is required by PRD §12's mandatory loading state; `ripple` and `highlight` are the two platforms' press affordances, which the generator only expressed as `:hover`                                                                                                                                                                                                                    |
+| S-06 | `scrim`'s members                                                                                                                         | `backdrop`, `sheet`, `image`                                                                                                           | `image` is not decorative. `MealCard` takes an `imageUrl` (TSD §6.7) and remote photos are arbitrary; the scrim is what bounds the worst case. Its alpha was **computed**, not chosen by eye — see §3.3 and the test                                                                                                                                                                              |
+| S-07 | `ColorScheme` is referenced in TSD §6.6's `resolveScheme` signature but **declared nowhere** — not in §3.1, not in `packages/contracts`   | Declared as `'light' \| 'dark'` in `semantic.ts`                                                                                       | It is the only inhabitant consistent with `THEME_MODES = ['system','light','dark']` and with React Native's `Appearance.getColorScheme(): 'light' \| 'dark' \| null`. Theme-local, not a wire contract, so it does not belong in `contracts`. Recorded as a proposed TSD amendment in §8                                                                                                          |
+| S-08 | Type-scale step names and sizes above body. §6.6 fixes four weights and body's 16/24; the rest is open                                    | `display` 34/40, `headline` 28/34, `title` 22/28, `subheading` 18/24, `body` 16/24, `bodyStrong` 16/24, `caption` 14/20, `label` 12/16 | Anchored on §6.6's fixed body and row 64's fixed `subheading` 18. The steps above are restrained rather than the catalog's 40 pt+ — see §4.3                                                                                                                                                                                                                                                      |
+| S-09 | Where the OS `fontScale` multiplication happens. §6.6 says the scale responds to `useWindowDimensions().fontScale`, which is a React hook | Not here                                                                                                                               | A hook cannot live in a pure package with no React dependency. `primitive.ts` exports the unscaled scale; `useTheme()` applies `fontScale` at P12. Flagged as a P12 hand-off in §9                                                                                                                                                                                                                |
+| S-11 | What colour text takes when it sits on a meal photograph. §6.6 names no such role, and `content.inverse` is the obvious candidate         | A new `content.onImage`: light `#ECFDF5`, dark `#E8F5F0` — light in **both** schemes                                                   | `content.inverse` was tried first and `contrast.test.ts` failed it at **2.62:1** in dark: the dark scheme's inverse tone is dark, because its inverse _surface_ is light. A photograph is not a surface this theme picks, so this pairing must not flip with the scheme. The token was wrong, not the threshold — the test carries a comment saying so, to stop the next reader re-introducing it |
+| S-10 | Whether `Splash` needs a page override, given §14.4's nine-slug list                                                                      | Generated                                                                                                                              | PRD §11 names ten screens and outranks the Plan. See §0                                                                                                                                                                                                                                                                                                                                           |
+
+---
+
+## 8. Proposed amendments — recorded, not applied
+
+The T-11-04 stop-condition: a recommendation that would require changing PRD, SDD or TSD is recorded
+as a proposal and **not adopted**. Four arose and none blocks P11. None is a tool recommendation:
+A-11-01 and A-11-02 are documentary gaps found while implementing §6.6, and A-11-03 and A-11-04 are
+config gaps in files this phase does not own. **Nothing below was applied.**
+
+| #       | Document                 | Proposal                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Evidence                                                                                                |
+| ------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| A-11-01 | TSD §6.6                 | Declare `ColorScheme` where it is used. The signature `resolveScheme(mode: ThemeMode, systemScheme: ColorScheme \| null): ColorScheme` names a type that appears nowhere else in the TSD and is not exported by `packages/contracts`. `THEME_MODES` is declared in §3.1; `ColorScheme` is not                                                                                                                                                                                                                            | `grep -n "ColorScheme" TSD.md` returns exactly one line, 1620                                           |
+| A-11-02 | TSD §6.6 / `Plan.md` §18 | State where the three token modules live. §6.6 says `src/shared/theme/` and §18's P11 Expected-files row says `apps/mobile/src/shared/theme/{primitive,semantic,component}.ts`. This phase's boundary is `packages/design-system/**`, and `apps/mobile` does not exist yet. They were written to `packages/design-system/src/theme/` — a shared package rather than one app's private directory, which §20's web surface arguably wants anyway. Either the documents name the package, or P12 re-homes the three modules | The divergence is between two documents and this phase's brief. No document was edited                  |
+| A-11-03 | `.prettierignore`        | Exempt `design-system/MASTER.md` and `design-system/pages/*.md`, as `packages/catalog/meals.json` already is. They are generator output, and a formatter that rewrites them makes the persisted artifact differ from what the tool emitted                                                                                                                                                                                                                                                                               | §0, deviation 3: three hex literals lowercased                                                          |
+| A-11-04 | `eslint.config.mjs`      | Add `packages/design-system/**/*.ts` to the Rule 3 block (`APP_ESCAPES`), with `boundary.test.ts` carved out for `node:fs` the way `packages/catalog/src/seed/**` is. Without it this is the one package in `packages/` that may import from `apps/`                                                                                                                                                                                                                                                                     | The Rule 3 block names only `packages/catalog`; `domain` and `contracts` have their own stricter blocks |
+
+---
+
+## 9. Consequences carried forward
+
+| For      | Note                                                                                                                                                                                                                                                                                      |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P12**  | Apply `fontScale` in `useTheme()`; `primitive.ts`'s `typeScale` is unscaled (S-09)                                                                                                                                                                                                        |
+| **P12**  | `useTheme()` and `ThemeProvider` are P12's. `resolveScheme` is already implemented here, pure and tested                                                                                                                                                                                  |
+| **P12**  | Load Inter via `expo-font` with the row-64 weight set 400/600/700/800. No `@import`, no CSS                                                                                                                                                                                               |
+| **P12**  | `buildComponentTokens` covers the nine groups TSD §6.6 names. The other seven of TSD §6.7's 16 components compose from those nine plus `semantic.ts`; none needs a new colour                                                                                                             |
+| **P22**  | Breakpoints, `prefers-reduced-motion` wiring, and hover-as-enhancement are web-surface work (§20). Deferred, not dropped                                                                                                                                                                  |
+| **P23**  | Touch targets are `touch.buildTo = 48` everywhere. `contrast.test.ts` is the AA half of SQG-17; the font-scaling half is P23's                                                                                                                                                            |
+| **Lint** | `packages/design-system` is not named in `eslint.config.mjs`'s Rule 3 block, so it inherits no app-escape ban and no I/O ban. Nothing in the package reaches into `apps/`, and `boundary.test.ts` is the only file using `node:fs`, deliberately. Proposed as amendment **A-11-04** in §8 |
+
+---
+
+## 10. SQG-09 — file-length exceptions claimed by this phase
+
+SQG-09 caps a new file at 350 lines. Three of this phase's files exceed it. `Plan.md` §17.1 is where
+approved exceptions live and it is outside this phase's ownership, so they are recorded here and
+§17.1 needs three new rows. The test §17.1 sets is "splitting the file would scatter something a
+reviewer needs to read whole", and each claim below is made against that test rather than against
+convenience.
+
+| File                                                | Lines | Why it is claimed                                                                                                                                                                                                                                                                                                     |
+| --------------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/design-system/src/theme/contrast.test.ts` | 459   | Test file, and the pairing table **is** the assertion. §17.1 already approves `scoring.test.ts`, `answer.test.ts` and `schemas.test.ts` on exactly this ground. A reader checking that a pairing is covered — or that an awkward pairing is a recorded exemption rather than a quiet omission — needs the whole table |
+| `packages/design-system/src/theme/component.ts`     | 392   | One table in two halves: the `ComponentTokens` interface and the single expression that satisfies it. Splitting them puts the shape in one file and the values in another, and the only question anyone asks of this module is whether a group is complete                                                            |
+| `packages/design-system/src/theme/semantic.ts`      | 387   | One token table in two columns. Splitting `lightColors` from `darkColors` is precisely the split that lets one drift from the other, and verifying TSD §6.6's "dark is authored, not inverted" means reading a role's two values side by side                                                                         |
+
+`primitive.ts` is 300 lines and claims nothing. `index.ts` is 15; `boundary.test.ts` is 76.
