@@ -467,19 +467,27 @@ export const AUTHORED_MEALS: Readonly<Record<string, AuthoredMeal>> = {
   },
   'rocky-road-fudge': {
     description: 'Peanut butter fudge with marshmallows and chocolate chips.',
-    diet: 'vegetarian',
+    diet: 'regular',
     mealPeriods: ['snack'],
     priceCents: 400,
     preparationMinutes: 20,
     servings: 16,
+    reviewNote:
+      'NOT vegetarian: marshmallows are set with gelatin, which is animal-derived. Found by ' +
+      'the P07 verification - the same review pass that checks allergens should have caught ' +
+      'it, and diet tags gate what a vegetarian user is shown just as allergen tags do.',
   },
   'hot-chocolate-fudge': {
     description: 'Condensed milk fudge with white and dark chocolate.',
-    diet: 'vegetarian',
+    diet: 'regular',
     mealPeriods: ['snack'],
     priceCents: 400,
     preparationMinutes: 25,
     servings: 16,
+    reviewNote:
+      'NOT vegetarian: marshmallows are set with gelatin, which is animal-derived. Found by ' +
+      'the P07 verification - the same review pass that checks allergens should have caught ' +
+      'it, and diet tags gate what a vegetarian user is shown just as allergen tags do.',
   },
   'christmas-pudding-flapjack': {
     description: 'Oat flapjack studded with leftover Christmas pudding.',

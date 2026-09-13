@@ -13,6 +13,11 @@ ADD a tag; `seed.ts` unions inference with `allergenAdditions` and nothing in th
 remove an inferred tag. The tolerable error runs one way: hiding a safe meal, never exposing an
 unsafe one.
 
+**Scope limitation found afterwards.** This pass looked only at ALLERGEN tags. Verification then
+found two desserts tagged `vegetarian` while listing marshmallows, which are set with gelatin. Diet
+tags gate what a vegetarian user is shown exactly as allergen tags gate what an allergic user is
+shown, so a future review of these records must cover both. The two records were corrected.
+
 **Outcome.** 5 records corrected, 2 further records annotated where the derived value was judged
 wrong-but-safer-kept, 53 confirmed with no change.
 

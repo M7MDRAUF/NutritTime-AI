@@ -14,3 +14,10 @@ test-results/
 /SDD.md
 /TSD.md
 /Plan.md
+
+# Generated catalog data. `npm run seed` writes both files, so prettier must not own their
+# formatting: formatting them by hand makes the gate go red after every seed run, which is a
+# gate that flaps for a reason unrelated to code. Their shape is asserted by catalog.test.ts
+# against mealSchema, which is a stronger check than whitespace.
+packages/catalog/meals.json
+packages/catalog/nutrition-source.json

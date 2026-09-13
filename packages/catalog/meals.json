@@ -3,7 +3,9 @@
     "id": "english-breakfast",
     "name": "English Breakfast",
     "description": "The classic fry-up: sausages, bacon, black pudding and eggs with fried bread.",
-    "mealPeriods": ["breakfast"],
+    "mealPeriods": [
+      "breakfast"
+    ],
     "ingredients": [
       {
         "name": "Sausages",
@@ -45,8 +47,14 @@
       "For the fried eggs, break the egg straight into the pan with the fried bread and leave for 30 seconds. Add a good knob of butter and lightly splash/baste the egg with the butter when melted. Cook to your preferred stage, season and gently remove with a fish slice.",
       "Once all the ingredients are cooked, serve on warm plates and enjoy straight away with a good squeeze of tomato ketchup or brown sauce."
     ],
-    "allergenTags": ["egg", "gluten", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": 480,
       "proteinGrams": 25,
@@ -79,7 +87,9 @@
     "id": "full-english-breakfast",
     "name": "Full English Breakfast",
     "description": "A full fry-up, with baked beans alongside the sausages, bacon and eggs.",
-    "mealPeriods": ["breakfast"],
+    "mealPeriods": [
+      "breakfast"
+    ],
     "ingredients": [
       {
         "name": "Sausages",
@@ -125,8 +135,14 @@
       "For the fried eggs, break the egg straight into the pan with the fried bread and leave for 30 seconds. Add a good knob of butter and lightly splash/baste the egg with the butter when melted. Cook to your preferred stage, season and gently remove with a fish slice.",
       "Once all the ingredients are cooked, serve on warm plates and enjoy straight away with a good squeeze of tomato ketchup or brown sauce."
     ],
-    "allergenTags": ["egg", "gluten", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": 787,
       "proteinGrams": 40,
@@ -159,7 +175,10 @@
     "id": "fruit-and-cream-cheese-breakfast-pastries",
     "name": "Fruit and Cream Cheese Breakfast Pastries",
     "description": "Puff pastry squares with sweetened cream cheese and fresh berries.",
-    "mealPeriods": ["breakfast", "snack"],
+    "mealPeriods": [
+      "breakfast",
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Cream Cheese",
@@ -203,8 +222,14 @@
       "Bake for 15-20 minutes or until pastry is golden brown and puffed.",
       "Enjoy!"
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -237,7 +262,9 @@
     "id": "salmon-eggs-eggs-benedict",
     "name": "Salmon Eggs Eggs Benedict",
     "description": "Poached eggs and smoked salmon on toasted muffins under hollandaise.",
-    "mealPeriods": ["breakfast"],
+    "mealPeriods": [
+      "breakfast"
+    ],
     "ingredients": [
       {
         "name": "Eggs",
@@ -281,8 +308,16 @@
       "To poach the eggs, bring a large pan of water to the boil and add the vinegar. Lower the heat so that the water is simmering gently. Stir the water so you have a slight whirlpool, then slide in the eggs one by one. Cook each for about 4 mins, then remove with a slotted spoon.",
       "Lightly toast and butter the muffins, then put a couple of slices of salmon on each half. Top each with an egg, spoon over some Hollandaise and garnish with chopped chives."
     ],
-    "allergenTags": ["egg", "fish", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "fish",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -315,7 +350,10 @@
     "id": "smoked-haddock-kedgeree",
     "name": "Smoked Haddock Kedgeree",
     "description": "Spiced basmati rice with flaked smoked haddock and boiled egg.",
-    "mealPeriods": ["breakfast", "lunch"],
+    "mealPeriods": [
+      "breakfast",
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "Butter",
@@ -377,8 +415,15 @@
       "Uncover the rice and remove the bay leaves, cinnamon stick and cardamom pods if you wish to. Gently fork in the fish and the chopped eggs, cover again and return to the heat for 2-3 minutes, or until the fish has heated through.",
       "Gently stir in almost all the 3 tbsp chopped fresh parsley, and season with a little salt and black pepper to taste. Serve scattered with the remaining parsley and garnished with 1 lemon, cut into wedges."
     ],
-    "allergenTags": ["egg", "fish", "milk"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "egg",
+      "fish",
+      "milk"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -411,7 +456,9 @@
     "id": "breakfast-potatoes",
     "name": "Breakfast Potatoes",
     "description": "Crisp roast potatoes with bacon, garlic and a little maple syrup.",
-    "mealPeriods": ["breakfast"],
+    "mealPeriods": [
+      "breakfast"
+    ],
     "ingredients": [
       {
         "name": "Potatoes",
@@ -463,7 +510,10 @@
       "Serve in a warm bowl with a sunny side up egg!"
     ],
     "allergenTags": [],
-    "dietTags": ["regular", "gluten-aware"],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -496,7 +546,10 @@
     "id": "home-made-mandazi",
     "name": "Home-made Mandazi",
     "description": "Lightly sweet East African fried dough, eaten warm.",
-    "mealPeriods": ["breakfast", "snack"],
+    "mealPeriods": [
+      "breakfast",
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Self-raising Flour",
@@ -529,8 +582,15 @@
       "8. Heat your oil in a suitable pot and gently dip the mandazi pieces to cook until light brown on the first side then turn to cook on the second side.",
       "9. Serve them warm or cold"
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": 411,
       "proteinGrams": 11,
@@ -563,7 +623,10 @@
     "id": "spicy-arrabiata-penne",
     "name": "Spicy Arrabiata Penne",
     "description": "Penne in a chilli-hot tomato sauce finished with Parmigiano-Reggiano.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "penne rigate",
@@ -603,8 +666,14 @@
       "In a large skillet over medium-high heat, add the olive oil and heat until the oil starts to shimmer. Add the garlic and cook, stirring, until fragrant, 1 to 2 minutes. Add the chopped tomatoes, red chile flakes, Italian seasoning and salt and pepper to taste. Bring to a boil and cook for 5 minutes. Remove from the heat and add the chopped basil.",
       "Drain the pasta and add it to the sauce. Garnish with Parmigiano-Reggiano flakes and more basil and serve warm."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -637,7 +706,10 @@
     "id": "smoky-lentil-chili-with-squash",
     "name": "Smoky Lentil Chili with Squash",
     "description": "A smoky lentil and squash chilli with cashews and a little cocoa.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -731,8 +803,13 @@
       "After the cashews have soaked, drain them and add to a high speed blender. Begin to puree, slowly adding about 1/2 cup fresh water, until a creamy consistency is reached. You may need to add less or more water to reach the desired consistency.",
       "Add a pinch of sea salt and vinegar (or lemon juice)."
     ],
-    "allergenTags": ["tree-nut"],
-    "dietTags": ["vegan", "gluten-aware"],
+    "allergenTags": [
+      "tree-nut"
+    ],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -765,7 +842,10 @@
     "id": "dal-fry",
     "name": "Dal fry",
     "description": "Toor dal tempered with cumin, mustard seed and ghee.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Toor dal",
@@ -841,8 +921,13 @@
       "Pour the seasoning over dal mix it well and cook for another minute.",
       "Serve with Naan."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -875,7 +960,9 @@
     "id": "spicy-north-african-potato-salad",
     "name": "Spicy North African Potato Salad",
     "description": "Warm potato salad with harissa, feta, mint and pine nuts.",
-    "mealPeriods": ["lunch"],
+    "mealPeriods": [
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "Small Potatoes",
@@ -932,8 +1019,14 @@
       "Add fetta, mint and sprinkle over pine nuts.",
       "Adjust salt and pepper to taste."
     ],
-    "allergenTags": ["milk", "tree-nut"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk",
+      "tree-nut"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -966,7 +1059,10 @@
     "id": "baingan-bharta",
     "name": "Baingan Bharta",
     "description": "Smoked aubergine mashed with onion, tomato and green chilli.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Aubergine",
@@ -1036,7 +1132,10 @@
       "phulkas, rotis or chapatis. It goes well even with bread, toasted or grilled bread and plain rice or jeera rice."
     ],
     "allergenTags": [],
-    "dietTags": ["vegan", "gluten-aware"],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1069,7 +1168,10 @@
     "id": "ribollita",
     "name": "Ribollita",
     "description": "Tuscan bread soup with cannellini beans, kale and rosemary.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -1134,8 +1236,14 @@
       "Fish out and discard rosemary and thyme stems, if you like, and stir in kale. Taste and adjust seasoning. Lay bread slices on top of the stew so they cover the top and overlap as little as possible. Scatter red onion slices over the top, drizzle with the remaining 3 tablespoons oil and sprinkle with Parmesan.",
       "Put the pot in the oven and bake until the bread, onions and cheese are browned and crisp, 10 to 15 minutes. (If your pot fits under the broiler, you can also brown the top there.) Divide the soup and bread among 4 bowls and serve."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1168,7 +1276,9 @@
     "id": "roasted-eggplant-with-tahini-pine-nuts-and-lentils",
     "name": "Roasted Eggplant With Tahini, Pine Nuts, and Lentils",
     "description": "Roasted aubergine over brown lentils with tahini and pine nuts.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -1238,8 +1348,14 @@
       "3.",
       "To Serve: Heat 2 tablespoons olive oil and pine nuts in a medium skillet set over medium heat. Cook, tossing nuts frequently, until golden brown and aromatic, about 4 minutes. Transfer to a bowl to halt cooking. Stir half of parsley and rosemary into lentils and transfer to a serving platter. Arrange eggplant halves on top. Spread a few tablespoons of tahini sauce over each eggplant half and sprinkle with pine nuts. Sprinkle with remaining parsley and rosemary, drizzle with additional olive oil, and serve."
     ],
-    "allergenTags": ["sesame", "tree-nut"],
-    "dietTags": ["vegan", "gluten-aware"],
+    "allergenTags": [
+      "sesame",
+      "tree-nut"
+    ],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1272,7 +1388,10 @@
     "id": "stovetop-eggplant-with-harissa-chickpeas-and-cumin-yogurt",
     "name": "Stovetop Eggplant With Harissa, Chickpeas, and Cumin Yogurt",
     "description": "Aubergine and chickpeas with harissa and a cumin yoghurt.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -1314,8 +1433,13 @@
       "3.",
       "Top the eggplant mixture with the parsley, drizzle with more extra virgin olive oil, and serve with the yogurt on the side."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1348,7 +1472,9 @@
     "id": "spinach-ricotta-cannelloni",
     "name": "Spinach & Ricotta Cannelloni",
     "description": "Pasta tubes filled with spinach and ricotta, baked under tomato and mozzarella.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -1416,8 +1542,13 @@
       "Put the spinach in a large colander and pour over a kettle of boiling water to wilt it (you may need to do this in batches). When cool enough to handle squeeze out the excess water. Roughly chop the spinach and mix in a large bowl with 100g Parmesan and ricotta. Season well with salt, pepper and the nutmeg.",
       "Heat oven to 200C/180C fan/gas 6. Using a piping bag or plastic food bag with the corner snipped off, squeeze the filling into the cannelloni tubes. Lay the tubes, side by side, on top of the tomato sauce and spoon over the mascarpone sauce. Top with Parmesan and mozzarella. You can now freeze the cannelloni, uncooked, or you can cook it first and then freeze. Bake for 30-35 mins until golden and bubbling. Remove from oven and let stand for 5 mins before serving."
     ],
-    "allergenTags": ["milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1450,7 +1581,9 @@
     "id": "vegan-lasagna",
     "name": "Vegan Lasagna",
     "description": "Lentil and vegetable lasagne layered with a soya bechamel.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "green red lentils",
@@ -1509,8 +1642,14 @@
       "5) To make the sauce, melt the butter and add the flour, then gradually add the soya milk along with the mustard and the vinegar. Cook and stir until smooth and then assemble the lasagne as desired in a baking dish.",
       "6) Bake in the preheated oven for about 25 minutes."
     ],
-    "allergenTags": ["gluten", "soy", "wheat"],
-    "dietTags": ["vegan"],
+    "allergenTags": [
+      "gluten",
+      "soy",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegan"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1543,7 +1682,9 @@
     "id": "vegan-chocolate-cake",
     "name": "Vegan Chocolate Cake",
     "description": "A dairy-free chocolate cake made with flax eggs and almond milk.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Self-raising Flour",
@@ -1581,8 +1722,14 @@
     "instructions": [
       "Simply mix all dry ingredients with wet ingredients and blend altogether. Bake for 45 min on 180 degrees. Decorate with some melted vegan chocolate"
     ],
-    "allergenTags": ["gluten", "tree-nut", "wheat"],
-    "dietTags": ["vegan"],
+    "allergenTags": [
+      "gluten",
+      "tree-nut",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegan"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1615,7 +1762,9 @@
     "id": "roast-fennel-and-aubergine-paella",
     "name": "Roast fennel and aubergine paella",
     "description": "Saffron paella rice with roast fennel, aubergine and peas.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Baby Aubergine",
@@ -1685,7 +1834,10 @@
       "4 To ensure you get the classic layer of toasted rice at the bottom of the pan, increase the heat to high until you hear a slight crackle. Remove from the heat and sit for 5 minutes before sprinkling over the parsley and serving."
     ],
     "allergenTags": [],
-    "dietTags": ["vegan", "gluten-aware"],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1718,7 +1870,10 @@
     "id": "fasoliyyeh-bi-z-zayt-syrian-green-beans-with-olive-oil",
     "name": "Fasoliyyeh Bi Z-Zayt (Syrian Green Beans with Olive Oil)",
     "description": "Syrian green beans slow-cooked in olive oil with garlic and coriander.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Green Beans",
@@ -1746,7 +1901,10 @@
       "Add cilantro and garlic to the beans, and continue to cook just until the cilantro has started to wilt. Eat as a main course by scooping up with warm pita bread or serve as a side dish."
     ],
     "allergenTags": [],
-    "dietTags": ["vegan", "gluten-aware"],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1779,7 +1937,9 @@
     "id": "red-onion-pickle",
     "name": "Red onion pickle",
     "description": "Quick-pickled red onions with cider vinegar and bay.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Red Onions",
@@ -1812,7 +1972,10 @@
       "Pack the onions into the sterilised jars, sprinkling in a little pepper as you go. Cover with the warm vinegar and finish by tucking a couple of bay leaves down the side of the jars. Seal. The onions are best kept in the fridge and used within to 4 weeks."
     ],
     "allergenTags": [],
-    "dietTags": ["vegan", "gluten-aware"],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1845,7 +2008,9 @@
     "id": "chicken-enchilada-casserole",
     "name": "Chicken Enchilada Casserole",
     "description": "Layered corn tortillas with chicken, enchilada sauce and Monterey Jack.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Enchilada sauce",
@@ -1872,8 +2037,14 @@
       "Bake for 20 to 30 minutes uncovered, until bubbly and cheese has melted and started to brown on top.",
       "Serve warm."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": 357,
       "proteinGrams": 29,
@@ -1906,7 +2077,9 @@
     "id": "teriyaki-chicken-casserole",
     "name": "Teriyaki Chicken Casserole",
     "description": "Chicken baked in teriyaki sauce with stir-fry vegetables and brown rice.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "soy sauce",
@@ -1953,8 +2126,14 @@
       "*Meanwhile, steam or cook the vegetables according to package directions.",
       "Add the cooked vegetables and rice to the casserole dish with the chicken. Add most of the remaining sauce, reserving a bit to drizzle over the top when serving. Gently toss everything together in the casserole dish until combined. Return to oven and cook 15 minutes. Remove from oven and let stand 5 minutes before serving. Drizzle each serving with remaining sauce. Enjoy!"
     ],
-    "allergenTags": ["gluten", "soy", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "soy",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -1987,7 +2166,10 @@
     "id": "pad-see-ew",
     "name": "Pad See Ew",
     "description": "Wide rice noodles stir-fried with chicken, egg and Chinese broccoli.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "rice stick noodles",
@@ -2044,8 +2226,17 @@
       "Push to the side of the wok, crack egg in and scramble. Don't worry if it sticks to the bottom of the wok - it will char and which adds authentic flavour.",
       "Add noodles, Chinese broccoli leaves and sauce. Gently mix together until the noodles are stained dark and leaves are wilted. Serve immediately!"
     ],
-    "allergenTags": ["egg", "gluten", "peanut", "shellfish", "soy", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "peanut",
+      "shellfish",
+      "soy",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2078,7 +2269,9 @@
     "id": "potato-gratin-with-chicken",
     "name": "Potato Gratin with Chicken",
     "description": "Sliced potato gratin baked with chicken, bacon and Parmesan.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Potatoes",
@@ -2124,8 +2317,13 @@
     "instructions": [
       "15 minute potato gratin with chicken and bacon greens: a gratin always seems more effort and more indulgent than ordinary boiled or roasts, but it doesn't have to take 45mins, it's nice for a change and you can control the calorie content by going with full fat to low fat creme fraiche. (It's always tastes better full fat though obviously!) to serve 4: use 800g of potatoes, finely slice and boil in a pan for about 5-8 mins till firmish, not soft. Finely slice 3 onions and place in an oven dish with 2 tblsp of olive oil and 100ml of chicken stock. Cook till the onions are soft then drain the potatoes and pour onto the onions. Season and spoon over cream or creme fraiche till all is covered but not swimming. Grate Parmesan over the top then finish under the grill till nicely golden. serve with chicken and bacon, peas and spinach."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2158,7 +2356,9 @@
     "id": "chicken-handi",
     "name": "Chicken Handi",
     "description": "Chicken simmered with yoghurt, cream and garam masala.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Chicken",
@@ -2236,8 +2436,13 @@
       "Finally add the cream and give a final mix to combine everything well.",
       "Sprinkle the remaining kasuri methi and garam masala and serve the chicken handi hot with naan or rotis. Enjoy!"
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2270,7 +2475,9 @@
     "id": "chicken-alfredo-primavera",
     "name": "Chicken Alfredo Primavera",
     "description": "Bowtie pasta with chicken, spring vegetables and a Parmesan cream.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Butter",
@@ -2352,8 +2559,14 @@
     "instructions": [
       "Heat 1 tablespoon of butter and 2 tablespoons of olive oil in a large skillet over medium-high heat. Season both sides of each chicken breast with seasoned salt and a pinch of pepper. Add the chicken to the skillet and cook for 5-7 minutes on each side, or until cooked through.  While the chicken is cooking, bring a large pot of water to a boil. Season the boiling water with a few generous pinches of kosher salt. Add the pasta and give it a stir. Cook, stirring occasionally, until al dente, about 12 minutes. Reserve 1/2 cup of  pasta water before draining the pasta.  Remove the chicken from the pan and transfer it to a cutting board; allow it to rest. Turn the heat down to medium and dd the remaining 1 tablespoon of butter and olive oil to the same pan you used to cook the chicken. Add the veggies (minus the garlic) and red pepper flakes to the pan and stir to coat with the oil and butter (refrain from seasoning with salt until the veggies are finished browning). Cook, stirring often, until the veggies are tender, about 5 minutes. Add the garlic and a generous pinch of salt and pepper to the pan and cook for 1 minute.  Deglaze the pan with the white wine. Continue to cook until the wine has reduced by half, about 3 minutes. Stir in the milk, heavy cream, and reserved pasta water. Bring the mixture to a gentle boil and allow to simmer and reduce for 2-3 minutes. Turn off the heat and add the Parmesan cheese and cooked pasta. Season with salt and pepper to taste. Garnish with Parmesan cheese and chopped parsley, if desired."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2386,7 +2599,9 @@
     "id": "tandoori-chicken",
     "name": "Tandoori chicken",
     "description": "Yoghurt-marinated chicken thighs with paprika, garam masala and lemon.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "lemons",
@@ -2442,8 +2657,13 @@
       "Mix all of the marinade ingredients together and pour over the chicken. Give everything a good mix, then cover and chill for at least 1 hr. This can be done up to a day in advance.",
       "Heat the grill. Lift the chicken pieces onto a rack over a baking tray. Brush over a little oil and grill for 8 mins on each side or until lightly charred and completely cooked through."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2476,7 +2696,9 @@
     "id": "spaghetti-bolognese",
     "name": "Spaghetti Bolognese",
     "description": "Slow-cooked minced beef ragu with spaghetti and parmesan.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "onions",
@@ -2532,8 +2754,15 @@
       "Stir in the tomatoes, beef stock, tomato ketchup or purée, Worcestershire sauce and seasoning. Bring to the boil, then reduce the heat, cover and simmer, stirring occasionally, for 30 mins.",
       "Meanwhile, cook the spaghetti in a large pan of boiling, salted water, according to packet instructions. Drain well, run hot water through it, put it back in the pan and add a dash of olive oil, if you like, then stir in the meat sauce. Serve in hot bowls and hand round Parmesan cheese, for sprinkling on top."
     ],
-    "allergenTags": ["fish", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2566,7 +2795,9 @@
     "id": "irish-stew",
     "name": "Irish stew",
     "description": "Lamb chops braised with root vegetables, thyme and white wine.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "whole wheat",
@@ -2629,8 +2860,13 @@
       "Tip the lamb, vegetables and whole wheat back into the pot, and add the stock. Cover and boil for five minutes, then transfer to the oven for an hour and a half.",
       "Remove the stew from the oven and check the liquid; if there is a lot, remove the lid and boil for a few minutes."
     ],
-    "allergenTags": ["gluten", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2663,7 +2899,9 @@
     "id": "beef-wellington",
     "name": "Beef Wellington",
     "description": "Beef fillet with mushroom duxelles and Parma ham in puff pastry.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "mushrooms",
@@ -2706,8 +2944,15 @@
       "Heat the oven to 200C, 400F, gas 6.",
       "Lightly score the pastry at 1cm intervals and glaze again with beaten egg yolk. Bake for 20 minutes, then lower the oven setting to 180C, 350F, gas 4 and cook for another 15 mins. Allow to rest for 10-15 mins before slicing and serving with the side dishes of your choice. The beef should still be pink in the centre when you serve it."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2740,7 +2985,9 @@
     "id": "beef-brisket-pot-roast",
     "name": "Beef Brisket Pot Roast",
     "description": "Brisket slow-roasted with carrots, potatoes and thyme.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Beef Brisket",
@@ -2807,7 +3054,10 @@
       "Serve with the onions, carrots and gravy. Serve with mashed, roasted or boiled potatoes, egg noodles or polenta."
     ],
     "allergenTags": [],
-    "dietTags": ["regular", "gluten-aware"],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2840,7 +3090,9 @@
     "id": "beef-sunday-roast",
     "name": "Beef Sunday Roast",
     "description": "Roast beef with Yorkshire puddings, potatoes and greens.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Beef",
@@ -2883,8 +3135,15 @@
       "To make the batter, tip 140g plain flour into a bowl and beat in four eggs until smooth. Gradually add 200ml milk and carry on beating until the mix is completely lump-free. Season with salt and pepper. Pour the batter into a jug, then remove the hot tins from the oven. Carefully and evenly pour the batter into the holes. Place the tins back in the oven and leave undisturbed for 20-25 mins until the puddings have puffed up and browned. Serve immediately.",
       "Plate up and add the Gravy as desired."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2917,7 +3176,9 @@
     "id": "garides-saganaki",
     "name": "Garides Saganaki",
     "description": "King prawns baked with tomato, white wine and feta.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Raw king prawns",
@@ -2959,8 +3220,14 @@
       "When the sauce has thickened, stir in the prawns. Bring to a simmer again if the sauce has cooled with the prawns, and cook for about 5 minutes. Add the feta and remove from the heat. Let stand until the cheese starts to melt. Serve warm with slices of crusty bread.",
       "Though completely untraditional, you can add a few tablespoons of stock or passata to this recipe to make a delicious pasta sauce. Toss with pasta after adding the feta, and serve."
     ],
-    "allergenTags": ["milk", "shellfish"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "milk",
+      "shellfish"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -2993,7 +3260,9 @@
     "id": "honey-teriyaki-salmon",
     "name": "Honey Teriyaki Salmon",
     "description": "Salmon glazed with soy and sake, finished with sesame seed.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Salmon",
@@ -3021,8 +3290,16 @@
       "Heat up a skillet on medium-low heat. Add the oil, Pan-fry the salmon on both sides until it’s completely cooked inside and the glaze thickens.",
       "Garnish with sesame and serve immediately."
     ],
-    "allergenTags": ["fish", "gluten", "sesame", "soy", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "sesame",
+      "soy",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": 673,
       "proteinGrams": 51,
@@ -3055,7 +3332,9 @@
     "id": "mediterranean-pasta-salad",
     "name": "Mediterranean Pasta Salad",
     "description": "Farfalle with tuna, mozzarella, green olives and basil.",
-    "mealPeriods": ["lunch"],
+    "mealPeriods": [
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "mozzarella balls",
@@ -3104,8 +3383,15 @@
       "Add the sliced olives, drained mozzarella balls, and chunks of tuna. Mix well and let the salad rest for at least half an hour to allow the flavours to mingle.",
       "Sprinkle the pasta with a generous grind of black pepper and drizzle with the remaining olive oil just before serving."
     ],
-    "allergenTags": ["fish", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3138,7 +3424,9 @@
     "id": "fish-pie",
     "name": "Fish pie",
     "description": "White fish and prawns under a potato crust with Gruyere.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Floury Potatoes",
@@ -3208,8 +3496,16 @@
       "04.Preheat the oven to 190°C/fan170°C/gas 5. Grate the artichokes and add to the dish with the leek, prawns and herbs. Stir the lemon zest and juice into the sauce, then pour over. Mix gently with a wooden spoon.",
       "05.Spoon the mash onto the fish mixture, then use a fork to make peaks, which will crisp and brown as it cooks. Sprinkle over the cheese, then bake for 35-40 minutes until golden and bubbling. Serve with wilted greens."
     ],
-    "allergenTags": ["fish", "gluten", "milk", "shellfish", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "milk",
+      "shellfish",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3242,7 +3538,9 @@
     "id": "recheado-masala-fish",
     "name": "Recheado Masala Fish",
     "description": "Mackerel stuffed with a tangy Goan red masala.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Mackerel",
@@ -3319,8 +3617,13 @@
       "4. Any left over paste could be stored in the fridge for future use.",
       "5. Cinnamon could be avoided as it's a strong spice used generally for meat or chicken."
     ],
-    "allergenTags": ["fish"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "fish"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3353,7 +3656,10 @@
     "id": "cajun-spiced-fish-tacos",
     "name": "Cajun spiced fish tacos",
     "description": "Cajun-spiced white fish in tortillas with avocado and sour cream.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "cajun",
@@ -3411,8 +3717,15 @@
       "Meanwhile, prepare the dressing by combining all the ingredients with a little seasoning.",
       "Soften the tortillas by heating in the microwave for 5-10 seconds. Pile high with the avocado, lettuce and spring onion, add a spoonful of salsa, top with large flakes of fish and drizzle over the dressing."
     ],
-    "allergenTags": ["fish", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3445,7 +3758,9 @@
     "id": "laksa-king-prawn-noodles",
     "name": "Laksa King Prawn Noodles",
     "description": "Coconut laksa broth with king prawns and rice noodles.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -3493,8 +3808,15 @@
       "Add the fish sauce and a little seasoning. Toss in the noodles and cook for a further 3-4 mins until softening. Squeeze in the lime juice, add the prawns and cook through until warm, about 2-3 mins. Scatter over some of the coriander.",
       "Serve in bowls with the remaining coriander and lime wedges on top for squeezing over."
     ],
-    "allergenTags": ["fish", "shellfish", "tree-nut"],
-    "dietTags": ["regular", "gluten-aware"],
+    "allergenTags": [
+      "fish",
+      "shellfish",
+      "tree-nut"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3527,7 +3849,10 @@
     "id": "grilled-mac-and-cheese-sandwich",
     "name": "Grilled Mac and Cheese Sandwich",
     "description": "Macaroni cheese griddled between buttered bread.",
-    "mealPeriods": ["lunch", "snack"],
+    "mealPeriods": [
+      "lunch",
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Macaroni",
@@ -3613,8 +3938,14 @@
       "10. Using a wide spatula, place as many sandwiches in the pan as will fit without crowding it. Cover and cook until the bottoms are nicely browned, about 4 minutes. Turn and cook until the second sides are browned, the cheese is melted, and the mac and cheese is heated through, about 4 minutes more.",
       "11. Repeat with the remaining ingredients. Cut the sandwiches in half, if desired, and serve."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3647,7 +3978,9 @@
     "id": "fettucine-alfredo",
     "name": "Fettucine alfredo",
     "description": "Fettuccine in a clotted cream and Parmesan sauce.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Clotted Cream",
@@ -3684,8 +4017,14 @@
       "Put the pasta in another pan with 2 tsp salt, pour over some boiling water and cook following pack instructions (usually 3-4 mins). When cooked, scoop some of the cooking water into a heatproof jug or mug and drain the pasta, but not too thoroughly.",
       "Add the pasta to the pan with the clotted cream mixture, then sprinkle over the cheese and gently fold everything together over a low heat using a rubber spatula. When combined, splash in 3 tbsp of the cooking water. At first, the pasta will look wet and sloppy: keep stirring until the water is absorbed and the sauce is glossy. Check the seasoning before transferring to heated bowls. Sprinkle over some chives or parsley, then serve immediately."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3718,7 +4057,9 @@
     "id": "pilchard-puttanesca",
     "name": "Pilchard puttanesca",
     "description": "Spaghetti with pilchards, black olives and red chilli.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Spaghetti",
@@ -3761,8 +4102,15 @@
       "Cook the pasta following pack instructions. Heat the oil in a non-stick frying pan and cook the onion, garlic and chilli for 3-4 mins to soften. Stir in the tomato purée and cook for 1 min, then add the pilchards with their sauce. Cook, breaking up the fish with a wooden spoon, then add the olives and continue to cook for a few more mins.",
       "Drain the pasta and add to the pan with 2-3 tbsp of the cooking water. Toss everything together well, then divide between plates and serve, scattered with Parmesan."
     ],
-    "allergenTags": ["fish", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "fish",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3795,7 +4143,9 @@
     "id": "venetian-duck-ragu",
     "name": "Venetian Duck Ragu",
     "description": "Duck legs slow-cooked with red wine and cinnamon, over paccheri.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -3863,8 +4213,14 @@
       "Carefully lift the duck legs out of the sauce and place on a plate – they will be very tender so try not to lose any of the meat. Pull off and discard the fat, then shred the meat with 2 forks and discard the bones. Add the meat back to the sauce with the milk and simmer, uncovered, for a further 10-15 mins while you cook the pasta.",
       "Cook the pasta following pack instructions, then drain, reserving a cup of the pasta water, and add the pasta to the ragu. Stir to coat all the pasta in the sauce and cook for 1 min more, adding a splash of cooking liquid if it looks dry. Serve with grated Parmesan, if you like."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3897,7 +4253,9 @@
     "id": "chilli-prawn-linguine",
     "name": "Chilli prawn linguine",
     "description": "Linguine with king prawns, red chilli and sugar snap peas.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Linguine Pasta",
@@ -3959,8 +4317,15 @@
       "Add the tomatoes and cook, stirring occasionally, for 3 minutes until they just start to soften. Drain the pasta and sugar snaps well, then toss into the prawn mixture. Tear in the basil leaves, stir, and season with salt and pepper.",
       "Serve with salad leaves drizzled with the lime dressing, and warm crusty bread."
     ],
-    "allergenTags": ["gluten", "milk", "shellfish", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "shellfish",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -3993,7 +4358,9 @@
     "id": "bakewell-tart",
     "name": "Bakewell tart",
     "description": "Almond frangipane over raspberry jam in a shortcrust case.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "plain flour",
@@ -4045,8 +4412,16 @@
       "Melt the butter in a pan, take off the heat and then stir in the sugar. Add ground almonds, egg and almond extract. Pour into the flan tin and sprinkle over the flaked almonds.",
       "Bake for about 35 minutes. If the almonds seem to be browning too quickly, cover the tart loosely with foil to prevent them burning."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "tree-nut", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "tree-nut",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4079,7 +4454,9 @@
     "id": "apple-frangipan-tart",
     "name": "Apple Frangipan Tart",
     "description": "Bramley apple and almond frangipane on a biscuit base.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "digestive biscuits",
@@ -4127,8 +4504,16 @@
       "Remove from the oven and leave to cool for 15 minutes. Remove the sides of the tin. An easy way to do this is to stand the tin on a can of beans and push down gently on the edges of the tin.",
       "Transfer the tart, with the tin base attached, to a serving plate. Serve warm with cream, crème fraiche or ice cream."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "tree-nut", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "tree-nut",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4161,7 +4546,9 @@
     "id": "chocolate-gateau",
     "name": "Chocolate Gateau",
     "description": "A rich plain-chocolate sponge gateau.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Plain chocolate",
@@ -4194,8 +4581,15 @@
       "Place the butter and sugar in a mixing bowl and cream together with a wooden spoon until light and fluffy. Gradually beat in the eggs, adding a little flour if the mixture begins to curdle. Fold in the remaining flour with the cooled, melted chocolate and milk. Mix until smooth.",
       "Spread the mixture into the cake tin and bake for 50-55 mins or until firm in the centre and a skewer comes out cleanly. Cool for 10 minutes, then turn out and cool completely."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": 421,
       "proteinGrams": 6,
@@ -4228,7 +4622,9 @@
     "id": "rocky-road-fudge",
     "name": "Rocky Road Fudge",
     "description": "Peanut butter fudge with marshmallows and chocolate chips.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Miniature Marshmallows",
@@ -4263,8 +4659,14 @@
       "Remove the fudge and wax paper from the pan. Carefully peel all of wax paper from the fudge.",
       "Cut the fudge into bite-sized pieces and serve."
     ],
-    "allergenTags": ["milk", "peanut"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk",
+      "peanut"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4297,7 +4699,9 @@
     "id": "hot-chocolate-fudge",
     "name": "Hot Chocolate Fudge",
     "description": "Condensed milk fudge with white and dark chocolate.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "Chocolate Chips",
@@ -4336,8 +4740,13 @@
       "Remove the fudge and wax paper from the pan. Carefully peel all of the wax paper from the fudge.",
       "Cut the fudge into bite-sized pieces and serve."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "regular",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4370,7 +4779,9 @@
     "id": "christmas-pudding-flapjack",
     "name": "Christmas Pudding Flapjack",
     "description": "Oat flapjack studded with leftover Christmas pudding.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "salted butter",
@@ -4402,8 +4813,13 @@
       "Add the oats and stir well until evenly coated. Stir through the leftover Christmas pudding and tip into the prepared tin. Use a spoon to flatten the top and bake for 40 minutes until the edges start to brown. Whilst still warm in the tin, score into 12 squares. Allow to cool completely before cutting along the scores.",
       "Keeps for 5 days in an air tight tin or freeze for up to 1 month."
     ],
-    "allergenTags": ["milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4436,7 +4852,9 @@
     "id": "eton-mess",
     "name": "Eton Mess",
     "description": "Crushed meringue folded through cream and strawberries.",
-    "mealPeriods": ["snack"],
+    "mealPeriods": [
+      "snack"
+    ],
     "ingredients": [
       {
         "name": "strawberries",
@@ -4464,8 +4882,14 @@
       "Whip the double cream until stiff peaks form, then fold in the strawberry purée and crushed meringue. Fold in the chopped strawberries and ginger cordial, if using.",
       "Spoon equal amounts of the mixture into four cold wine glasses. Serve garnished with the remaining strawberries and a sprig of mint."
     ],
-    "allergenTags": ["egg", "milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "egg",
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4498,7 +4922,10 @@
     "id": "french-onion-soup",
     "name": "French Onion Soup",
     "description": "Slow-caramelised onion soup under a Gruyere crouton.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Butter",
@@ -4546,8 +4973,14 @@
       "Add the garlic for the final few mins of the onions’ cooking time, then sprinkle in the flour and stir well. Increase the heat and keep stirring as you gradually add the wine, followed by the hot stock. Cover and simmer for 15-20 mins.",
       "To serve, turn on the grill, and toast the bread. Ladle the soup into heatproof bowls. Put a slice or two of toast on top of the bowls of soup, and pile on the cheese. Grill until melted. Alternatively, you can complete the toasts under the grill, then serve them on top."
     ],
-    "allergenTags": ["gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4580,7 +5013,10 @@
     "id": "brie-wrapped-in-prosciutto-brioche",
     "name": "Brie wrapped in prosciutto & brioche",
     "description": "Whole brie wrapped in prosciutto and baked inside brioche.",
-    "mealPeriods": ["snack", "dinner"],
+    "mealPeriods": [
+      "snack",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Plain Flour",
@@ -4623,8 +5059,15 @@
       "Mix the flour, 1 tsp salt, caster sugar, yeast, milk and eggs together in a mixer using the dough attachment for 5 mins until the dough is smooth. Add the butter and mix for a further 4 mins on medium speed. Scrape the dough bowl and mix again for 1 min. Place the dough in a container, cover with cling film and leave in the fridge for at least 6 hrs before using.",
       "Wrap the Brie in the prosciutto and set aside. Turn out the dough onto a lightly floured surface. Roll into a 25cm circle. Place the wrapped Brie in the middle of the circle and fold the edges in neatly. Put the parcel onto a baking tray lined with baking parchment and brush with beaten egg. Chill in the fridge for 30 mins, then brush again with beaten egg and chill for a further 30 mins. Leave to rise for 1 hr at room temperature. Heat oven to 200C/180C fan/gas 6, then bake for 22 mins. Serve warm."
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4657,7 +5100,9 @@
     "id": "boulangere-potatoes",
     "name": "Boulangère Potatoes",
     "description": "Potatoes baked with onion and thyme in vegetable stock.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Onions",
@@ -4685,7 +5130,10 @@
       "Spread a layer of potatoes over the base of a 1.5-litre oiled gratin dish. Sprinkle over a few onions (see picture, above) and continue layering, finishing with a layer of potatoes. Pour over the stock and bake for 50-60 mins until the potatoes are cooked and the top is golden and crisp."
     ],
     "allergenTags": [],
-    "dietTags": ["vegan", "gluten-aware"],
+    "dietTags": [
+      "vegan",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4718,7 +5166,9 @@
     "id": "fennel-dauphinoise",
     "name": "Fennel Dauphinoise",
     "description": "Potato and fennel baked in cream with Parmesan.",
-    "mealPeriods": ["dinner"],
+    "mealPeriods": [
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Potatoes",
@@ -4753,8 +5203,13 @@
       "Heat oven to 180C/160C fan/gas 4. Put potatoes, fennel, and garlic in a medium non-stick pan. Pour in milk and double cream, season well and simmer gently, covered, for 10 mins, stirring halfway through, until potatoes are just tender.",
       "Divide the mixture between 2 small (about 150ml) buttered ramekins and scatter with Parmesan. Bake for 40 mins until the potatoes are golden and tender when pierced with a knife. Snip the reserved fennel fronds over before serving."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4787,7 +5242,9 @@
     "id": "cream-cheese-tart",
     "name": "Cream Cheese Tart",
     "description": "A savoury cheese tart with plum tomatoes and basil.",
-    "mealPeriods": ["lunch"],
+    "mealPeriods": [
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "Flour",
@@ -4841,8 +5298,15 @@
     "instructions": [
       "Crust: make a dough from 250g flour (I like mixing different flours like plain and wholegrain spelt flour), 125g butter, 1 egg and a pinch of salt, press it into a tart form and place it in the fridge. Filling: stir 300g cream cheese and 100ml milk until smooth, add in 3 eggs, 100g grated parmesan cheese and season with salt, pepper and nutmeg. Take the crust out of the fridge and prick the bottom with a fork. Pour in the filling and bake at 175 degrees C for about 25 minutes. Cover the tart with some aluminium foil after half the time. In the mean time, slice about 350g mini tomatoes. In a small pan heat 3tbsp olive oil, 3tbsp white vinegar, 1 tbsp honey, salt and pepper and combine well. Pour over the tomato slices and mix well. With a spoon, place the tomato slices on the tart, avoiding too much liquid on it. Decorate with basil leaves and enjoy"
     ],
-    "allergenTags": ["egg", "gluten", "milk", "wheat"],
-    "dietTags": ["vegetarian"],
+    "allergenTags": [
+      "egg",
+      "gluten",
+      "milk",
+      "wheat"
+    ],
+    "dietTags": [
+      "vegetarian"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4875,7 +5339,10 @@
     "id": "clam-chowder",
     "name": "Clam chowder",
     "description": "New England clam chowder with bacon, potato and cream.",
-    "mealPeriods": ["lunch", "dinner"],
+    "mealPeriods": [
+      "lunch",
+      "dinner"
+    ],
     "ingredients": [
       {
         "name": "Clams",
@@ -4927,8 +5394,15 @@
       "Heat the butter in the same pan and sizzle the bacon for 3-4 mins until it starts to brown. Stir in the onion, thyme and bay and cook everything gently for 10 mins until the onion is soft and golden. Scatter over the flour and stir in to make a sandy paste, cook for 2 mins more, then gradually stir in the clam stock then the milk and the cream.",
       "Throw in the potatoes, bring everything to a simmer and leave to bubble away gently for 10 mins or until the potatoes are cooked. Use a fork to crush a few of the potato chunks against the side of the pan to help thicken – you still want lots of defined chunks though. Stir through the clam meat and the few clam shells, if you've gone down that route, and simmer for a minute to reheat. Season with plenty of black pepper and a little salt, if needed, then stir through the parsley just before ladling into bowls or hollowed-out crusty rolls."
     ],
-    "allergenTags": ["gluten", "milk", "shellfish", "wheat"],
-    "dietTags": ["regular"],
+    "allergenTags": [
+      "gluten",
+      "milk",
+      "shellfish",
+      "wheat"
+    ],
+    "dietTags": [
+      "regular"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -4961,7 +5435,9 @@
     "id": "creamy-tomato-soup",
     "name": "Creamy Tomato Soup",
     "description": "Tomato soup finished with whole milk and a little sugar.",
-    "mealPeriods": ["lunch"],
+    "mealPeriods": [
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "Olive Oil",
@@ -5021,8 +5497,13 @@
       "Stir in the tomato purée, sugar, vinegar, chopped tomatoes and passata, then crumble in the stock cubes. Add 1 litre boiling water and bring to a simmer. Cover and simmer for 15 mins until the potato is tender, then remove the bay leaves. Purée with a stick blender (or ladle into a blender in batches) until very smooth. Season to taste and add a pinch more sugar if it needs it. The soup can now be cooled and chilled for up to 2 days, or frozen for up to 3 months.",
       "To serve, reheat the soup, stirring in the milk – try not to let it boil. Serve in small bowls with cheesy sausage rolls."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": null,
       "proteinGrams": null,
@@ -5055,7 +5536,9 @@
     "id": "broccoli-stilton-soup",
     "name": "Broccoli & Stilton soup",
     "description": "Broccoli soup with Stilton stirred through.",
-    "mealPeriods": ["lunch"],
+    "mealPeriods": [
+      "lunch"
+    ],
     "ingredients": [
       {
         "name": "Rapeseed Oil",
@@ -5100,8 +5583,13 @@
       "Pour in the stock and add any chunky bits of broccoli stalk. Cook for 10 – 15 minutes until all the vegetables are soft.",
       "Add the rest of the broccoli and cook for a further 5 minutes. Carefully transfer to a blender and blitz until smooth. Stir in the stilton, allowing a few lumps to remain. Season with black pepper and serve."
     ],
-    "allergenTags": ["milk"],
-    "dietTags": ["vegetarian", "gluten-aware"],
+    "allergenTags": [
+      "milk"
+    ],
+    "dietTags": [
+      "vegetarian",
+      "gluten-aware"
+    ],
     "nutrition": {
       "calories": 353,
       "proteinGrams": 14,
