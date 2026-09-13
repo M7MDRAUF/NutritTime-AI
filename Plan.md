@@ -1014,14 +1014,14 @@ acceptance criteria without weakening a test, suppressing a type error, or reduc
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-05-01 | Weights, `SCORE_BOUNDS`, `GOAL_BANDS`, `BUDGET_BAND_MAX_CENTS`, `BUDGET_TOLERANCE`, `PREPARATION_TIME_BANDS`, `MAX_RECOMMENDATIONS` | T-04-09 | Not Started |
-| T-05-02 | The eight policies per the §4.6 rule table | T-05-01 | Not Started |
-| T-05-03 | `scoreMeal` with 0–100 clamp and `-0` normalisation | T-05-02 | Not Started |
-| T-05-04 | `recommend` pipeline: three hard rejects with reasons → score → stable sort → top 3 | T-05-03, T-04-06 | Not Started |
-| T-05-05 | `scoring.test.ts` — each band edge, `null` nutrient, 125% budget boundary, clamp, tie-break, every rejection reason | T-05-04 | Not Started |
-| T-05-06 | Relevance weights, `MIN_PREFIX_LENGTH`, `STOP_WORDS` | T-03-03 | Not Started |
-| T-05-07 | `queryMeals` — memoised index, token-vs-prefix exclusivity, phrase bonus, score-0 omission | T-05-06 | Not Started |
-| T-05-08 | `relevance.test.ts` per §19.3 | T-05-07 | Not Started |
+| T-05-01 | Weights, `SCORE_BOUNDS`, `GOAL_BANDS`, `BUDGET_BAND_MAX_CENTS`, `BUDGET_TOLERANCE`, `PREPARATION_TIME_BANDS`, `MAX_RECOMMENDATIONS` | T-04-09 | Completed |
+| T-05-02 | The eight policies per the §4.6 rule table | T-05-01 | Completed |
+| T-05-03 | `scoreMeal` with 0–100 clamp and `-0` normalisation | T-05-02 | Completed |
+| T-05-04 | `recommend` pipeline: three hard rejects with reasons → score → stable sort → top 3 | T-05-03, T-04-06 | Completed |
+| T-05-05 | `scoring.test.ts` — each band edge, `null` nutrient, 125% budget boundary, clamp, tie-break, every rejection reason | T-05-04 | Completed |
+| T-05-06 | Relevance weights, `MIN_PREFIX_LENGTH`, `STOP_WORDS` | T-03-03 | Completed |
+| T-05-07 | `queryMeals` — memoised index, token-vs-prefix exclusivity, phrase bonus, score-0 omission | T-05-06 | Completed |
+| T-05-08 | `relevance.test.ts` per §19.3 | T-05-07 | Completed |
 
 ### P06 — Domain IV: chat retrieval and answer resolvers
 
@@ -2780,6 +2780,7 @@ activity.
 | R-14 | `money()` accepts amounts `moneySchema` rejects: the constructor enforces integer and non-negative, the schema additionally caps at 100,000 cents. TSD §4.2 states no maximum | Medium | Medium | Recorded at P03 rather than inventing a bound. P05 and P07 construct prices through `money()`; a price above the cap passes the constructor and fails validation at the boundary — the right place to catch it, a confusing place to debug it | Domain Engineer | P05, P07 |
 | R-15 | ~~`tokenizeSegments` splits on neither `.` nor a newline~~ | — | — | **CLOSED at P04 by measurement.** All 992 live TheMealDB ingredient names were checked: none contains a dot or a newline. Only commas (2) and one parenthesised name occur, both already in the separator class. TSD §4.1 needs no amendment | Domain Engineer | P04 |
 | R-16 | A misspelled declared `allergenTag` resolves to no canonical allergen. `allergenTags` is `z.array(z.string())`, so `"treenut"` validates but matches nothing; the record is rescued only if its ingredients independently betray the allergen | Medium | **High** — a silent false negative in the safety-critical path | T-07-04 is a hand review, so a typo is the expected failure. P07 must validate declared tags against the taxonomy at seed time and fail the write on an unrecognised one | Catalog Author | P07 |
+| R-18 | `normalizeText` turns an apostrophe into a space, so a contraction splits into two tokens. The seven tails (`'d 'll 'm 're 's 't 've`) are now stop words, but a contraction whose HEAD is not a function word still leaves a stray token - `"don't"` leaves `don` - which lengthens the query and costs the 25-point phrase bonus | Medium | Low — ranking only, never safety; the meal is still returned, just lower | No word list can fix this. The clean fix is apostrophe-aware tokenisation in TSD §4.1, which is a contract amendment rather than a domain change, so it is recorded rather than invented here | Domain Engineer | P09 |
 | R-17 | `singularize` maps `quiches` to `quich`, which reaches no token, so a plural of a `-ches` stem ending in `e` folds to nothing | Low | Low | Both words normally appear singular in the catalog. Recorded rather than special-cased, because widening the rule risks mangling stems that currently fold correctly | Domain Engineer | P07 |
 | R-13 | `jsdom@30.0.1` (TSD §2.1) declares Node `^22.22.2 \|\| ^24.15.0 \|\| >=26.0.0`; the dev machine runs v24.10.0, so npm emits EBADENGINE | **Certain** (observed at P01) | Medium | Nothing before P12 uses jsdom, so P01–P11 are unaffected. Resolve before P12 by raising Node to ≥24.15.0 or re-pinning jsdom — a TSD §2.1 amendment either way | Frontend Engineer | P12 |
 | R-12 | The USDA supporting archive is dated 2022-10-28, older than the Foundation release | Low | Low | Composition of staple foods does not drift materially; the vintage is recorded in every record's `nutritionProvenance.dataset`, so a future refresh is a data change, not an archaeology exercise | Catalog Author | P07 |
