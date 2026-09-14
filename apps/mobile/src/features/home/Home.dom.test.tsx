@@ -12,6 +12,7 @@ import { ApiProvider } from '../../infrastructure/api/ApiProvider.js';
 import { StorageProvider } from '../../state/StorageProvider.js';
 import { preferencesStore, preferencesActions } from '../../state/preferences/index.js';
 import { memoryDriver } from '../../infrastructure/storage/__fixtures__/memoryDriver.js';
+import { STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
 import { transportError } from '../../infrastructure/api/errors.js';
 import { DEFAULT_PREFERENCES } from '../../infrastructure/storage/definitions.js';
 import type { ApiClient } from '../../infrastructure/api/client.js';
@@ -95,6 +96,8 @@ async function render(
   client: ApiClient,
   now: () => Date = AT_LUNCH,
   initialFocusEpoch = 0,
+  onDisclaimerShown?: () => void,
+  driver: ReturnType<typeof memoryDriver> = memoryDriver({}),
 ): Promise<Harness> {
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -108,7 +111,7 @@ async function render(
   // Hoisted out of `treeFor`: a fresh driver per render would make a fresh `runtime` object, which
   // re-runs `StorageProvider`'s effect and rebuilds the store — so a re-focus would have looked
   // like a remount and the test would have proved nothing.
-  const runtime = { driver: memoryDriver({}), now: CLOCK };
+  const runtime = { driver, now: CLOCK };
 
   const treeFor = (focusEpoch: number): ReactNode => (
     <ThemeProvider mode="light" deviceScheme={null} fontScale={1}>
@@ -119,6 +122,7 @@ async function render(
             <HomeScreen
               now={now}
               focusEpoch={focusEpoch}
+              onDisclaimerShown={onDisclaimerShown}
               route={{ key: 'h', name: 'Home', params: undefined } as never}
               navigation={{ navigate: () => undefined } as never}
             />
@@ -171,6 +175,89 @@ async function render(
     settle,
   };
 }
+
+describe('the quarantined-preferences warning', () => {
+  it('tells the user their profile was reset, because nothing is filtering any more', async () => {
+    /**
+     * **A mutation audit found this notice was deletable in silence** — no test in the repository
+     * mentioned `home-preferences-recovered`, so removing the whole branch changed nothing that was
+     * checked. It is the one reset a user must be told about: `recovered` on the preferences key
+     * means the stored profile failed its schema, was quarantined, and rebuilt from defaults — so
+     * `allergies` is now `[]`, every meal passes the filter, and **the app looks completely normal**.
+     * That is precisely P14's CRITICAL, and this banner is the only thing standing between it and a
+     * user who thinks their allergy list is still in force.
+     *
+     * Reached the way the app reaches it: a stored record that is a well-formed envelope and an
+     * invalid value, so the read path quarantines it rather than a test asserting a status directly.
+     */
+    const driver = memoryDriver({
+      [STORAGE_KEYS.preferences]: JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: '2026-09-13T12:00:00.000Z',
+        value: { schemaVersion: 1, diet: 'not-a-real-diet' },
+      }),
+    });
+
+    const view = await render(domainClient().client, AT_LUNCH, 0, undefined, driver);
+
+    expect(view.find('home-preferences-recovered')).not.toBeNull();
+
+    /**
+     * And the corrupt record really is gone — the warning is not cosmetic.
+     *
+     * **Asserted as "replaced by the defaults" rather than "absent", because absent is false and
+     * finding that out is worth more than the assertion.** The read path does remove the live key,
+     * and then `createStore`'s projection effect writes the fresh store straight back at mount, so
+     * the key exists again a tick later holding `DEFAULT_PREFERENCES`. That is **R-54**, reproduced
+     * here by accident: every store rewrites its own key at every launch. It is also why this
+     * banner matters more than it looks — by the time the user reads it, the defaults are already
+     * on disk and the original profile is only in the quarantine ledger.
+     */
+    const stored: unknown = JSON.parse(driver.store.get(STORAGE_KEYS.preferences) ?? '{}');
+    expect(stored).toMatchObject({ value: { diet: 'regular', allergies: [] } });
+  });
+
+  it('shows nothing when the stored profile read cleanly — the control', async () => {
+    // Without this, a screen that rendered the warning unconditionally would pass the test above.
+    const view = await render(domainClient().client);
+
+    expect(view.find('home-preferences-recovered')).toBeNull();
+  });
+});
+
+describe('the FR-007 disclaimer acknowledgement', () => {
+  it('reports that the disclaimer was shown, once, and not once per re-focus', async () => {
+    /**
+     * **The missing half of T-18-01, found by four separate auditors.**
+     *
+     * `uiActions.acknowledgeDisclaimer()` existed with a schema, a default and a Settings surface,
+     * and **nothing in the app ever dispatched it** — so `disclaimerAcknowledged` could only be
+     * `false`, and Settings told every user they had not seen the allergen notice. That was untrue
+     * for anyone who had opened this screen, where the disclaimer always renders.
+     *
+     * Asserted through the injected callback rather than the `ui` store, because that is the seam:
+     * `HomeScreenWithFocus` owns the dispatch so this screen stays renderable without a store it
+     * has nothing else to do with. The end-to-end proof that the wrapper is wired — open Home, then
+     * read Settings — belongs to the Settings e2e spec, and is recorded as such.
+     *
+     * The re-focus half is the interesting one: `focusEpoch` changing must NOT fire it again, or a
+     * user switching tabs would queue a storage write per visit for a flag that cannot change.
+     */
+    let calls = 0;
+    const view = await render(domainClient().client, AT_LUNCH, 0, () => {
+      calls += 1;
+    });
+
+    expect(view.find('home-disclaimer')).not.toBeNull();
+    expect(calls).toBe(1);
+
+    await view.refocus(1);
+    await view.refocus(2);
+
+    // Still one. The effect depends on the callback's identity, and the wrapper memoises it.
+    expect(calls).toBe(1);
+  });
+});
 
 describe('HomeScreen', () => {
   it('has at least one peanut meal in the catalog, or the assertion below is vacuous', () => {

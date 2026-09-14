@@ -108,6 +108,25 @@ export function registerScreen<K extends ScreenRouteName>(
  * same component identity and React keeps the mounted screen rather than remounting it — which
  * would throw away its state, its scroll position and any request in flight.
  */
+/**
+ * What is registered for a route right now, or `undefined`. Introspection, not a render path.
+ *
+ * **Added because the test guarding `registerScreens()` could not fail.** That test read
+ * `register.ts` as source text and regex-matched `registerScreen('Name'`, which answers "is the
+ * list complete?" and not "does the list run?" — so giving `registerScreens()` an unconditional
+ * early `return`, which drops **every** screen in the app to `PlaceholderScreen`, left all 2012
+ * tests green. A mutation audit found it.
+ *
+ * `screenFor` cannot answer the question: it returns its stable wrapper whether or not anything is
+ * registered behind it, by design, because that is what lets a feature register late. So the
+ * registry has to be askable directly. Returning the component rather than a boolean is deliberate
+ * — it makes "registered the *right* component" checkable too, which is how `Home` binding the bare
+ * screen instead of `HomeScreenWithFocus` would be caught.
+ */
+export function registeredScreen(name: ScreenRouteName): ComponentType<AnyScreenProps> | undefined {
+  return registered.get(name);
+}
+
 export function screenFor<K extends ScreenRouteName>(name: K): ScreenComponent<K> {
   const cached = wrappers.get(name);
   if (cached !== undefined) {

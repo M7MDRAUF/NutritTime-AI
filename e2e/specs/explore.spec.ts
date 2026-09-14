@@ -79,8 +79,23 @@ test.describe('Explore, end to end', () => {
      *
      * The ids can only change if the server returned a different set, which is the actual claim.
      */
+    /**
+     * **Scoped to the Explore screen, and it was not before.**
+     *
+     * `HomeScreen` gives each of its cards a `meal-<id>` test id too, and Home stays mounted behind
+     * Explore — a tab navigator does not unmount the tab you left. So a page-wide
+     * `[data-testid^="meal-"]` collected three of Home's ids along with Explore's, and this
+     * comparison was measuring a set it did not intend. The claim it makes still held, which is why
+     * it went unnoticed; it held for the wrong reason.
+     *
+     * Found while another spec was being written against the same selector, where the "first
+     * Explore row" turned out to be one of Home's cards and Playwright's hit test correctly
+     * refused to click something covered by another screen.
+     */
     const idsNow = async (): Promise<string[]> =>
-      (await page.locator('[data-testid^="meal-"]').all()).reduce<Promise<string[]>>(
+      (await page.getByTestId('explore-screen').locator('[data-testid^="meal-"]').all()).reduce<
+        Promise<string[]>
+      >(
         async (carry, row) => [...(await carry), (await row.getAttribute('data-testid')) ?? ''],
         Promise.resolve([]),
       );
@@ -189,9 +204,27 @@ test.describe('Explore, end to end', () => {
     // kept and updated rather than deleted, because a registry with a screen behind it is the
     // stronger claim.
     await expect(page.getByTestId('home-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
-    // The routes with no screen yet still show the placeholder, which is the registry working.
+    /**
+     * **Updated at P17, for the second time, and the pattern is the point.**
+     *
+     * This looked for "Home is not available yet" until P15 registered Home, and for "Saved is not
+     * available yet" until P17 registered Saved. Each time the assertion was *correct* when
+     * written and the registry is what changed under it — so it gets updated to the stronger
+     * claim rather than deleted, exactly as the Home line above was.
+     *
+     * The stronger claim here is both sections with their own empty states, because that is
+     * T-17-02's actual acceptance ("two sections with independent empty states") and it is the half
+     * a placeholder assertion could never have reached.
+     */
     await page.getByRole('tab', { name: 'Saved' }).click();
-    await expect(page.getByRole('heading', { name: /Saved is not available yet/ })).toBeVisible();
+    await expect(page.getByTestId('saved-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByTestId('saved-favorites-empty')).toBeVisible();
+    await expect(page.getByTestId('saved-custom-empty')).toBeVisible();
+    // Still the registry working: `Assistant` has no screen until P19, so the placeholder names it.
+    await page.getByRole('tab', { name: 'Assistant' }).click();
+    await expect(
+      page.getByRole('heading', { name: /Assistant is not available yet/ }),
+    ).toBeVisible();
   });
 
   /**

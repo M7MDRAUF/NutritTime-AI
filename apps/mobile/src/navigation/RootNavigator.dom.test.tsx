@@ -15,6 +15,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { ThemeProvider } from '../shared/theme/ThemeProvider.js';
+import { StorageProvider } from '../state/StorageProvider.js';
+import { uiStore } from '../state/ui/index.js';
+import { memoryDriver } from '../infrastructure/storage/__fixtures__/memoryDriver.js';
 import { RootNavigator } from './RootNavigator.js';
 import type { BootPhase } from './routes.js';
 import { renderToDom } from './testHarness.js';
@@ -24,12 +27,32 @@ vi.mock('react-native-safe-area-context', async () => {
   return createSafeAreaContextMock();
 });
 
+/**
+ * **`StorageProvider` and the `ui` store are mounted here as of P18, and that is a real change to
+ * what this suite covers rather than boilerplate.**
+ *
+ * `TabNavigator` now records the tab the user moved to (T-18-01): it dispatches
+ * `ui/tabChanged` on `focus`, and reads the tab to open on from the hydration snapshot. So the
+ * navigator genuinely depends on both, and a test that rendered it without them would be testing a
+ * tree the app never builds.
+ *
+ * This is **not** the mocking exercise `RootNavigator`'s own docstring warns about — `phase` is
+ * still a prop, for exactly the reason recorded there. These are the real providers with an
+ * injected memory driver, the same shape `createStore.dom.test.tsx` uses, so nothing here is a
+ * stand-in for the thing it is testing.
+ */
+const CLOCK = () => '2026-09-13T12:00:00.000Z';
+
 function App({ phase }: { readonly phase: BootPhase }): ReactNode {
   return (
     <ThemeProvider mode="light" deviceScheme="light" fontScale={1}>
-      <NavigationContainer>
-        <RootNavigator phase={phase} />
-      </NavigationContainer>
+      <StorageProvider runtime={{ driver: memoryDriver({}), now: CLOCK }}>
+        <uiStore.Provider>
+          <NavigationContainer>
+            <RootNavigator phase={phase} />
+          </NavigationContainer>
+        </uiStore.Provider>
+      </StorageProvider>
     </ThemeProvider>
   );
 }

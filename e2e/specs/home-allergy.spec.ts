@@ -94,29 +94,139 @@ test.describe('the allergy exclusion, end to end', () => {
    * heading. Nothing about FR-003 could have failed it, while P13's report closed by saying this was
    * where FR-003 would stop being argued about.
    *
-   * `Settings` has no screen until P18, so the route into the form from there does not exist yet —
-   * which is why this is `test.fixme` rather than a weakened assertion. The body is the real one,
-   * written now so T-18-02 turns it on by registering a screen rather than by having to work out
-   * what to assert. The dom suite covers the mechanism meanwhile (`Home.dom.test.tsx`, "discards
-   * the meals on screen the moment an allergy changes").
+   * P14 then parked it as `test.fixme` because `Settings` had no screen and the route into the form
+   * did not exist. **T-18-02 built the screen, so this is a live test now**, and it keeps every
+   * claim the parked body made while closing the two holes it could not reach:
+   *
+   *  1. **The allergen is chosen from the catalog rather than named.** The parked body tapped
+   *     `peanut` and then asserted `after !== before`, which is **vacuous whenever none of the three
+   *     meals on screen carries peanut** — adding an allergy only removes meals, so if the shown set
+   *     is peanut-free the server legitimately returns the same three and the assertion fails
+   *     against a correct app. Measured: the three meals Home shows on a default profile were
+   *     `home-made-mandazi`, `chocolate-gateau` and `eton-mess`, none of them peanut. So the
+   *     allergen is the one carried by the most of the meals actually on screen, read from the
+   *     server the way the peanut test above reads it.
+   *  2. **The discard is observed, not inferred.** FR-003 is "discards the recommendations currently
+   *     on screen **and** re-runs filtering", and a test that only compares before with after
+   *     asserts the second half. The re-request is held at the network edge, so the state between
+   *     the two is visible: `home-recommendations` renders only in `loaded`, and while the new
+   *     request is in flight the old meals must be gone rather than left on screen under a
+   *     preference set that rules them out. That is the half `useRecommendations` sets to `pending`
+   *     *before* it asks, and the half a stale-list defect would fail.
+   *
+   * The dispatch happens on the CHIP, not on Save — the form writes each toggle straight to the
+   * store — and Home is mounted behind the Settings tab the whole time, so the gate is installed
+   * before the chip is tapped or the response would already have landed.
    */
-  test.fixme('adding an allergy from the dietary form clears what is on Home', async ({ page }) => {
+  test('adding an allergy from the dietary form clears what is on Home', async ({ page }) => {
     await onboardWith(page, []);
     await expect(page.getByTestId('home-recommendations')).toBeVisible({ timeout: FIRST_PAINT_MS });
     const before = await recommendedIds(page);
     expect(before.length).toBeGreaterThan(0);
 
-    // The route T-18-02 will provide: Settings -> edit preferences.
+    /** The catalog, from the SERVER, so a catalog change cannot quietly invalidate this. */
+    const catalog: { readonly id: string; readonly allergenTags: readonly string[] }[] = [];
+    for (const pageNumber of [1, 2]) {
+      const response = await page.request.get(
+        `http://127.0.0.1:4000/api/v1/meals?pageSize=50&page=${String(pageNumber)}`,
+      );
+      expect(response.ok()).toBe(true);
+      const body = (await response.json()) as { readonly meals: typeof catalog };
+      catalog.push(...body.meals);
+    }
+    const tagsOf = (mealId: string): readonly string[] =>
+      catalog.find((meal) => meal.id === mealId)?.allergenTags ?? [];
+
+    /**
+     * The allergen the chips offer that rules out the most of what is on screen right now.
+     * `CANONICAL_ALLERGENS` from `packages/contracts`, restated: this spec asserts from outside the
+     * app, and the list is also exactly the set of chips `DietarySetupScreen` renders (R-30).
+     */
+    const choices = [
+      'peanut',
+      'tree-nut',
+      'milk',
+      'egg',
+      'soy',
+      'wheat',
+      'gluten',
+      'fish',
+      'shellfish',
+      'sesame',
+    ] as const;
+    const ranked = choices
+      .map((allergen) => ({
+        allergen,
+        conflicting: before.filter((mealId) => tagsOf(mealId).includes(allergen)),
+      }))
+      .sort((left, right) => right.conflicting.length - left.conflicting.length);
+    const chosen = ranked[0];
+    expect(
+      chosen?.conflicting.length ?? 0,
+      'none of the meals on screen carries any allergen the form offers, so this test would be vacuous',
+    ).toBeGreaterThan(0);
+    if (chosen === undefined) {
+      return;
+    }
+
+    /**
+     * The re-request, held open until this test releases it. A duration would be a figure no
+     * document gives and a flake waiting to happen; a gate is an ordering.
+     */
+    // Declared with a no-op rather than `null`: the assignment happens inside the executor
+    // callback, which TypeScript's control-flow analysis cannot see through.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/api/v1/recommendations**', async (route) => {
+      await gate;
+      await route.continue();
+    });
+
+    // The route T-18-02 provides: Settings -> edit preferences.
     await page.getByRole('tab', { name: 'Settings' }).click();
+    await expect(page.getByTestId('settings-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
     await page.getByTestId('settings-edit-preferences').click();
     await expect(page.getByTestId('dietary-setup-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
-    await page.getByTestId('chip-allergy-peanut').click();
+    await page.getByTestId(`chip-allergy-${chosen.allergen}`).click();
     await page.getByTestId('dietary-setup-save').click();
+    // `returnTo: 'Settings'` makes Save a `goBack`, so the form returns here rather than completing
+    // onboarding a second time.
+    await expect(page.getByTestId('settings-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
 
-    // Back on Home, the previous set must be gone rather than replaced when the new one lands.
-    await expect(page.getByRole('tab', { name: 'Home' })).toBeVisible({ timeout: FIRST_PAINT_MS });
+    /**
+     * **DISCARDED.** Back on Home with the new request still in flight: the previous meals are gone
+     * rather than being left on screen until they are replaced. A screen that kept them would show
+     * this user meals their own declared allergy rules out.
+     */
+    await page.getByRole('tab', { name: 'Home' }).click();
+    await expect(page.getByTestId('home-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByTestId('home-recommendations')).toHaveCount(0);
+    expect(await recommendedIds(page), 'the old set must not survive the change').toStrictEqual([]);
+
+    /** **RE-FILTERED.** The response is allowed through, and what comes back obeys the new list. */
+    release();
+    await expect(
+      page.getByTestId('home-recommendations').or(page.getByTestId('home-empty')),
+    ).toBeVisible({ timeout: FIRST_PAINT_MS });
     const after = await recommendedIds(page);
+    // The claim the parked body made, kept.
     expect(after).not.toStrictEqual(before);
+    // And the claims it could not make: every conflicting meal that WAS on screen is gone, and
+    // nothing carrying the new allergen came back in its place.
+    for (const mealId of chosen.conflicting) {
+      expect(
+        after,
+        `${mealId} conflicts with ${chosen.allergen} and must not come back`,
+      ).not.toContain(mealId);
+    }
+    for (const mealId of after) {
+      expect(
+        tagsOf(mealId),
+        `${mealId} was recommended although it carries ${chosen.allergen}`,
+      ).not.toContain(chosen.allergen);
+    }
   });
 
   test('the disclaimer is on Home, above the meals', async ({ page }) => {

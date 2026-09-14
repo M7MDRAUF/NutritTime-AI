@@ -34,9 +34,12 @@ import { buildNavigationTheme } from './src/navigation/navigationTheme.js';
 import { linking } from './src/navigation/linking.js';
 import { registerScreens } from './src/features/register.js';
 import { SplashSurface } from './src/features/onboarding/SplashSurface.js';
-import { StorageProvider } from './src/state/StorageProvider.js';
-import { preferencesStore } from './src/state/preferences/index.js';
+import { DataResetProvider } from './src/features/settings/DataResetProvider.js';
+import { preferencesStore, selectPreferences } from './src/state/preferences/index.js';
 import { onboardingStore } from './src/state/onboarding/index.js';
+import { favoritesStore } from './src/state/favorites/index.js';
+import { customMealsStore } from './src/state/customMeals/index.js';
+import { uiStore } from './src/state/ui/index.js';
 
 /**
  * The four faces the type scale actually names, and no more.
@@ -136,6 +139,57 @@ function PhasedNavigation({ fontsReady }: { readonly fontsReady: boolean }): Rea
   return <NavigationRoot fontsReady={fontsReady} phase={phase} />;
 }
 
+/**
+ * The user's stored theme, applied (T-18-04).
+ *
+ * **There are deliberately two `ThemeProvider`s, and the nesting is forced rather than chosen.**
+ * `themeMode` lives in the `preferences` store, which cannot exist above hydration — while
+ * `SplashSurface`, the surface rendered *during* hydration, calls `useTheme()`. So one provider has
+ * to sit outside the storage tree to theme the splash, and the mode it uses can only be `'system'`:
+ * before hydration there is no stored preference, and `'system'` is the one honest default rather
+ * than a guess at the user's answer. This inner provider then governs everything below it.
+ *
+ * The alternative was a second, unthemed splash surface, which would duplicate a tested screen in
+ * order to avoid a provider — and would make the first frame of every cold start a different
+ * design from the second.
+ *
+ * **Without this, T-18-04 was a control that changed nothing.** `App.tsx` hard-coded
+ * `mode="system"`, so the Settings switch dispatched correctly, stored correctly, and moved no
+ * pixel in the running app. `Settings.dom.test.tsx` could not have caught it: the screen was right
+ * and the wiring above it was missing — the same shape as P14's boot-phase defect, which only the
+ * first end-to-end run found.
+ */
+function ThemedNavigation({ fontsReady }: { readonly fontsReady: boolean }): ReactNode {
+  const themeMode = selectPreferences(preferencesStore.useValue()).themeMode;
+  return (
+    <ThemeProvider mode={themeMode}>
+      <ThemedStatusBar />
+      <PhasedNavigation fontsReady={fontsReady} />
+    </ThemeProvider>
+  );
+}
+
+/**
+ * The status bar, resolved from the theme the user chose rather than from the device.
+ *
+ * **It was `<StatusBar style="auto" />` above the themed provider, and T-18-04's switch moved every
+ * pixel except this one.** `auto` resolves against the *device* colour scheme, so a user on a light
+ * device who chose the dark theme got dark glyphs on a dark canvas — unreadable, and unreachable by
+ * any screen test, because the defect lives in the composition rather than in a screen.
+ *
+ * It sits INSIDE the inner provider, which is the only place the resolved scheme exists. There is
+ * deliberately just one: `expo-status-bar` applies its style from an effect, and child effects run
+ * before parents', so an outer instance kept "for the hydrating window" would run last and win —
+ * quietly restoring the bug. During hydration no explicit style is set, which is the same result
+ * `auto` produced there anyway, since before hydration there is no stored preference to honour.
+ *
+ * `light`/`dark` name the GLYPHS, not the ground: a dark scheme needs light glyphs.
+ */
+function ThemedStatusBar(): ReactNode {
+  const { scheme } = useTheme();
+  return <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />;
+}
+
 export default function App(): ReactNode {
   const [fontsLoaded, fontError] = useFonts(FONTS);
 
@@ -151,7 +205,12 @@ export default function App(): ReactNode {
 
   return (
     <SafeAreaProvider>
-      {/* `mode` is hard-coded until the preferences store hydrates at T-14-06. */}
+      {/*
+        The PRE-HYDRATION theme, and `"system"` here is a statement of fact rather than a default
+        left behind: this provider exists to theme `SplashSurface`, which renders while the one
+        `multiGet` is in flight, and at that moment the app has not yet read what the user chose.
+        `ThemedNavigation` applies the stored `themeMode` the moment the store exists.
+      */}
       <ThemeProvider mode="system">
         {/*
           Inside the theme and outside the navigator: a screen reads the client through context
@@ -160,7 +219,8 @@ export default function App(): ReactNode {
           nothing in the bundle reads an environment variable.
         */}
         <ApiProvider>
-          <StatusBar style="auto" />
+          {/* The status bar is `ThemedStatusBar`, inside the themed provider — see its docstring
+              for why there is exactly one and why it cannot live here. */}
           {/*
             Hydration once, above the stores, because TSD §6.1 requires ONE `multiGet` across all
             six keys — not one per store. Each store then creates itself from its own slice.
@@ -177,13 +237,34 @@ export default function App(): ReactNode {
             FR-001's guarantee was stronger than specified rather than weaker — nothing rendered at
             all — but the screen the document names never appeared.
           */}
-          <StorageProvider fallback={<HydratingSplash />}>
+          {/*
+            **`DataResetProvider`, not `StorageProvider` directly** (T-18-06).
+
+            It renders `StorageProvider` itself and owns the full reset: while a reset runs it
+            renders the fallback INSTEAD of the storage tree, so every store below is unmounted and
+            none can begin a write, then it clears the keys and verifies they stayed cleared. The
+            fresh mount afterwards re-runs hydration, which is what returns the app to onboarding.
+
+            **Every store provider must sit INSIDE it**, and that is not ordering taste. A store
+            mounted above the reset boundary would survive the unmount holding the very data the
+            user asked to destroy — the app would show onboarding while the favourites list, the
+            custom meals and the allergy profile were all still in memory, ready to be written
+            back. W7's verification reproduced that class: a write already in flight resurrected
+            `{"diet":"vegetarian","allergies":["peanut"]}` after a confirmed wipe.
+          */}
+          <DataResetProvider fallback={<HydratingSplash />}>
             <preferencesStore.Provider>
               <onboardingStore.Provider>
-                <PhasedNavigation fontsReady={fontsReady} />
+                <favoritesStore.Provider>
+                  <customMealsStore.Provider>
+                    <uiStore.Provider>
+                      <ThemedNavigation fontsReady={fontsReady} />
+                    </uiStore.Provider>
+                  </customMealsStore.Provider>
+                </favoritesStore.Provider>
               </onboardingStore.Provider>
             </preferencesStore.Provider>
-          </StorageProvider>
+          </DataResetProvider>
         </ApiProvider>
       </ThemeProvider>
     </SafeAreaProvider>

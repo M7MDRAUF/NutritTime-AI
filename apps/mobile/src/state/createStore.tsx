@@ -128,9 +128,30 @@ export function createStore<K extends StorageKeyName, S, A extends { readonly ty
         while (pending.current !== null) {
           const value = pending.current;
           pending.current = null;
-          if (mounted.current) {
-            setSaving(true);
+          /**
+           * **An unmounted store does not write, and this guard is what makes a full reset
+           * trustworthy.**
+           *
+           * P18's reset unmounts this whole subtree *before* clearing the keys, precisely so no
+           * store can start a write while the clear runs. That only holds if a queued write
+           * actually stops here: without this check the loop went straight on to
+           * `repository.set`, so a write queued a moment earlier landed **after** the keys were
+           * removed — and the user who confirmed "erase all data" got every outward sign of a
+           * completed wipe with their diet and allergy list resurrected on disk, written by a
+           * store instance that no longer existed. Nothing reported it, because the store that
+           * did it was gone.
+           *
+           * Checked before the write rather than only after it (`mounted.current` was already
+           * consulted for the state updates below) — the point is not to avoid a setState on an
+           * unmounted component, it is to not perform the I/O at all.
+           *
+           * It cannot cancel a write already awaiting; `DataResetProvider`'s read-back
+           * verification is the backstop for that, and R-53 records what remains.
+           */
+          if (!mounted.current) {
+            return;
           }
+          setSaving(true);
           try {
             await repository.set(value);
             if (mounted.current) {
@@ -141,12 +162,25 @@ export function createStore<K extends StorageKeyName, S, A extends { readonly ty
             if (!mounted.current) {
               return;
             }
-            // The repository's own message, which is fixed and local by construction. A driver
-            // string can quote the payload — and the payload here is a name and an allergy list.
+            /**
+             * **Only a `StorageWriteError`'s message is shown, and the previous version of this
+             * was one `throw` away from a PRD §15.5 breach.**
+             *
+             * It read `error instanceof Error ? error.message : …`, defended by a comment saying
+             * the message was "the repository's own, fixed and local by construction". That is
+             * true of every `StorageWriteError` — they are built from a fixed table — and it was
+             * not true of every throw that can arrive here: `repository.set` runs
+             * `definition.bound(value)` **outside** its `try`, so a throwing `bound` propagates
+             * its own message straight to this line and onto the screen. A driver or library
+             * string can quote the payload, and the payload here is a name and an allergy list.
+             *
+             * So the type is the gate now, not `instanceof Error`. Anything else gets the fixed
+             * local sentence, and the diagnosis stays in `reason`.
+             */
             const blocked = isStorageWriteError(error) && error.reason === FAILURE_IS_BOUND;
             setSaveBlocked(blocked);
             setSaveError(
-              error instanceof Error ? error.message : 'That change could not be saved.',
+              isStorageWriteError(error) ? error.message : 'That change could not be saved.',
             );
             // Stop draining on failure: retrying the queue immediately would spin against a full
             // list or a dead driver. `retrySave` is the user's decision to try again.

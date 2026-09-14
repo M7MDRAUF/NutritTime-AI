@@ -12,7 +12,7 @@
  * and it must not read as one, or it becomes the thing users learn to dismiss.
  */
 
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -30,6 +30,7 @@ import { useApiClient } from '../../infrastructure/api/ApiProvider.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
 import type { ScreenProps } from '../../navigation/registry.js';
 import { preferencesStore } from '../../state/preferences/index.js';
+import { uiActions, uiStore } from '../../state/ui/index.js';
 import { useRecommendations } from './useRecommendations.js';
 
 /** §11.5: "fixed at three". Restated here so the screen cannot render a fourth. */
@@ -54,11 +55,35 @@ export interface HomeScreenProps extends ScreenProps<'Home'> {
    * navigator. The wrapper that supplies it is what the registry registers.
    */
   readonly focusEpoch?: number;
+  /**
+   * Called once when this screen has shown the FR-007 disclaimer.
+   *
+   * **A callback rather than a store dispatch in here, for the same reason `focusEpoch` is a
+   * prop**: reaching the `ui` store from this component would make every Home assertion mount a
+   * provider it has nothing to do with. `HomeScreenWithFocus` — what the registry registers —
+   * supplies the real one.
+   *
+   * It fires on mount rather than on an interaction because the disclaimer is not dismissible:
+   * `StatusMessage` renders it unconditionally, above the meals, and S-46 records why it must not
+   * be dressed as something to dismiss. So "acknowledged" can only mean "has been shown it", and
+   * Home having mounted is exactly that.
+   */
+  readonly onDisclaimerShown?: () => void;
 }
 
-export function HomeScreen({ navigation, now, focusEpoch }: HomeScreenProps): ReactNode {
+export function HomeScreen({
+  navigation,
+  now,
+  focusEpoch,
+  onDisclaimerShown,
+}: HomeScreenProps): ReactNode {
   const client = useApiClient();
   const { colors, components } = useTheme();
+  // Once per mount. The disclaimer below is unconditional, so reaching this component IS having
+  // been shown it; the reducer makes a repeat dispatch a no-op regardless.
+  useEffect(() => {
+    onDisclaimerShown?.();
+  }, [onDisclaimerShown]);
   const preferences = preferencesStore.useValue();
   const preferencesStatus = preferencesStore.useStatus();
 
@@ -248,5 +273,24 @@ export function HomeScreenWithFocus(props: ScreenProps<'Home'>): ReactNode {
       setFocusEpoch((current) => current + 1);
     }, []),
   );
-  return <HomeScreen {...props} focusEpoch={focusEpoch} />;
+
+  /**
+   * **The disclaimer acknowledgement, which had no caller at all until four auditors said so.**
+   *
+   * `uiActions.acknowledgeDisclaimer()` existed, `disclaimerAcknowledged` had a schema, a default
+   * and a Settings surface — and nothing in the app ever dispatched it, so the flag could only ever
+   * be `false` and Settings told every user they had not seen the allergen notice. That was false
+   * for anyone who had opened Home, where FR-007's disclaimer always renders. Half of T-18-01's
+   * acceptance ("the disclaimer flag persists") was unmeetable.
+   *
+   * Dispatched from the wrapper, not from `HomeScreen`, so the screen stays renderable without the
+   * `ui` store — the same split `focusEpoch` exists for. Repeat dispatches are free: the reducer
+   * returns `state` identically once the flag is set, so this queues one write ever.
+   */
+  const dispatch = uiStore.useDispatch();
+  const onDisclaimerShown = useCallback(() => {
+    dispatch(uiActions.acknowledgeDisclaimer());
+  }, [dispatch]);
+
+  return <HomeScreen {...props} focusEpoch={focusEpoch} onDisclaimerShown={onDisclaimerShown} />;
 }

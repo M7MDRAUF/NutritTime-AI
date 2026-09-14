@@ -34,7 +34,70 @@ interface Harness {
   committed(): CommittedStatus;
   status(): StoreStatus;
   dispatch(action: ReturnType<typeof preferencesActions.changeDiet>): Promise<void>;
+  /**
+   * Dispatch WITHOUT wrapping it in `act`, for a caller that is already inside one.
+   *
+   * Added because the burst test below used `void dispatch(...)` three times inside an outer
+   * `act`, which opens three nested `act` scopes and never awaits them — and React 19 carries that
+   * damage forward: the NEXT test in this file had its `StorageProvider` effect silently not run,
+   * so a later test asserting on driver calls saw an empty log and failed for a reason that had
+   * nothing to do with its subject. A test that disables the next test is worse than a slow one.
+   */
+  dispatchRaw(action: ReturnType<typeof preferencesActions.changeDiet>): void;
   settle(): Promise<void>;
+  /** Tears the tree down, which is what P18's full reset does before it clears the keys. */
+  unmount(): Promise<void>;
+}
+
+/**
+ * A driver whose `setItem` does not settle until the test says so.
+ *
+ * `memoryDriver` resolves immediately, which is right for every other case here and useless for
+ * the one below: the whole question is what a store does with a write still queued behind one
+ * that is in flight. `failOn` cannot express "slow", only "broken".
+ */
+function holdingDriver(): {
+  readonly driver: ReturnType<typeof memoryDriver>;
+  /** Start holding. Called AFTER mount, so the boot projection is not part of the measurement. */
+  readonly hold: () => void;
+  readonly release: () => void;
+  readonly held: () => number;
+} {
+  const inner = memoryDriver({});
+  const waiters: (() => void)[] = [];
+  let holding = false;
+  // Delegated explicitly rather than spread: every method must keep reaching `inner`'s own
+  // closure, which is where `calls` and `store` live.
+  const driver: ReturnType<typeof memoryDriver> = {
+    store: inner.store,
+    failOn: inner.failOn,
+    calls: inner.calls,
+    multiGetKeys: inner.multiGetKeys,
+    getItem: (key) => inner.getItem(key),
+    removeItem: (key) => inner.removeItem(key),
+    multiGet: (keys) => inner.multiGet(keys),
+    setItem: async (key, value) => {
+      if (holding) {
+        await new Promise<void>((resolve) => waiters.push(resolve));
+      }
+      await inner.setItem(key, value);
+    },
+  };
+  return {
+    driver,
+    hold: () => {
+      holding = true;
+    },
+    release: () => {
+      holding = false;
+      // Copied before draining: a released write can queue the next one synchronously.
+      const pending = waiters.splice(0, waiters.length);
+      for (const resolve of pending) {
+        resolve();
+      }
+    },
+    held: () => waiters.length,
+  };
 }
 
 async function mount(driver: ReturnType<typeof memoryDriver>): Promise<Harness> {
@@ -66,8 +129,9 @@ async function mount(driver: ReturnType<typeof memoryDriver>): Promise<Harness> 
     );
   }
 
+  const root = createRoot(host);
   await act(async () => {
-    createRoot(host).render(
+    root.render(
       <StorageProvider runtime={{ driver, now: CLOCK }}>
         <preferencesStore.Provider>
           <Probe />
@@ -111,7 +175,18 @@ async function mount(driver: ReturnType<typeof memoryDriver>): Promise<Harness> 
       });
       await settle();
     },
+    dispatchRaw: (action) => {
+      if (dispatchRef === null) {
+        throw new Error('the probe never rendered, so there is no dispatch to call');
+      }
+      dispatchRef(action as never);
+    },
     settle,
+    unmount: async () => {
+      await act(async () => {
+        root.unmount();
+      });
+    },
   };
 }
 
@@ -186,11 +261,12 @@ describe('createStore', () => {
     const before = driver.calls.filter((one) => one.startsWith('setItem')).length;
 
     await act(async () => {
-      // Cast once: the probe's dispatch is type-erased so the harness can take any action.
-      const dispatch = view.dispatch;
-      void dispatch(preferencesActions.changeDiet('vegan'));
-      void dispatch(preferencesActions.changeDiet('vegetarian'));
-      void dispatch(preferencesActions.changeDiet('gluten-aware'));
+      // `dispatchRaw`, because we are already inside `act`. The previous version called the
+      // act-wrapping `dispatch` three times and discarded the promises, which left nested act
+      // scopes unresolved and stopped the NEXT test's effects from running at all.
+      view.dispatchRaw(preferencesActions.changeDiet('vegan'));
+      view.dispatchRaw(preferencesActions.changeDiet('vegetarian'));
+      view.dispatchRaw(preferencesActions.changeDiet('gluten-aware'));
     });
     await view.settle();
 
@@ -199,6 +275,56 @@ describe('createStore', () => {
     expect(writes).toBeLessThan(3);
     expect(JSON.parse(driver.store.get(STORAGE_KEYS.preferences) ?? '{}')).toMatchObject({
       value: { diet: 'gluten-aware' },
+    });
+  });
+
+  it('abandons a QUEUED write when the store unmounts, so a reset cannot be undone by it', async () => {
+    /**
+     * **The guard that makes P18's full reset trustworthy, and it had no test until an auditor
+     * reproduced the defect.**
+     *
+     * `DataResetProvider` unmounts this whole subtree *before* clearing the keys, so that no store
+     * can begin a write while the clear runs. That only holds if a write already sitting in the
+     * queue actually stops: the drain loop went straight on to `repository.set`, so a write queued
+     * a moment earlier landed **after** the keys were removed. The user who confirmed "erase all
+     * data" then got every outward sign of a completed wipe with their diet and allergy list back
+     * on disk — written by a store instance that no longer existed, so nothing reported it.
+     *
+     * **Holding starts after mount, deliberately.** A cold mount already queues two writes — the
+     * store's own boot projection and `recordLaunch`'s `meta` — and counting those measured the
+     * wrong thing: `meta` goes through its own repository, not this store's queue, so no guard here
+     * could ever stop it. Measuring from `hold()` isolates the one claim being made.
+     *
+     * The sequence is then exactly the reachable one: a held write keeps the drain parked inside
+     * `await`, a second dispatch leaves a value in `pending`, and the unmount happens while it is
+     * parked. Releasing runs the loop's next iteration with `mounted.current === false`.
+     */
+    const { driver, hold, release } = holdingDriver();
+    const view = await mount(driver);
+
+    const preferenceWrites = (): number =>
+      driver.calls.filter((one) => one === `setItem:${STORAGE_KEYS.preferences}`).length;
+    const beforeHold = preferenceWrites();
+
+    hold();
+    // Held, so `inFlight` stays true and the drain is parked inside `await repository.set`.
+    await view.dispatch(preferencesActions.changeDiet('vegan'));
+    // `drain` returns early because a write is in flight, so this value waits in `pending`.
+    await view.dispatch(preferencesActions.changeDiet('vegetarian'));
+
+    await view.unmount();
+    release();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Exactly the write that was already in flight. The queued one must never be attempted: with
+    // the `mounted.current` guard removed this is 2, and that second write is the resurrection.
+    expect(preferenceWrites() - beforeHold).toBe(1);
+    expect(JSON.parse(driver.store.get(STORAGE_KEYS.preferences) ?? '{}')).toMatchObject({
+      value: { diet: 'vegan' },
     });
   });
 

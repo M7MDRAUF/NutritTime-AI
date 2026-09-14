@@ -20,6 +20,9 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../shared/theme/ThemeProvider.js';
 import { Icon } from '../shared/components/Icon.js';
 import type { IconName } from '../shared/components/Icon.js';
+import { uiActions, uiStore } from '../state/ui/index.js';
+import { useStorageContext } from '../state/StorageProvider.js';
+import type { UiTab } from '../infrastructure/storage/definitions.js';
 import { screenFor } from './registry.js';
 import type {
   AssistantStackParamList,
@@ -100,13 +103,91 @@ function tabIcon(name: IconName) {
   };
 }
 
+/**
+ * The logical tab id each container carries (T-18-01).
+ *
+ * Written out rather than derived from the route name, so the compiler checks every value against
+ * `UiTab`: `definitions.ts` stores a LOGICAL id precisely so a rename in `routes.ts` cannot
+ * invalidate every user's stored tab, and a `routeName.toLowerCase().replace('tab','')` would
+ * rebuild exactly the coupling that decision exists to prevent.
+ */
+const TAB_IDS = {
+  HomeTab: 'home',
+  ExploreTab: 'explore',
+  AssistantTab: 'assistant',
+  SavedTab: 'saved',
+  Settings: 'settings',
+} as const satisfies { readonly [K in keyof TabParamList]: UiTab };
+
+/** The inverse, for restoring a stored tab. Written out too, so neither direction needs a cast. */
+const TAB_ROUTES = {
+  home: 'HomeTab',
+  explore: 'ExploreTab',
+  assistant: 'AssistantTab',
+  saved: 'SavedTab',
+  settings: 'Settings',
+} as const satisfies { readonly [K in UiTab]: keyof TabParamList };
+
+/**
+ * The logical id for a focused route, or `undefined` for a route that is not a tab.
+ *
+ * A lookup rather than `TAB_IDS[route.name as keyof TabParamList]`: `screenListeners` hands back a
+ * route name typed more widely than this navigator's five, and an `as` there would be exactly the
+ * cast that papers over a type the compiler is right about — `Object.entries` gives the union
+ * honestly, and a name that is not a tab returns `undefined` instead of an unchecked index read.
+ */
+function tabIdFor(routeName: string): UiTab | undefined {
+  return Object.entries(TAB_IDS).find(([route]) => route === routeName)?.[1];
+}
+
 export function TabNavigator(): ReactNode {
   const theme = useTheme();
   const { colors, components } = theme;
 
+  /**
+   * **`useDispatch`, never `useValue`** — and that is the whole reason `createStore` publishes
+   * three contexts instead of one. Reading the value here would re-render the navigator on every
+   * tab press, which is the cost TSD §6.3's memoisation strategy exists to avoid.
+   */
+  const dispatch = uiStore.useDispatch();
+
+  /**
+   * The tab to open on, read from the HYDRATION SNAPSHOT rather than from the live store.
+   *
+   * **This is the opposite of P14's defect, deliberately, and the distinction is worth stating**
+   * because the shapes look identical. The boot phase was read from the snapshot and had to track
+   * the live store — a snapshot is read once and never updated, so completing onboarding moved the
+   * store and left the phase behind. An *initial* route is the other case: it is consumed once at
+   * mount by definition, and subscribing to the live value would re-render the navigator every
+   * time the user changed tabs — the very thing it is recording.
+   *
+   * A deep link still wins: React Navigation builds initial state from the URL and applies
+   * `initialRouteName` only where the URL says nothing (`linking.ts`).
+   *
+   * **Restoring it is a judgement, recorded as such.** `lastTab` is plan-introduced (A-09) and no
+   * document says to reopen on it. But a stored field that nothing ever reads is dead data, and
+   * the honest alternative would be to not store it at all — while TSD §6.4 names the `ui` key and
+   * the field's own name states its purpose.
+   */
+  const storedTab = useStorageContext().snapshot.entries.ui.value.lastTab;
+  const initialRouteName = storedTab === null ? 'HomeTab' : TAB_ROUTES[storedTab];
+
   return (
     <Tabs.Navigator
-      initialRouteName="HomeTab"
+      initialRouteName={initialRouteName}
+      /**
+       * One listener for the whole navigator, not five copies. `focus` fires for the tab the user
+       * moved to, including on first mount — which is a no-op, because `ui/tabChanged` to the tab
+       * already stored returns `state` identically and so queues no write.
+       */
+      screenListeners={({ route }) => ({
+        focus: () => {
+          const id = tabIdFor(route.name);
+          if (id !== undefined) {
+            dispatch(uiActions.changeTab(id));
+          }
+        },
+      })}
       screenOptions={{
         headerShown: false,
         // Colour is the *secondary* signal for the selected tab. React Navigation puts
