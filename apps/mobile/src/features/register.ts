@@ -33,6 +33,7 @@ import { MealDetailsScreen } from './details/MealDetailsScreen.js';
 import { SavedScreen } from './saved/SavedScreen.js';
 import { MealFormScreen } from './saved/MealFormScreen.js';
 import { SettingsScreen } from './settings/SettingsScreen.js';
+import { AssistantScreen } from './assistant/AssistantScreen.js';
 
 /**
  * Register every screen this build has.
@@ -40,7 +41,10 @@ import { SettingsScreen } from './settings/SettingsScreen.js';
  * Idempotent: `registerScreen` returns early when the same component is registered twice, so
  * calling this from `App.tsx` and again from a test harness notifies no listener the second time.
  *
- * After P16–P18 the only unregistered route is **`Assistant`**, which P19–P21 own.
+ * **Every route in `SCREEN_ROUTE_NAMES` now has a screen.** `Assistant` was the last one, and
+ * P21 registered it — so `PlaceholderScreen` is from this point unreachable through the app,
+ * and the only thing that renders it is `registry.dom.test.tsx` asserting an unregistered
+ * route still degrades rather than throwing. That test is the reason the placeholder stays.
  *
  * **`Splash` used to be left out on a justification that was wrong, and users saw it.** This
  * docstring previously claimed the route was "unreachable until the phase has already advanced",
@@ -79,4 +83,9 @@ export function registerScreens(): void {
   // P18. A tab, not a stack: TSD §6.2 declares four `*Tab` containers and no fifth, and nothing
   // in Settings pushes a second screen — it navigates to `DietarySetup` on the root stack.
   registerScreen('Settings', SettingsScreen);
+  // P21. The last route to get a screen. A tab, and the only one whose surface is driven entirely
+  // by a request the user composes — which is why `useAssistant` keeps the transcript in
+  // `useState` and nothing writes it anywhere: a stored transcript is a stored question, and
+  // PRD 10.3 forbids that (PRD 7.3: "the on-screen transcript is a display concern only").
+  registerScreen('Assistant', AssistantScreen);
 }

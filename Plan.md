@@ -1354,11 +1354,11 @@ without being added to it.
 | T-21-02 | Deterministic `answered: false` paths — empty eligible, and unresolved intent — **with no model call** | T-21-01 | Completed |
 | T-21-03 | Citations resolved from `namedMeals` by id, never parsed from text | T-21-01 | Completed |
 | T-21-04 | `ai_disabled` / `ai_unavailable` / `ai_busy` mapping with no answer text | T-21-01, T-19-07 | Completed |
-| T-21-05 | `AssistantScreen`: 500-char input, transcript as a local display concern only | T-21-01, T-12-06 | Not Started |
-| T-21-06 | Citation rendering beside the answer | T-21-05, T-21-03 | Not Started |
-| T-21-07 | Unavailable and answered-false UI states with their copy | T-21-05, T-12-05 | Not Started |
+| T-21-05 | `AssistantScreen`: 500-char input, transcript as a local display concern only | T-21-01, T-12-06 | Completed |
+| T-21-06 | Citation rendering beside the answer | T-21-05, T-21-03 | Completed |
+| T-21-07 | Unavailable and answered-false UI states with their copy | T-21-05, T-12-05 | Completed |
 | T-21-08 | `chat.integration.test.ts` — the full C-05 test list | T-21-04 | Completed |
-| T-21-09 | `e2e/specs/assistant.spec.ts` (superlative + citations) and `assistant-disabled.spec.ts` | T-21-08, T-21-07 | Not Started |
+| T-21-09 | `e2e/specs/assistant.spec.ts` (superlative + citations) and `assistant-disabled.spec.ts` | T-21-08, T-21-07 | Completed |
 
 ### P22 — Mobile-web surface
 

@@ -220,11 +220,26 @@ test.describe('Explore, end to end', () => {
     await expect(page.getByTestId('saved-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(page.getByTestId('saved-favorites-empty')).toBeVisible();
     await expect(page.getByTestId('saved-custom-empty')).toBeVisible();
-    // Still the registry working: `Assistant` has no screen until P19, so the placeholder names it.
+    /**
+     * **Updated at P21, for the third time, and this is the last of them.**
+     *
+     * It looked for "Home is not available yet" until P15, "Saved is not available yet" until P17,
+     * and "Assistant is not available yet" until P21 registered the final screen. Each version was
+     * correct when written and the registry changed under it — so each was replaced by the stronger
+     * claim, never deleted.
+     *
+     * The stronger claim here is the screen's **idle** state rather than merely its root, because
+     * `assistant-screen` would be satisfied by a mounted component that rendered nothing usable.
+     * Idle is the state a user actually meets: a question field they can type into, with nothing
+     * asked yet.
+     *
+     * With this line, **every route in `SCREEN_ROUTE_NAMES` has a screen behind it** and
+     * `PlaceholderScreen` is unreachable through the app.
+     */
     await page.getByRole('tab', { name: 'Assistant' }).click();
-    await expect(
-      page.getByRole('heading', { name: /Assistant is not available yet/ }),
-    ).toBeVisible();
+    await expect(page.getByTestId('assistant-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByTestId('assistant-idle')).toBeVisible();
+    await expect(page.getByTestId('assistant-question')).toBeVisible();
   });
 
   /**

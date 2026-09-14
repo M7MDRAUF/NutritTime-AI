@@ -34,19 +34,29 @@ import { MealDetailsScreen } from './details/MealDetailsScreen.js';
 import { SavedScreen } from './saved/SavedScreen.js';
 import { MealFormScreen } from './saved/MealFormScreen.js';
 import { SettingsScreen } from './settings/SettingsScreen.js';
+import { AssistantScreen } from './assistant/AssistantScreen.js';
 
 /**
  * Routes with no screen component, and why.
  *
  * The reason is part of the data, so the justification sits beside the exemption instead of being
  * something a reader has to trust once existed.
+ *
+ * **It is empty as of P21, and the emptiness is asserted below rather than left implicit.** That
+ * matters because an empty record silently satisfies every `for` loop over it: the two tests that
+ * iterate this list stopped making a claim the moment the last entry was removed, which is
+ * failure shape 3 arriving as a consequence of finishing the work. `Assistant` was the final
+ * exemption — "P19-P21 own the assistant; the route exists so the tab and the deep link resolve" —
+ * and P21 registered it.
+ *
+ * A future route added without a screen belongs here **with a reason**, and the length check below
+ * is what stops the reason being a placeholder.
  */
-const UNREGISTERED: Readonly<Record<string, string>> = {
-  Assistant: 'P19-P21 own the assistant; the route exists so the tab and the deep link resolve.',
-};
+const UNREGISTERED: Readonly<Record<string, string>> = {};
 
 /** What each route must bind. Written out, because "something is registered" is the weaker claim. */
 const EXPECTED: Readonly<Record<string, unknown>> = {
+  Assistant: AssistantScreen,
   Splash: SplashSurface,
   Onboarding: OnboardingScreen,
   DietarySetup: DietarySetupScreen,
@@ -122,5 +132,20 @@ describe('registerScreens', () => {
     for (const reason of Object.values(UNREGISTERED)) {
       expect(reason.length).toBeGreaterThan(20);
     }
+
+    /**
+     * **Every route in the table now has a screen, so `PlaceholderScreen` is unreachable through
+     * the app.**
+     *
+     * Asserted explicitly because the loop above no longer says anything: an empty record iterates
+     * zero times and passes whatever the exemption list means. This is the claim the loop used to
+     * carry, restated in a form that an emptied list cannot satisfy by accident — and it fails the
+     * day a route is added without a screen, which is exactly when someone needs to be told.
+     *
+     * The placeholder itself stays: `registry.dom.test.tsx` still renders it to prove an
+     * unregistered route degrades rather than throwing.
+     */
+    expect(Object.keys(UNREGISTERED)).toStrictEqual([]);
+    expect(named.sort()).toStrictEqual([...screenRoutes].sort());
   });
 });
