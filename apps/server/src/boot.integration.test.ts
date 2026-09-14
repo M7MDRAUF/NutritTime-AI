@@ -361,7 +361,17 @@ describe('the log lines the server actually writes', () => {
     // A meal id is a record of what someone asked to eat; a query string can be anything.
     expect(line).not.toContain('chicken-curry');
     expect(line).not.toContain('peanuts');
-    expect(line).toContain('"routeTemplate":"(unmatched)"');
+    // Since P09 this path MATCHES the detail route, so the template is the parameterised one
+    // rather than `(unmatched)`. That is the point of logging a template: the same line shape
+    // whichever meal was asked for.
+    expect(line).toContain('"routeTemplate":"/api/v1/meals/:mealId"');
+  });
+
+  it('still writes (unmatched) for a path no route claims', async () => {
+    const { lines, app: captured } = withCapture();
+    await request(captured).get('/nothing/here?secret=peanut');
+    expect(lines[0] ?? '').toContain('"routeTemplate":"(unmatched)"');
+    expect(lines[0] ?? '').not.toContain('peanut');
   });
 
   it('reports a malformed content-encoding as a client error, not a server fault', async () => {

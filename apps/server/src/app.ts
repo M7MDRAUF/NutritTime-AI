@@ -21,6 +21,8 @@ import type { ServerConfig } from './config.js';
 import { ApiError, INTERNAL_ERROR_BODY, isApiError } from './errors.js';
 import { consoleSink, errorLogLine, framesOf, requestLogLine } from './logging.js';
 import type { LogSink } from './logging.js';
+import { mealsRouter } from './routes/meals.js';
+import { recommendationsRouter } from './routes/recommendations.js';
 
 export const JSON_BODY_LIMIT = '64kb';
 
@@ -49,6 +51,21 @@ function corsOrigins(config: ServerConfig): readonly string[] {
     'http://127.0.0.1:8081',
     'http://localhost:19006',
   ];
+}
+
+/**
+ * Record the prefix a router is mounted at, for the log line.
+ *
+ * `request.baseUrl` cannot be read when the line is written: Express sets it while dispatching
+ * into a router and RESTORES it afterwards, so by the time the `finish` event fires it is `''`
+ * again and a detail request logged `/:mealId` - losing the prefix, and making two different
+ * endpoints indistinguishable in the log. Captured on the way in instead.
+ */
+function mountedAt(prefix: string) {
+  return (_request: Request, response: Response, next: NextFunction): void => {
+    response.locals['mountPath'] = prefix;
+    next();
+  };
 }
 
 export interface AppOptions {
@@ -91,7 +108,14 @@ export function createApp(options: AppOptions): Express {
             method: request.method,
             // `route` is only populated once a route has matched; an unmatched request logs
             // `(unmatched)` rather than its concrete path, which would be the user's data.
-            routeTemplate: request.route?.path ?? '(unmatched)',
+            //
+            // The mount prefix is prepended because `route.path` is ROUTER-RELATIVE: under
+            // the meals router a detail request reports `/:mealId`, so without it the list and
+            // detail endpoints share one template. Flagged at P08 as a trap for this phase.
+            routeTemplate:
+              request.route === undefined
+                ? '(unmatched)'
+                : `${typeof response.locals['mountPath'] === 'string' ? response.locals['mountPath'] : ''}${String(request.route.path)}`,
             status: response.statusCode,
             durationMs: Date.now() - startedAt,
             ...(typeof response.locals['errorCode'] === 'string'
@@ -108,7 +132,17 @@ export function createApp(options: AppOptions): Express {
   // 3. body parsing, bounded
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
-  // 4. routes
+  // 4. routes.
+  //
+  // Mounted as routers so each contract lives in its own module, and so the 404 handler below
+  // still owns every path neither of them claims.
+  app.use('/api/v1/meals', mountedAt('/api/v1/meals'), mealsRouter(catalog));
+  app.use(
+    '/api/v1/recommendations',
+    mountedAt('/api/v1/recommendations'),
+    recommendationsRouter(catalog, config),
+  );
+
   app.get('/health', (_request: Request, response: Response) => {
     // **Probes nothing.** A health check that fails because Ollama is stopped tells the
     // operator the server is down when it is serving every non-AI route perfectly (TSD 5.1

@@ -1106,22 +1106,22 @@ without being added to it.
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-09-01 | Query-parameter schema with defaults and bounds; unknown params ignored | T-08-05 | Not Started |
-| T-09-02 | Conjunctive filtering by period, diet, `maxPriceCents` | T-09-01 | Not Started |
-| T-09-03 | Sort: relevance when `query` present, else name ascending | T-09-02, T-05-07 | Not Started |
-| T-09-04 | Pagination; `total` computed after filtering | T-09-03 | Not Started |
-| T-09-05 | `GET /api/v1/meals/:mealId` with 404 on unknown | T-08-07 | Not Started |
-| T-09-06 | `meals.integration.test.ts` per the C-02/C-03 test lists | T-09-04, T-09-05 | Not Started |
+| T-09-01 | Query-parameter schema with defaults and bounds; unknown params ignored | T-08-05 | Completed |
+| T-09-02 | Conjunctive filtering by period, diet, `maxPriceCents` | T-09-01 | Completed |
+| T-09-03 | Sort: relevance when `query` present, else name ascending | T-09-02, T-05-07 | Completed |
+| T-09-04 | Pagination; `total` computed after filtering | T-09-03 | Completed |
+| T-09-05 | `GET /api/v1/meals/:mealId` with 404 on unknown | T-08-07 | Completed |
+| T-09-06 | `meals.integration.test.ts` per the C-02/C-03 test lists | T-09-04, T-09-05 | Completed |
 
 ### P10 — Recommendations API (no AI)
 
 | ID | Task | Depends | Status |
 |---|---|---|---|
-| T-10-01 | Validate `recommendationRequestSchema`; reject extra fields | T-08-05, T-02-06 | Not Started |
-| T-10-02 | Use case: catalog → `recommend()` → top three | T-10-01, T-05-04 | Not Started |
-| T-10-03 | Response mapping incl. `scoreReasons` and `explanationSource: "fallback"` | T-10-02 | Not Started |
-| T-10-04 | Deterministic fallback explanation text (no model) | T-10-03 | Not Started |
-| T-10-05 | `recommendations.integration.test.ts` per the C-04 test list | T-10-04 | Not Started |
+| T-10-01 | Validate `recommendationRequestSchema`; reject extra fields | T-08-05, T-02-06 | Completed |
+| T-10-02 | Use case: catalog → `recommend()` → top three | T-10-01, T-05-04 | Completed |
+| T-10-03 | Response mapping incl. `scoreReasons` and `explanationSource: "fallback"` | T-10-02 | Completed |
+| T-10-04 | Deterministic fallback explanation text (no model) | T-10-03 | Completed |
+| T-10-05 | `recommendations.integration.test.ts` per the C-04 test list | T-10-04 | Completed |
 
 ### P11 — UI/UX design-system foundation (UI UX Pro Max)
 
