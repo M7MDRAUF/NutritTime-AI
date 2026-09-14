@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getByRole } from '@testing-library/dom';
 import { transportError } from '../../infrastructure/api/errors.js';
 import { NAVIGATION_ORIGINS } from '../../navigation/routes.js';
@@ -24,7 +24,20 @@ import {
  * answered-false state is checked against the unavailable state in **both directions**, so copy
  * collapsed to one string reddens rather than passing twice. And every absence assertion sits
  * beside a presence assertion, so a screen that rendered nothing at all fails rather than passes.
+ *
+ * It also carries **PRD §10.1's two waiting thresholds** and **T-23-06's composition with them**.
  */
+
+/**
+ * PRD §10.1's two figures, transcribed from the document — "a loading state after 200 ms and an
+ * AI-progress message after 2 s" — and **deliberately not imported**. `AssistantScreen` reads them
+ * from `features/home/useRecommendations.ts`, so the repository holds one copy of each number and
+ * this file states independently what the document says (BRIEF §6.1g). `Home.dom.test.tsx:682-687`
+ * records the cost of the imported version: `LOADING_AFTER_MS` set to 200 000, or the whole
+ * threshold block deleted, shipped green.
+ */
+const LOADING_AT_MS = 200;
+const AI_PROGRESS_AT_MS = 2_000;
 
 describe('AssistantScreen', () => {
   /**
@@ -50,18 +63,140 @@ describe('AssistantScreen', () => {
     expect(screen.input().getAttribute('aria-label')).toContain(ASSISTANT_COPY.questionLabel);
   });
 
-  it('says what is happening while the answer is in flight', async () => {
-    const { client, settle } = deferredClient();
-    const screen = await renderAssistant(client, QUESTION);
+  /**
+   * **PRD §10.1: "The UI shows a loading state after 200 ms and an AI-progress message after 2 s."**
+   *
+   * The assistant implemented neither: one sentence from the first render, unchanged until the
+   * request settled — on §10.1's cold-model path, up to that section's 30 s hard timeout.
+   *
+   * Both thresholds are asserted **in both directions**, because each is a boundary and the reason
+   * the first exists is its 199 ms side: below it a message is flicker rather than feedback. It
+   * also folds in what a separate in-flight test used to claim — busy from the first millisecond,
+   * cleared when the answer lands — which this one wholly subsumes.
+   */
+  it('shows no loading surface before 200 ms, the retrieval sentence at 200 ms and the model sentence at 2 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, settle } = deferredClient();
+      const screen = await renderAssistant(client, QUESTION);
+      await screen.ask();
 
-    await screen.ask();
-    expect(screen.find('assistant-turn-1-pending')).not.toBeNull();
-    // Inert and announced as busy, rather than merely slow: one AI call runs at a time server-side.
-    expect(screen.must('assistant-ask').getAttribute('aria-busy')).toBe('true');
+      // The question is echoed immediately — the user is never looking at nothing — but the
+      // loading state is not, which is what the first threshold buys.
+      expect(screen.must('assistant-turn-1-question').textContent).toContain(QUESTION);
+      expect(screen.find('assistant-turn-1-pending'), 'nothing at 0 ms').toBeNull();
 
-    await settle(0, answer());
-    expect(screen.find('assistant-turn-1-pending')).toBeNull();
-    expect(screen.find('assistant-turn-1-answer')).not.toBeNull();
+      await screen.advance(LOADING_AT_MS - 1);
+      expect(screen.find('assistant-turn-1-pending'), 'nothing at 199 ms either').toBeNull();
+
+      await screen.advance(1);
+      expect(screen.find('assistant-turn-1-pending')?.textContent).toBe(ASSISTANT_COPY.submitting);
+
+      await screen.advance(AI_PROGRESS_AT_MS - LOADING_AT_MS - 1);
+      const at1999 = screen.find('assistant-turn-1-pending')?.textContent;
+      expect(at1999, 'still the retrieval sentence at 1 999 ms').toBe(ASSISTANT_COPY.submitting);
+
+      await screen.advance(1);
+      expect(screen.find('assistant-turn-1-pending')?.textContent).toBe(ASSISTANT_COPY.aiProgress);
+      // The two stages are two different sentences, or the escalation is invisible.
+      expect(ASSISTANT_COPY.aiProgress).not.toBe(ASSISTANT_COPY.submitting);
+
+      // **And it terminates.** P21's record is a spec that found the right copy while a spinner
+      // sat on screen for ever; an escalation that arrives and never leaves is that defect one
+      // stage later. Asserted past the second threshold: it is the escalated state being cleared.
+      await settle(0, answer());
+      expect(screen.find('assistant-turn-1-pending')).toBeNull();
+      expect(screen.find('assistant-turn-1-answer')).not.toBeNull();
+      expect(screen.must('assistant-ask').getAttribute('aria-busy')).not.toBe('true');
+      expect(screen.host.querySelectorAll('[role="progressbar"]')).toHaveLength(0);
+
+      // Well past both thresholds again with nothing in flight: a timer that survived the answer
+      // would put the escalation back.
+      await screen.advance(AI_PROGRESS_AT_MS * 2);
+      expect(screen.find('assistant-turn-1-pending')).toBeNull();
+
+      /**
+       * **And the NEXT question starts from nothing**, which is where "terminates" is observable —
+       * a probe is why this block exists. Deleting the two resets in `useRequestProgress` changed
+       * **0 of 22**, because within one turn the row is also gated on `state.kind === 'pending'`:
+       * an answered turn draws no loading surface however the flags are left. What the resets
+       * really govern is the second ask, which would otherwise open at 0 ms already escalated to
+       * the model sentence — claiming the model was slow before the request had left. BRIEF
+       * §6.1k in its second reading: the mutation was live, the assertion could not reach it.
+       */
+      await screen.type('And which of them is cheapest?');
+      await screen.ask();
+      expect(
+        screen.find('assistant-turn-2-pending'),
+        'the second question opens with no inherited escalation',
+      ).toBeNull();
+      await screen.advance(LOADING_AT_MS);
+      expect(screen.find('assistant-turn-2-pending')?.textContent).toBe(ASSISTANT_COPY.submitting);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * **How the two mechanisms compose** (T-23-06 with PRD §10.1).
+   *
+   * This suite is a reduce-motion environment with no mock in it: jsdom 30.0.1 implements no
+   * `window.matchMedia`, so react-native-web 0.21.2 fail-closes `isReduceMotionEnabled()` to
+   * `true` (`AccessibilityInfo/index.js:28`). The premise is asserted, so a polyfill added to
+   * `vitest.setup.dom.mts` flips this test's meaning loudly rather than silently.
+   *
+   * **The spinner goes and the words stay.** A reduce-motion user loses the `progressbar`, gains a
+   * still mark, and keeps every stage of §10.1's escalation — the only progress signal left to
+   * them. Asserting both in the *same render* is what makes it a composition claim;
+   * `AccessibleButton.dom.test.tsx` carries the with-motion direction.
+   */
+  it('keeps every stage of the escalation when the OS asks for less motion', async () => {
+    expect(typeof globalThis.matchMedia, 'jsdom must have no matchMedia here').toBe('undefined');
+
+    vi.useFakeTimers();
+    try {
+      const { client, settle } = deferredClient();
+      const screen = await renderAssistant(client, QUESTION);
+      await screen.ask();
+
+      // Reduce-motion is in force: no animation anywhere on the screen, and the wait is marked by
+      // a still glyph instead.
+      expect(screen.host.querySelectorAll('[role="progressbar"]')).toHaveLength(0);
+      expect(iconsIn(screen.must('assistant-ask'))).toContain('clock-outline');
+      // Still inert and still announced, which is the half no mark carries.
+      expect(screen.must('assistant-ask').getAttribute('aria-busy')).toBe('true');
+
+      await screen.advance(LOADING_AT_MS);
+      expect(screen.find('assistant-turn-1-pending')?.textContent).toBe(ASSISTANT_COPY.submitting);
+
+      await screen.advance(AI_PROGRESS_AT_MS - LOADING_AT_MS);
+      expect(screen.find('assistant-turn-1-pending')?.textContent).toBe(ASSISTANT_COPY.aiProgress);
+
+      await settle(0, answer());
+      expect(screen.find('assistant-turn-1-answer')).not.toBeNull();
+      expect(iconsIn(screen.must('assistant-ask'))).not.toContain('clock-outline');
+      expect(screen.must('assistant-ask').getAttribute('aria-busy')).not.toBe('true');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The new sentence is held to the rule the rest of this feature's prose is held to. It lives in
+   * `AssistantTurnRow.tsx` — the placement `HomeScreen.tsx:135` already uses for these two strings
+   * — so `assistantCopy.test.ts`'s denied-claim sweep does not reach it, and R-70 is exactly the
+   * observation that a guard aimed at model text does not cover our own copy. The two properties
+   * that sweep enforces are enforced here. TSD §5.7's phrase list is not transcribed a third time;
+   * the integration item moves the string into the swept module instead.
+   */
+  it('keeps the escalation sentence free of digits and of any claim about the meal', () => {
+    const sentence = ASSISTANT_COPY.aiProgress;
+    expect(sentence).not.toMatch(/\d/);
+    for (const claim of ['safe', 'healthy', 'allergen', 'medical', 'doctor', 'you should']) {
+      expect(sentence.toLowerCase()).not.toContain(claim);
+    }
+    // The control: the needle list can fire, so the sweep above is not vacuous.
+    expect('This meal is safe.'.toLowerCase()).toContain('safe');
   });
 
   /**

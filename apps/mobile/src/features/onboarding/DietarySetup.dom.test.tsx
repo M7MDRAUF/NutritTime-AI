@@ -3,12 +3,13 @@ import { act } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { fireEvent, getByRole, queryAllByRole } from '@testing-library/dom';
+import { BUDGET_BANDS, DIET_TAGS, NUTRITION_GOALS } from '@nutritime/contracts';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider.js';
 import { StorageProvider } from '../../state/StorageProvider.js';
 import { preferencesStore } from '../../state/preferences/index.js';
 import { onboardingStore } from '../../state/onboarding/index.js';
 import { memoryDriver } from '../../infrastructure/storage/__fixtures__/memoryDriver.js';
-import { STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
+import { DEFAULT_PREFERENCES, STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
 import { encodeEnvelope } from '../../infrastructure/storage/envelope.js';
 import type { StorageDriver } from '../../infrastructure/storage/repository.js';
 import { DietarySetupScreen } from './DietarySetupScreen.js';
@@ -359,7 +360,7 @@ describe('DietarySetupScreen', () => {
     });
   });
 
-  it('tells the user their profile was reset, because their allergy list is now empty', async () => {
+  it('tells the user their profile was reset and ANNOUNCES it, because their allergy list is now empty', async () => {
     /**
      * **`dietary-setup-recovered` was referenced by no test anywhere in the repository** — the
      * destructive half of the pair, deletable in silence. Its twin on Home was found the same way
@@ -384,8 +385,28 @@ describe('DietarySetupScreen', () => {
       }),
     );
 
-    expect(view.find('dietary-setup-recovered')).not.toBeNull();
-    expect(view.text()).toContain('including an empty allergy list');
+    const notice = view.must('dietary-setup-recovered');
+
+    /**
+     * **T-23-05, and the most expensive silence on this screen.** The panel existed, carried the
+     * right sentence, and was not a live region of any kind — so the one user who cannot see an
+     * amber box was the one not told that their declared allergy had been dropped.
+     * `announceOnMount` gives it `role="alert"`, whose INSERTION is the announcement, which is
+     * the event this branch actually has: `entryStatus` comes from the hydration snapshot, so the
+     * notice mounts with its own words already inside it and a bare `aria-live` region would have
+     * had no content change to report.
+     *
+     * Read off the notice element itself, because the role and the words have to be on the same
+     * node for an alert to be spoken — react-native-web's `View` renders one `div` and forwards
+     * the whole accessibility set to it (0.21.2), so they are.
+     *
+     * The negative control for this claim — a `StatusMessage` that must NOT announce — is in
+     * `MealForm.dom.test.tsx` ("says so before anything is typed, and does NOT announce it"),
+     * because all three notices on this screen are arrivals and every one of them announces.
+     */
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    expect(notice.textContent ?? '').toContain('including an empty allergy list');
 
     // The user-visible consequence the notice is about: the allergy they had declared is no longer
     // selected. Asserted through the rendered chip, not through the store.
@@ -429,8 +450,12 @@ describe('DietarySetupScreen', () => {
     driver.failOn.add('multiGet');
     const view = await render(driver);
 
-    expect(view.find('dietary-setup-unavailable')).not.toBeNull();
-    expect(view.text()).toContain('Changes will not be kept');
+    const notice = view.must('dietary-setup-unavailable');
+    expect(notice.textContent ?? '').toContain('Changes will not be kept');
+    // T-23-05: it arrives at hydration and nothing later in the session repeats it, so it is
+    // announced. Same element, same reason as the reset notice above.
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
 
     // And nothing is written over it, even after a change.
     press(view.must('chip-allergy-peanut'));
@@ -450,5 +475,334 @@ describe('DietarySetupScreen', () => {
     expect(
       driver.calls.filter((one) => one.startsWith('setItem:@nutritime/preferences')),
     ).toHaveLength(0);
+  });
+
+  it('does not mount any of the three announced notices for a validation failure', async () => {
+    /**
+     * **T-23-05, and the reason the three `announceOnMount` notices do not make this screen's
+     * worst case worse.** A failed Save on this form mounts one `aria-live="assertive"` region per
+     * invalid field — measured at **four** reachable through the UI (the three meal times plus
+     * dislikes; `FieldErrors`' fifth member, `allergies`, cannot fail from here, and
+     * `dietaryValidation.ts` says so in as many words: the screen offers a fixed checkbox list).
+     * Assertive means each one interrupts the last, so a fifth, sixth and seventh region arriving
+     * on the same event would be a collision rather than an announcement.
+     *
+     * They do not arrive on the same event, and this is the test that keeps it that way. All three
+     * notices are driven by **store status** — a hydration that quarantined the profile, a read
+     * that failed, a write that was refused — and none of them by `submitted` or by `valid`. They
+     * are also `polite` rather than `assertive` (asserted individually above), so even when one is
+     * already on screen it queues behind the field errors instead of cutting across them.
+     *
+     * A mutant that drove any of the three off the validation state would redden here. The
+     * assertive count itself is deliberately NOT pinned: the flood is a known `FormField` defect
+     * with an adopted fix recorded in `design-system/DECISIONS.md:377`, and a test that fixed its
+     * magnitude in place would have to be deleted before anyone could repair it.
+     */
+    const view = await render(memoryDriver({}));
+    const set = (testID: string, value: string): void => {
+      const input = inputIn(view.must(testID));
+      act(() => {
+        fireEvent.change(input, { target: { value } });
+      });
+    };
+    set('field-breakfast', 'nope');
+    set('field-lunch', '99:99');
+    set('field-dinner', '');
+
+    press(view.must('dietary-setup-save'));
+
+    // The refusal really happened: the errors are un-filtered and on screen.
+    expect(view.text()).toContain(VALIDATION_MESSAGES.clockFormat);
+    expect(view.text()).toContain(VALIDATION_MESSAGES.clockEmpty);
+    expect(view.find('dietary-setup-save-error')).toBeNull();
+    expect(view.find('dietary-setup-recovered')).toBeNull();
+    expect(view.find('dietary-setup-unavailable')).toBeNull();
+    // And nothing on the screen is announcing politely, so there is nothing for the field alerts
+    // to collide with. This is the assertion that fails if a notice is ever driven off `submitted`.
+    expect(view.host.querySelectorAll('[aria-live="polite"]')).toHaveLength(0);
+  });
+
+  it('announces a refused write, which is the one failure here that arrives after the user acts', async () => {
+    /**
+     * T-23-05's "async results announced", on the surface that most needs it — and unlike
+     * `MealFormScreen`, this screen stays put, so a user really does sit in front of this notice.
+     *
+     * The path is the app's own: this form dispatches each preference on the CHANGE, not on Save,
+     * so a refused `setItem` reports back while the user is still choosing. Before this, the
+     * panel was not a live region of any kind: a screen-reader user went on setting allergies
+     * that were not reaching the device, and the next launch would have shown them the old list.
+     *
+     * The read is allowed to succeed — `failOn` is armed after hydration — because a failing
+     * `multiGet` marks the key `unavailable`, which suppresses the write entirely and is the
+     * *other* test above. Two different states, and only this one produces a `saveError`.
+     */
+    const driver = memoryDriver({});
+    const view = await render(driver);
+    driver.failOn.add('setItem');
+
+    press(view.must('chip-allergy-peanut'));
+    await view.settle();
+    await view.settle();
+
+    const notice = view.must('dietary-setup-save-error');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    expect(notice.textContent ?? '').toContain('Your changes are not saved');
+    // Fixed local copy, and a retry that can succeed (PRD §12, TSD §6.4). The driver's own words
+    // never reach the user.
+    expect(notice.textContent ?? '').toContain('Try again');
+    expect(notice.textContent ?? '').not.toContain('driver refused');
+    // The write really was attempted and really did fail, so the state is the app's, not a stub's.
+    expect(
+      driver.calls.filter((one) => one.startsWith('setItem:@nutritime/preferences')).length,
+    ).toBeGreaterThan(1);
+    /**
+     * And the truth the notice exists to tell: the screen and the device disagree. The chip reads
+     * as chosen, and the bytes on the device — which are the defaults written at hydration, since
+     * `failOn` was armed after it — never gained the allergen. Asserted on the raw stored string
+     * rather than a decode, because the claim is only that the refused value is absent.
+     */
+    expect(view.must('chip-allergy-peanut').getAttribute('aria-checked')).toBe('true');
+    expect(driver.store.get(STORAGE_KEYS.preferences) ?? '').not.toContain('peanut');
+  });
+});
+
+/**
+ * R-55 · T-23-01 · T-23-04 — the diet, goal and budget rows.
+ *
+ * **These three groups had no assertions of any kind before this block.** Not a name, not a role,
+ * not a press, not a state; no e2e spec covered them either beyond clicking one chip by `testID`.
+ * `ChipRow`'s `selected` prop could have been deleted outright and this suite would have stayed
+ * green, which is §6.2 shape 2 in its purest form: the control that nothing controls. R-55's own
+ * recorded text says the fix "changes accessible names that `DietarySetup.dom.test.tsx` asserts" —
+ * it asserted none of them, so the risk row was wrong about its own blast radius.
+ *
+ * What is claimed here is what a user has to be able to hear: each row is named, each chip is a
+ * `checkbox` whose accessible name is its visible label, **exactly one chip per row is announced as
+ * checked**, pressing moves that state, and the selection is drawn with a mark as well as a fill.
+ */
+
+interface ChipGroupCase {
+  readonly prefix: 'diet' | 'goal' | 'budget';
+  /** The group's announced name. */
+  readonly name: string;
+  /** The contract enum this row renders — a different authority than the screen (§6.1g). */
+  readonly contract: readonly string[];
+  readonly chips: readonly { readonly value: string; readonly label: string }[];
+  /** `DEFAULT_PREFERENCES`' choice, pinned against that constant below. */
+  readonly defaulted: { readonly value: string; readonly label: string };
+  /** A choice that is neither the default nor the first chip, so "always check one of those" dies. */
+  readonly seeded: { readonly value: string; readonly label: string };
+}
+
+/**
+ * Hand-transcribed, deliberately (§6.1g).
+ *
+ * `chipLabel` lives in `ChipRow.tsx` — the subject — so spelling these labels with it would assert
+ * the implementation against itself and be true of whatever it happened to produce. `contract` and
+ * `DEFAULT_PREFERENCES` are the two independent authorities, and the key-set test below fails if a
+ * sixth diet tag or a fourth budget band ever arrives, rather than letting it be rendered untested.
+ */
+const CHIP_GROUPS: readonly ChipGroupCase[] = [
+  {
+    prefix: 'diet',
+    name: 'Diet',
+    contract: DIET_TAGS,
+    chips: [
+      { value: 'regular', label: 'Regular' },
+      { value: 'vegetarian', label: 'Vegetarian' },
+      { value: 'vegan', label: 'Vegan' },
+      { value: 'halal-preference', label: 'Halal preference' },
+      { value: 'gluten-aware', label: 'Gluten aware' },
+    ],
+    defaulted: { value: 'regular', label: 'Regular' },
+    seeded: { value: 'vegan', label: 'Vegan' },
+  },
+  {
+    prefix: 'goal',
+    name: 'Goal',
+    contract: NUTRITION_GOALS,
+    chips: [
+      { value: 'balanced', label: 'Balanced' },
+      { value: 'high-protein', label: 'High protein' },
+      { value: 'lower-calorie', label: 'Lower calorie' },
+    ],
+    defaulted: { value: 'balanced', label: 'Balanced' },
+    seeded: { value: 'lower-calorie', label: 'Lower calorie' },
+  },
+  {
+    prefix: 'budget',
+    name: 'Budget',
+    contract: BUDGET_BANDS,
+    chips: [
+      { value: 'low', label: 'Low' },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high', label: 'High' },
+    ],
+    defaulted: { value: 'medium', label: 'Medium' },
+    seeded: { value: 'high', label: 'High' },
+  },
+];
+
+/** A valid stored profile, so the read path keeps these choices instead of quarantining them. */
+function storedProfile(diet: string, goal: string, budget: string): Record<string, string> {
+  return {
+    [STORAGE_KEYS.preferences]: encodeEnvelope(
+      1,
+      {
+        schemaVersion: 1,
+        diet,
+        allergies: [],
+        goal,
+        budget,
+        dislikedIngredients: [],
+        mealTimes: { breakfast: '08:00', lunch: '12:30', dinner: '19:00' },
+        aiEnabled: true,
+        themeMode: 'system',
+      },
+      CLOCK(),
+    ),
+  };
+}
+
+/**
+ * Every chip in a row with the state it announces, `null` when it announces none.
+ *
+ * Returned as a whole row rather than one chip at a time on purpose: the assertion that matters is
+ * about the row — one checked and the rest not — and a per-chip read cannot express it.
+ */
+function announcedStates(
+  view: Harness,
+  group: ChipGroupCase,
+): readonly (readonly [string, string | null])[] {
+  return group.chips.map(
+    (chip) =>
+      [
+        chip.value,
+        view.must(`chip-${group.prefix}-${chip.value}`).getAttribute('aria-checked'),
+      ] as const,
+  );
+}
+
+function checkedValues(states: readonly (readonly [string, string | null])[]): readonly string[] {
+  return states.filter(([, state]) => state === 'true').map(([value]) => value);
+}
+
+describe('DietarySetupScreen chip groups', () => {
+  it('keeps its own table honest against the contract and the stored defaults', () => {
+    // Not a behaviour test: the guard that stops a new enum member from being rendered by the
+    // screen and covered by nothing here. If this fails, the table below is stale, not the screen.
+    for (const group of CHIP_GROUPS) {
+      expect(
+        group.chips.map((chip) => chip.value),
+        group.prefix,
+      ).toStrictEqual([...group.contract]);
+      expect(group.defaulted.value, group.prefix).toBe(DEFAULT_PREFERENCES[group.prefix]);
+      expect(group.seeded.value, group.prefix).not.toBe(group.defaulted.value);
+      // And never the first chip, so a mutant that always checks index 0 fails the seeded case.
+      expect(group.chips[0]?.value, group.prefix).not.toBe(group.seeded.value);
+    }
+  });
+
+  it('gives each group a name and a container role ARIA allows', async () => {
+    /**
+     * R-55's second half. A `radiogroup` must own `radio`s, and `Chip` has no `radio` mode that
+     * TSD §6.7's fixed prop list would permit — so the row was an invalid group holding `button`s
+     * with no name at all. `toolbar` may own arbitrary widgets, which these are.
+     */
+    const view = await render(memoryDriver({}));
+
+    for (const group of CHIP_GROUPS) {
+      const row = view.must(`field-${group.prefix}`);
+      expect(row.getAttribute('role'), group.prefix).toBe('toolbar');
+      expect(row.getAttribute('aria-label'), group.prefix).toBe(group.name);
+    }
+  });
+
+  it('offers every chip as a checkbox whose accessible name is its visible label', async () => {
+    /**
+     * Without `toggle` these are `<button>`s carrying `aria-selected`, which ARIA does not allow
+     * on a button and which react-native-web 0.21.2 therefore leaves as the only signal — so this
+     * reddens on the role the moment `toggle` is dropped.
+     */
+    const view = await render(memoryDriver({}));
+
+    for (const group of CHIP_GROUPS) {
+      const row = view.must(`field-${group.prefix}`);
+      expect(queryAllByRole(row, 'checkbox'), group.prefix).toHaveLength(group.chips.length);
+      for (const chip of group.chips) {
+        // `getByRole` throws when the name or the role is wrong, which is the assertion.
+        expect(getByRole(row, 'checkbox', { name: chip.label }), chip.value).toBeTruthy();
+      }
+    }
+  });
+
+  it('announces exactly one chip per group as checked, and it is the default choice', async () => {
+    // The pair no constant satisfies: a row that announced every chip checked fails the first
+    // assertion, a row that announced none fails both, and a row with no `aria-checked` at all —
+    // `toggle` dropped, or `selected` deleted from `ChipRow` — fails both as well.
+    const view = await render(memoryDriver({}));
+
+    for (const group of CHIP_GROUPS) {
+      const states = announcedStates(view, group);
+      expect(checkedValues(states), group.prefix).toStrictEqual([group.defaulted.value]);
+      expect(
+        states.filter(([, state]) => state === 'false'),
+        group.prefix,
+      ).toHaveLength(group.chips.length - 1);
+    }
+  });
+
+  it('announces the stored choice when it is neither the default nor the first chip', async () => {
+    // The control for the test above: without it, a row hard-coded to check the default — or the
+    // first chip — would pass. Read from a real stored profile, so the value travels the app's own
+    // path rather than being asserted into place.
+    const view = await render(memoryDriver(storedProfile('vegan', 'lower-calorie', 'high')));
+
+    for (const group of CHIP_GROUPS) {
+      const states = announcedStates(view, group);
+      expect(checkedValues(states), group.prefix).toStrictEqual([group.seeded.value]);
+      expect(
+        states.filter(([, state]) => state === 'false'),
+        group.prefix,
+      ).toHaveLength(group.chips.length - 1);
+    }
+  });
+
+  it('moves the announced state onto the pressed chip and off the one that had it', async () => {
+    // A chip whose press changed the fill and not the announcement is R-55 with extra steps, so
+    // the claim is specifically about what is announced after the tap.
+    const view = await render(memoryDriver({}));
+
+    for (const group of CHIP_GROUPS) {
+      press(view.must(`chip-${group.prefix}-${group.seeded.value}`));
+      await view.settle();
+
+      const states = announcedStates(view, group);
+      expect(checkedValues(states), group.prefix).toStrictEqual([group.seeded.value]);
+      expect(
+        view.must(`chip-${group.prefix}-${group.defaulted.value}`).getAttribute('aria-checked'),
+        group.prefix,
+      ).toBe('false');
+    }
+  });
+
+  it('draws the selection with a mark as well as a fill', async () => {
+    /**
+     * T-23-04. PRD §10.5: colour is never the only carrier of a state, and a fill is only colour.
+     * `Chip` draws a check glyph beside the label when selected, so the selected chip's text
+     * content is longer than its label and an unselected chip's is exactly its label — a pair a
+     * chip that always drew the mark, or never drew it, cannot both satisfy.
+     */
+    const view = await render(memoryDriver({}));
+
+    for (const group of CHIP_GROUPS) {
+      const on = view.must(`chip-${group.prefix}-${group.defaulted.value}`);
+      const off = view.must(`chip-${group.prefix}-${group.seeded.value}`);
+
+      expect(on.textContent, group.prefix).not.toBe(group.defaulted.label);
+      expect((on.textContent ?? '').endsWith(group.defaulted.label), group.prefix).toBe(true);
+      expect(off.textContent, group.prefix).toBe(group.seeded.label);
+    }
   });
 });

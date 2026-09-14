@@ -81,6 +81,7 @@ import {
 } from '../../shared/components/index.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
 import type { ScreenProps } from '../../navigation/registry.js';
+import { readStringParam } from '../../navigation/routes.js';
 import { useStorageContext } from '../../state/StorageProvider.js';
 import {
   MAX_CUSTOM_MEALS,
@@ -124,10 +125,17 @@ const NO_ERRORS: MealFormErrors = {};
  * of a single press:
  *
  *  - `invalid`: fields are wrong. **This is the one V7 caught.** Pressing Save on an invalid form
- *    mounts up to fourteen `role="alert"` regions at once, `accessibilityLiveRegion` is
- *    Android-only, and `FormField` has no iOS announcement — so to VoiceOver the button was dead.
- *    This summary carries `announceOnMount`, which `StatusMessage` implements with
- *    `AccessibilityInfo.announceForAccessibility` on iOS.
+ *    mounts up to fourteen `role="alert"` regions at once with no lede, and `FormField` makes no
+ *    iOS announcement — so to VoiceOver the button was dead. This summary carries
+ *    `announceOnMount`, which `StatusMessage` implements as `role="alert"` plus an
+ *    `AccessibilityInfo.announceForAccessibility` call on iOS.
+ *
+ *    **The earlier version of this note said `accessibilityLiveRegion` is Android-only, and that
+ *    was wrong in the direction that hides the defect.** It is Android-only in native RN, but the
+ *    web export reads it too: `react-native-web` 0.21.2 maps it to `aria-live` and rewrites
+ *    `'none'` to `'off'` (`dist/modules/createDOMProps/index.js:460-462`). The real reason a live
+ *    region was not enough is that a region has to be in the tree *before* its contents change,
+ *    and every notice here mounts with its own words already inside it.
  *  - `unstorable`: the `customMeals` key read as `unavailable`, so nothing can be written at all.
  *  - `refused`: the dispatch went nowhere. Defensive; see the confirmation effect below.
  */
@@ -196,7 +204,21 @@ export function MealFormScreen({ route, navigation }: ScreenProps<'MealForm'>): 
   const dispatch = customMealsStore.useDispatch();
   const status = customMealsStore.useStatus();
 
-  const mealId = route.params?.mealId;
+  /**
+   * **`readStringParam`, never `route.params.mealId` as typed** (TSD §6.2, T-22-05).
+   *
+   * `MealForm` is deep-linkable and `mealId` is a *query* param — absence has to be representable,
+   * so it cannot be in the path (`navigation/linking.ts`). A repeated key therefore parses to a
+   * `string[]` where `MealFormParams` says `string`, and this is the most dangerous of the three
+   * reads on this lane because **this param decides create versus edit**. Coerced, `?mealId=a&
+   * mealId=b` would open in edit mode against the id `a,b`, `selectCustomMeal` would return
+   * `undefined`, and the screen would announce a meal that does not exist as missing — a specific
+   * claim about a specific record, made from a value nothing checked.
+   *
+   * Refused, the value is absent, and absence already has a meaning the user can act on: create
+   * (PRD §8.3). Plan §20: "Array-valued or unexpected params rejected, never coerced."
+   */
+  const mealId = readStringParam(route.params, 'mealId');
   // Absent `mealId` means create, present means edit: one screen, two journeys (PRD §8.3).
   const existing = mealId === undefined ? undefined : selectCustomMeal(state, mealId);
   const atBound = selectAtCustomMealsBound(state);
@@ -537,6 +559,14 @@ export function MealFormScreen({ route, navigation }: ScreenProps<'MealForm'>): 
       {/*
         The storage backstop, for a write refused after the reducer accepted it. `saveBlocked` is
         presented differently from `saveError` because there is nothing to retry.
+
+        **`announceOnMount`, unlike the two notices above it.** Those two are drawn with the form —
+        `meal-form-unavailable` at hydration and `meal-form-bound` before anything is typed — so
+        they are read in normal document order and announcing them would interrupt a user who has
+        not done anything yet. This one is the opposite: it appears only because a Save the user
+        pressed was refused *after* the reducer accepted the record, which is the arrival T-23-05
+        means by "async results announced". Without it the screen and the device disagree and the
+        only signal is a red panel below the button.
       */}
       {status.saveError !== null ? (
         <StatusMessage
@@ -546,6 +576,7 @@ export function MealFormScreen({ route, navigation }: ScreenProps<'MealForm'>): 
           title={status.saveBlocked ? 'That list is full' : 'Your meal is not saved'}
           description={status.saveError}
           {...(status.saveBlocked ? {} : { actionLabel: 'Try again', onAction: status.retrySave })}
+          announceOnMount
         />
       ) : null}
 

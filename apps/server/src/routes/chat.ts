@@ -234,12 +234,53 @@ export function chatRouter(deps: ChatRouterDeps): ExpressRouter {
       throw new ApiError('ai_unavailable');
     }
 
+    const citations = citationsFor(resolved.namedMeals, reply.citedMealIds);
+
+    /**
+     * **A resolved answer with no citations is discarded: PRD 7.3 requires the meals be shown.**
+     *
+     * "Show the meals the answer drew on as citations" is a requirement, and the four checks above
+     * cannot enforce it. Check 1 verifies that no cited id is OUTSIDE the prompt's ids; an empty
+     * `citedMealIds` has no id outside anything, so it passes -- vacuously, in exactly the way
+     * T-19-09's acceptance warned about for figures ("an empty permitted set forbids every figure;
+     * it does not skip the check"). The same vacuity, on the other axis, was missed.
+     *
+     * **It is reachable against a real model.** TSD 5.5's per-request schema constrains citation
+     * *values* through an `enum` of this prompt's ids and says nothing about the array's minimum
+     * length, so `[]` is a schema-valid reply. `AI_FAKE` cannot produce it -- the echo carries
+     * `resolved.citedMealIds` by construction -- which is why nine phases of `AI_FAKE` evidence
+     * could not have found this. Found at P24 by an agent reading the route rather than running it.
+     *
+     * **Discarded rather than repaired, and the alternative is recorded.** `resolved` holds a true
+     * statement and its own `citedMealIds`, so substituting them would give the user a better
+     * answer than a 503 does. That path is deliberately NOT taken here: TSD 5.7 specifies discard
+     * for an unusable reply, every other containment failure on this route answers `ai_unavailable`,
+     * and inventing a second degradation shape would be this route deciding product behaviour no
+     * document describes. The substitution is worth considering and belongs to the user (R-71).
+     *
+     * **The condition reads OUR data, never the model's.** `containReply`'s docstring: making a
+     * check conditional on a boolean the model controls "would hand the model a switch for turning
+     * containment off". So the guard is `resolved.namedMeals`, computed by the domain before the
+     * model was reachable -- not `reply.answered`, and not `reply.citedMealIds` alone.
+     *
+     * An answer that legitimately draws on no meal is unaffected: TSD 4.9's `count` carries no
+     * meals, so `namedMeals` is empty, so there is nothing to show and nothing to require.
+     *
+     * The outcome is `'contained'` because that is what happened -- an ungrounded reply was
+     * discarded -- and TSD 5.8 defines no other value for it. TSD 5.7's "the client is never told
+     * which rule fired" is why the 503 carries no detail.
+     */
+    if (citations.length === 0 && resolved.namedMeals.length > 0) {
+      logAiCall(startedAt, 'contained');
+      throw new ApiError('ai_unavailable');
+    }
+
     logAiCall(startedAt, 'ok');
 
     return {
       answered: true,
       answer: reply.answer,
-      citations: citationsFor(resolved.namedMeals, reply.citedMealIds),
+      citations,
       source: 'gemma',
     };
   }

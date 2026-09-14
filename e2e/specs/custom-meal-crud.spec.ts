@@ -140,6 +140,24 @@ async function onlyStoredMeal(page: Page): Promise<Readonly<Record<string, unkno
   return only;
 }
 
+/**
+ * The one stored record's allergen tags. **Throws rather than coerces**, exactly as `storedIds`
+ * does: a tag stored as a number is a record `customMealSchema` quarantines at the next launch,
+ * and it has to fail this spec loudly rather than be filtered quietly out of a comparison.
+ */
+async function storedAllergenTags(page: Page): Promise<readonly string[]> {
+  const tags = (await onlyStoredMeal(page))['allergenTags'];
+  if (!Array.isArray(tags)) {
+    throw new Error(`allergenTags is stored as ${typeof tags}, not a list`);
+  }
+  return tags.map((tag: unknown, index: number) => {
+    if (typeof tag !== 'string') {
+      throw new Error(`allergen tag ${String(index)} is stored as ${typeof tag}, not a string`);
+    }
+    return tag;
+  });
+}
+
 function text(meal: Readonly<Record<string, unknown>>, name: string): string {
   const value = meal[name];
   if (typeof value !== 'string') {
@@ -162,6 +180,19 @@ function mealForm(page: Page): Locator {
 /** One custom meal's row, scoped to the custom section and addressed by id — never by position. */
 function recipeRow(page: Page, mealId: string): Locator {
   return page.getByTestId('saved-custom').getByTestId(`saved-recipe-${mealId}`);
+}
+
+/**
+ * The allergen conflict marker for one custom row.
+ *
+ * **A SIBLING of the card, not a child of it**, so it cannot be reached through `recipeRow`:
+ * `SavedMealRow` renders the warning *above* the card on purpose, because a screen reader reaches
+ * children in order and a warning after the thing it warns about arrives too late. Scoped to
+ * `saved-custom` for `customRowIds`' reason — `FavoritesSection` renders its own rows, with their
+ * own markers, in the same screen.
+ */
+function conflictMarker(page: Page, mealId: string): Locator {
+  return page.getByTestId('saved-custom').getByTestId(`saved-conflict-${mealId}`);
 }
 
 /**
@@ -465,6 +496,14 @@ test.describe('a custom meal, through the real form', () => {
     await expect(page.getByTestId('meal-form-delete-sheet')).toBeVisible();
     // **Nothing is deleted by OPENING the confirmation.** A delete dispatched from the destructive
     // button would still pass a test that only read the disk after the confirm.
+    //
+    // **Measured (P24): this read can never be the assertion that REPORTS that defect**, and the
+    // reason is the screen's shape rather than an oversight here. The sheet is rendered inside the
+    // `existing === undefined ? null : …` fragment, so a record deleted early takes the sheet with
+    // it and the `toBeVisible` above fails first. Reading the disk before that wait instead would
+    // be weaker, not stronger: the write is queued asynchronously, so an immediate read would pass
+    // while a delete was still in flight. Kept as the statement of intent, with the knowledge that
+    // the sheet's own presence is what discriminates.
     expect(await storedIds(page), 'the sheet is open, not confirmed').toStrictEqual([mealId]);
 
     await page.getByTestId('meal-form-delete-confirm').click();
@@ -641,5 +680,79 @@ test.describe('a custom meal, through the real form', () => {
     expect(provenance['origin']).toBe('user');
     expect(provenance['servings'], 'no figures means no serving count').toBeNull();
     await expect(recipeRow(page, text(saved, 'id'))).toBeVisible({ timeout: FIRST_PAINT_MS });
+  });
+
+  /**
+   * The allergen warning on a record the user wrote, carried through the disk (T-17-02, FR-007).
+   *
+   * **This is the claim about a custom meal that no other suite can make.** `Saved.dom.test.tsx`
+   * renders the row marker and `MealForm.dom.test.tsx` renders the form's notice, but both seed a
+   * record straight into the store — so neither has run `allergenTags` through `composeCustomMeal`
+   * → the reducer → the queued write → `localStorage` → `decodeEnvelope` → hydration → a rendered
+   * row. A projection that dropped the field would leave every one of those tests green and take
+   * the warning off a recipe the user tagged themselves: behaviour that exists and that nothing
+   * would notice the loss of, which is this project's recurring defect shape.
+   *
+   * **The conflict is reachable ONLY through the stored tag, deliberately.** `VALID`'s one
+   * ingredient is `Red lentils`, so both of `conflictingAllergens`' other paths — the allergy named
+   * literally in an ingredient, and an ambiguous term whose inference overlaps the tags — find
+   * nothing, and a declared `peanut` can match `subject.allergenTags` and nothing else. A record
+   * whose tags were lost therefore shows no marker at all rather than a marker by another route.
+   *
+   * **Routing is why this test lives here and not in a details spec.** Tapping a custom meal opens
+   * `MealForm`, never `MealDetailsScreen`, so `MealDetailsBody`'s allergen block — the other place
+   * that reads `allergenTags` — is unreachable for a meal the user authored. The form's notice and
+   * the Saved row's marker are the whole of the surface, and both are asserted below.
+   */
+  test('a declared allergen tagged on a custom meal is warned about in the form and marked in Saved, across a reload', async ({
+    page,
+  }) => {
+    await enterApp(page, { allergies: ['peanut'] });
+    await openSaved(page);
+    await openNewMealForm(page);
+    await fillMealForm(page, VALID);
+
+    // THE CONTROL, on this same draft and before the tag exists. Without it, "the notice appears"
+    // would also be satisfied by a form that warns about every meal.
+    await expect(page.getByTestId('meal-form-allergen-conflict')).toHaveCount(0);
+    await page.getByTestId('chip-allergen-peanut').click();
+    // On the tap that makes it true, before any save — which is what the screen claims to do.
+    await expect(page.getByTestId('meal-form-allergen-conflict')).toBeVisible();
+    await saveAndLeave(page);
+
+    await openSaved(page);
+    const mealId = text(await onlyStoredMeal(page), 'id');
+    expect(await storedAllergenTags(page), 'the tag reached the disk').toStrictEqual(['peanut']);
+    await expect(conflictMarker(page, mealId)).toBeVisible({ timeout: FIRST_PAINT_MS });
+
+    /** THE RELOAD. What is marked below is a hydrated record, not this session's draft. */
+    await page.reload();
+    await expect(page.getByRole('tab', { name: 'Home' })).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await openSaved(page);
+    await expect(recipeRow(page, mealId)).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(conflictMarker(page, mealId)).toBeVisible();
+    // The allergen is NAMED: "contains an allergen" is not actionable, and the user may have
+    // declared several (PRD §10.5 — the glyph and the colour are both redundant with the words).
+    await expect(conflictMarker(page, mealId)).toContainText('peanut');
+    expect(await storedAllergenTags(page)).toStrictEqual(['peanut']);
+
+    /**
+     * THE NEGATIVE CONTROL, taken on the hydrated record rather than on a second meal: untick the
+     * one tag and both surfaces go quiet. A marker rendered for every row, or a notice that is
+     * really about the declared allergy rather than about this meal, passes everything above.
+     */
+    await recipeRow(page, mealId).click();
+    await expect(page.getByTestId('meal-form-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    // `draftFromCustomMeal` restored the selection off the disk, so this notice is the STORED tag
+    // talking — the chips are not re-tapped in edit mode, which would clear them.
+    await expect(page.getByTestId('meal-form-allergen-conflict')).toBeVisible();
+    await page.getByTestId('chip-allergen-peanut').click();
+    await expect(page.getByTestId('meal-form-allergen-conflict')).toHaveCount(0);
+    await saveAndLeave(page);
+
+    await openSaved(page);
+    await expect(recipeRow(page, mealId)).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(conflictMarker(page, mealId)).toHaveCount(0);
+    expect(await storedAllergenTags(page)).toStrictEqual([]);
   });
 });

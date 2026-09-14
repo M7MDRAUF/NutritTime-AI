@@ -20,6 +20,27 @@ function body(): HTMLElement {
   return document.body;
 }
 
+/**
+ * The open dialog, found by its role AND its accessible name in a SINGLE query.
+ *
+ * **This helper exists because of M-20, and its shape is the fix.** The suite used to assert
+ * `getAttribute('aria-label')` on the panel and `getByRole(body, 'dialog')` somewhere else, and
+ * passed for months while those two things were on *different elements* three levels apart -
+ * react-native-web 0.21.2 puts `role="dialog"` on `ModalContent`'s own `View`, and the name had
+ * been set on the panel below it. Neither assertion could see the split, so the test could not
+ * fail, and the three destructive confirmations announced as a bare "dialog". A pair that can be
+ * satisfied separately is not a pair (BRIEF 6.2 shape 3): `getByRole(name)` computes the
+ * accessible name *of the element that has the role*, so it is red the moment they part company.
+ *
+ * **Call it straight after the render that opened the sheet.** `Modal` keeps a module-level stack
+ * of open modals and sets `role={active ? 'dialog' : null}`, where only the newest is active - so
+ * with the harness never unmounting anything, exactly one sheet in this file has the role at a
+ * time, and it is the one most recently rendered.
+ */
+function openDialogNamed(name: string): HTMLElement {
+  return getByRole(body(), 'dialog', { name });
+}
+
 describe('Sheet', () => {
   it('renders nothing at all while it is closed', () => {
     render(
@@ -34,22 +55,36 @@ describe('Sheet', () => {
     expect(body().querySelector('[data-testid="sheet-closed"]')).toBeNull();
   });
 
-  it('is a modal dialog when it is open', () => {
+  it('is a dialog whose role and accessible name are on one and the same element', () => {
     // React Native 0.86's `AccessibilityRole` has no `dialog`, so `role="dialog"` arrives only
-    // because this is a `Modal` - which is most of why it is one. Both modal spellings are set:
-    // `accessibilityViewIsModal` is what iOS reads and `aria-modal` is what the web export and
-    // this suite read, and react-native-web 0.21 maps neither from the other.
+    // because this is a `Modal` - which is most of why it is one. The name has to arrive on that
+    // same element or it is not the dialog's name, which is exactly what M-20 was.
     render(<Sheet testID="sheet-open" visible onClose={noop} title="Filters" children={null} />);
-    const panel = element(body(), 'sheet-open');
 
-    expect(panel.getAttribute('aria-modal')).toBe('true');
-    expect(getByRole(body(), 'dialog')).toBeTruthy();
+    const dialog = openDialogNamed('Filters');
+
+    // `aria-modal` belongs on the element that has the role - ARIA defines it nowhere else - and
+    // `ModalContent` sets it there itself, which is why `Sheet` no longer sets it at all.
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    // The panel is inside the dialog, not the dialog: it is three `div`s below the role and must
+    // carry neither half of the name. Re-declaring either here is how the split came back.
+    const panel = element(body(), 'sheet-open');
+    expect(dialog.contains(panel)).toBe(true);
+    expect(panel.getAttribute('aria-label')).toBeNull();
+    expect(panel.getAttribute('aria-modal')).toBeNull();
+    expect(dialog.querySelectorAll('[aria-label="Filters"]').length).toBe(0);
   });
 
-  it('keeps its name when its heading is hidden', () => {
+  it('keeps its name on the dialog when its heading is hidden', () => {
     // `hideTitle` is a visual instruction, not an accessibility one. A sheet with no accessible
     // name is a sheet a screen reader announces as "dialog".
+    //
+    // Asserted immediately after each render rather than both at the end, because only the newest
+    // modal carries the role; see `openDialogNamed`.
     render(<Sheet testID="sheet-shown" visible onClose={noop} title="Filters" children={null} />);
+    const shownDialog = openDialogNamed('Filters');
+    const shown = element(body(), 'sheet-shown');
+
     render(
       <Sheet
         testID="sheet-hidden"
@@ -60,14 +95,53 @@ describe('Sheet', () => {
         children={null}
       />,
     );
-
-    const shown = element(body(), 'sheet-shown');
+    const hiddenDialog = openDialogNamed('Filters');
     const hidden = element(body(), 'sheet-hidden');
 
+    // The heading goes; the name does not. Two different sheets, so two different dialogs - and
+    // the second query is what proves the name survived `hideTitle`, because it found the role
+    // and the name together on a sheet that renders the word nowhere.
+    expect(shownDialog).not.toBe(hiddenDialog);
+    expect(hiddenDialog.contains(hidden)).toBe(true);
     expect(shown.textContent).toContain('Filters');
     expect(hidden.textContent).not.toContain('Filters');
-    expect(shown.getAttribute('aria-label')).toBe('Filters');
-    expect(hidden.getAttribute('aria-label')).toBe('Filters');
+  });
+
+  /**
+   * The titles the three destructive-action confirmation sheets are opened with.
+   *
+   * **Hand-transcribed from the call sites, which are a different authority than the subject**
+   * (BRIEF 6.1g) - `FavoritesSection.tsx`, `MealFormScreen.tsx` and `settingsCopy.ts`'s
+   * `confirmationFor`. Importing them would pin this file to those modules; retyping them states
+   * the value intended. They are also the control that no single constant can satisfy (BRIEF 6.2
+   * shape 2): a `Sheet` that named every dialog the same word would pass a test that only asked
+   * whether *a* named dialog exists, and fails the loop below on its first turn.
+   */
+  const DESTRUCTIVE_CONFIRMATIONS = [
+    { testID: 'sheet-saved-forget', title: 'Remove this favourite?' },
+    { testID: 'sheet-meal-delete', title: 'Delete this meal?' },
+    { testID: 'sheet-settings-confirm', title: 'Erase everything on this device?' },
+  ] as const;
+
+  it('identifies each destructive confirmation by its own name, not as "a dialog"', () => {
+    // PRD 10.5. A confirmation a screen-reader user cannot identify is a confirmation they cannot
+    // safely answer, and all three of these delete something that does not come back.
+    //
+    // The fixture is only a control if the three names really are three names.
+    expect(new Set(DESTRUCTIVE_CONFIRMATIONS.map((c) => c.title)).size).toBe(3);
+
+    for (const { testID, title } of DESTRUCTIVE_CONFIRMATIONS) {
+      render(
+        <Sheet testID={testID} visible onClose={noop} title={title}>
+          <AppText>Remove</AppText>
+        </Sheet>,
+      );
+
+      // One query, for the role and this dialog's own name together.
+      const dialog = openDialogNamed(title);
+      // And it is *this* sheet's dialog, not merely some dialog that happens to carry the name.
+      expect(dialog.contains(element(body(), testID))).toBe(true);
+    }
   });
 
   it('closes on its close button', () => {

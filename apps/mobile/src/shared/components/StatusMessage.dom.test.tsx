@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { getByRole, queryByRole } from '@testing-library/dom';
 import { asRendered, element, iconNamesIn, press, render } from './testHarness.js';
 import { buildComponentTokens, darkColors, lightColors } from '../theme/index.js';
+import { ThemeProvider } from '../theme/ThemeProvider.js';
 import { StatusMessage } from './StatusMessage.js';
 import type { StatusTone } from './StatusMessage.js';
 
@@ -9,6 +12,25 @@ const light = buildComponentTokens(lightColors);
 const dark = buildComponentTokens(darkColors);
 
 const TONES: readonly StatusTone[] = ['info', 'success', 'warning', 'danger'];
+
+/**
+ * The text a screen reader would be given for this region.
+ *
+ * `Icon` renders a vendor glyph inside a `Text`, so a decorative mark puts characters into
+ * `textContent` that are no part of the announcement. Stripping the `aria-hidden` subtrees lets an
+ * assertion say "this is the WHOLE of what is announced" - `toContain` could not fail on a region
+ * whose words had moved out of it and left a stray glyph behind.
+ */
+function announcedText(region: HTMLElement): string {
+  const clone = region.cloneNode(true);
+  if (!(clone instanceof HTMLElement)) {
+    throw new Error('cloneNode did not return an element');
+  }
+  for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) {
+    hidden.remove();
+  }
+  return clone.textContent ?? '';
+}
 
 describe('StatusMessage', () => {
   it.each(TONES)('takes its %s boundary from that status role, in both schemes', (tone) => {
@@ -100,6 +122,119 @@ describe('StatusMessage', () => {
 
     expect(quiet.getAttribute('aria-live')).toBe('off');
     expect(announced.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('becomes a real alert when it announces, and stays a plain panel when it does not', () => {
+    /**
+     * T-23-05, "async results announced" — and `aria-live` alone did not do it.
+     *
+     * Every one of these notices is mounted together with its own words, so by the time the live
+     * region exists the change it was meant to report has already happened. `role="alert"` is the
+     * one role whose INSERTION is the announcement, which is the event a conditionally-rendered
+     * notice actually has.
+     *
+     * Verified against the library rather than assumed: react-native-web **0.21.2** passes
+     * `accessibilityRole="alert"` through `propsToAriaRole` unchanged, and `View` renders one
+     * `div` — so this asserts the rendered attribute, not that a prop was typed. Both directions,
+     * because a component that alerted unconditionally would pass the first half and turn Home's
+     * permanent disclaimer into an interruption.
+     */
+    const announced = element(
+      render(
+        <StatusMessage
+          testID="s"
+          tone="warning"
+          icon="warning"
+          title="T"
+          description="D"
+          announceOnMount
+        />,
+      ),
+      's',
+    );
+    const quiet = element(
+      render(<StatusMessage testID="s" tone="warning" icon="warning" title="T" description="D" />),
+      's',
+    );
+
+    expect(announced.getAttribute('role')).toBe('alert');
+    expect(quiet.getAttribute('role')).not.toBe('alert');
+    // And the alert is polite: Plan 14.2 adopted the alert role for errors, so the `assertive`
+    // that `role="alert"` implies is deliberately downgraded rather than left to the default.
+    expect(announced.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('carries the announcement ON the element that carries the role', () => {
+    /**
+     * **A role with no accessible text announces nothing** — which is the defect three `Sheet`
+     * dialogs were found with, `role="dialog"` on one element and `aria-label` on another. An
+     * alert is named by its own contents, so the words have to be inside the node that holds the
+     * role, and this reads them off that node rather than off the container. Asserted as equality
+     * on the whole announcement, so copy that moved OUT of the region fails it.
+     */
+    const region = element(
+      render(
+        <StatusMessage
+          testID="s"
+          tone="warning"
+          icon="alertCircle"
+          title="Your preferences were reset"
+          description="Your allergy list is empty."
+          announceOnMount
+        />,
+      ),
+      's',
+    );
+
+    expect(region.getAttribute('role')).toBe('alert');
+    expect(announcedText(region)).toBe('Your preferences were resetYour allergy list is empty.');
+    // ...which is only meaningful because the glyph IS in the raw text and IS hidden, so the
+    // assertion above is about the announcement and not about every character in the subtree.
+    expect(region.textContent).not.toBe(announcedText(region));
+  });
+
+  it('does not re-announce when the caller re-renders around it', () => {
+    /**
+     * **An announcement that fires on every render is worse than none.** `role="alert"` is spoken
+     * on insertion, so the property that keeps it to once is that an unchanged notice is not
+     * remounted — and a new DOM node is how that is observable from here (the same seam
+     * `MealForm.dom.test.tsx` uses in the opposite direction, where a `key` deliberately DOES
+     * remount the summary for a second Save attempt).
+     *
+     * The re-render changes a prop that has nothing to do with the announcement, so a component
+     * that rebuilt its region on any prop change fails here.
+     */
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const draw = (stillAvailable: string | undefined): void => {
+      act(() => {
+        root.render(
+          <ThemeProvider mode="light" deviceScheme={null} fontScale={1}>
+            <StatusMessage
+              testID="s"
+              tone="warning"
+              icon="warning"
+              title="Your preferences were reset"
+              description="Your allergy list is empty."
+              announceOnMount
+              {...(stillAvailable === undefined ? {} : { stillAvailable })}
+            />
+          </ThemeProvider>,
+        );
+      });
+    };
+
+    draw(undefined);
+    const first = element(host, 's');
+    draw('Your saved meals are unaffected.');
+    const second = element(host, 's');
+
+    // The same node, still an alert, and the re-render really did take effect — without that last
+    // assertion a component that ignored the new prop entirely would pass the first two.
+    expect(second).toBe(first);
+    expect(second.getAttribute('role')).toBe('alert');
+    expect(second.textContent ?? '').toContain('Your saved meals are unaffected.');
   });
 
   it('renders what happened, what still works and what to do next, in that order', () => {

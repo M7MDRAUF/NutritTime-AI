@@ -15,6 +15,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { FlatList, View } from 'react-native';
 import type { ListRenderItemInfo } from 'react-native';
+import { MEAL_PERIODS } from '@nutritime/contracts';
 import type { Meal } from '@nutritime/contracts';
 import { formatMoney } from '@nutritime/domain';
 import {
@@ -29,6 +30,7 @@ import {
 import { useApiClient } from '../../infrastructure/api/ApiProvider.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
 import type { ScreenProps } from '../../navigation/registry.js';
+import { readStringParam, readUnionParam } from '../../navigation/routes.js';
 import {
   EXPLORE_CHIPS,
   NO_FILTERS,
@@ -63,11 +65,23 @@ export function ExploreScreen({ route, navigation, debounceMs }: ExploreScreenPr
    * `ExploreParams` carries `query` and `period` (TSD §6.2), so `nutritime://explore?query=rice`
    * has to arrive in the search box. Read once as the initial value rather than tracked: a screen
    * that re-derived its state from `route.params` on every render would fight the user's typing.
+   * Both initialisers are lazy for that reason — the URL is read at mount and never again.
+   *
+   * **Read through the route table's own readers, never off `route.params` as typed** (TSD §6.2,
+   * T-22-05). Both of these are *query* params, so `?query=a&query=b` parses to a `string[]` where
+   * the param list says `string` — a value the type system never saw. `readStringParam` refuses an
+   * array rather than joining it or taking the first, because there is no honest single answer to
+   * which one the user meant; an empty box is honest, a search for `a,b` is not. `period` is a
+   * union, so it goes through `readUnionParam` against `MEAL_PERIODS`: `?period=brunch` has to be
+   * refused too, not only `?period=lunch&period=dinner`, or an unknown value would reach
+   * `queryFrom` and §11.3 makes a wrong-typed parameter a 400 — the screen would show the user an
+   * error for a filter they never chose. Plan §20: "Array-valued or unexpected params rejected,
+   * never coerced."
    */
-  const [search, setSearch] = useState(route.params?.query ?? '');
+  const [search, setSearch] = useState(() => readStringParam(route.params, 'query') ?? '');
   const [filters, setFilters] = useState<ExploreFilters>(() => ({
     ...NO_FILTERS,
-    period: route.params?.period ?? null,
+    period: readUnionParam(route.params, 'period', MEAL_PERIODS) ?? null,
   }));
 
   const state = useMealSearch({

@@ -72,12 +72,18 @@ const FAILURE_PRESENTATION: Readonly<Record<AssistantFailure, FailurePresentatio
 
 export interface AssistantTurnRowProps {
   readonly turn: AssistantTurn;
+  /** PRD §10.1's first threshold has passed. Below it there is no loading surface at all. */
+  readonly showLoading: boolean;
+  /** PRD §10.1's second threshold has passed. */
+  readonly showAiProgress: boolean;
   readonly onOpenMeal: (mealId: string) => void;
   readonly onRetry: (turnId: number) => void;
 }
 
 export const AssistantTurnRow = memo(function AssistantTurnRow({
   turn,
+  showLoading,
+  showAiProgress,
   onOpenMeal,
   onRetry,
 }: AssistantTurnRowProps): ReactNode {
@@ -99,11 +105,30 @@ export const AssistantTurnRow = memo(function AssistantTurnRow({
         {question}
       </AppText>
 
-      {state.kind === 'pending' ? (
-        // Words, not a bare spinner: PRD §12 wants the message to say what is happening, and the
-        // wait here is the retrieval and the model, which is worth naming.
+      {state.kind === 'pending' && showLoading ? (
+        /*
+          Words, not a bare spinner: PRD §12 wants the message to say what is happening, and the
+          wait here is the retrieval and then the model, which is worth naming — and naming
+          separately, because they are two different waits and the second is the long one.
+
+          **PRD §10.1's escalation, and the whole of it.** Nothing before 200 ms (`showLoading`
+          gates the surface itself, exactly as Home's `home-loading` is gated), the retrieval
+          sentence from 200 ms, and the model sentence from 2 s. Until this existed the first
+          sentence appeared instantly and then stood unchanged for as long as the request took —
+          up to §10.1's own 30 s hard timeout on a cold model, which is the case that paragraph is
+          about.
+
+          **It is text, so reduce-motion does not touch it** (T-23-06). That composition is the
+          point rather than an accident: a user who has asked for less motion loses the spinner in
+          `AccessibleButton` and keeps every word of this, which is the only escalation signal they
+          have left. A design that had put the escalation in the animation would have removed the
+          progress report from exactly the people who most need a still one.
+
+          One `testID` for both stages rather than two, so a test has to read the words to tell
+          them apart — the same choice `Home.dom.test.tsx` makes against `home-loading`.
+        */
         <AppText variant="body" tone="secondary" testID={`assistant-turn-${String(id)}-pending`}>
-          {ASSISTANT_COPY.submitting}
+          {showAiProgress ? ASSISTANT_COPY.aiProgress : ASSISTANT_COPY.submitting}
         </AppText>
       ) : null}
 

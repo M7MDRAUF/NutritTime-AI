@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { fireEvent } from '@testing-library/dom';
 import { seededCatalog } from '@nutritime/catalog';
 import { mealSchema } from '@nutritime/contracts';
-import type { Meal, MealListResponse } from '@nutritime/contracts';
+import type { Meal, MealListResponse, MealPeriod } from '@nutritime/contracts';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider.js';
 import { ApiProvider } from '../../infrastructure/api/ApiProvider.js';
 import { ApiClientError, transportError } from '../../infrastructure/api/errors.js';
@@ -89,10 +89,18 @@ interface Rendered {
 
 function renderExplore(
   client: ApiClient,
-  params?: {
-    readonly query?: string;
-    readonly period?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
-  },
+  /**
+   * What `route.params` really holds, which is not what `ExploreParams` says it holds.
+   *
+   * Both of Explore's params are query params, so a repeated key arrives as a `string[]` and an
+   * unrecognised `?period=` value as an arbitrary string — shapes the param list's types never saw
+   * (T-22-05). The union keeps the well-formed cases type-checked and admits the hostile ones as
+   * the strings-or-arrays a URL can actually deliver, rather than widening everything to `unknown`
+   * and losing the check on the twelve call sites that pass a proper value.
+   */
+  params?:
+    | { readonly query?: string; readonly period?: MealPeriod }
+    | Readonly<Record<string, string | readonly string[]>>,
   /**
    * `null` withholds the prop so the screen falls back to `SEARCH_DEBOUNCE_MS`.
    *
@@ -424,6 +432,79 @@ describe('ExploreScreen', () => {
     expect(stub.calls[0]).toMatchObject({ query: 'rice', period: 'lunch' });
     expect(searchInput(view.host).getAttribute('value')).toBe('rice');
     expect(view.must('chip-period-lunch').getAttribute('aria-checked')).toBe('true');
+  });
+
+  it('refuses an array-valued `query` rather than coercing it (T-22-05)', async () => {
+    /**
+     * `?query=rice&query=ricotta` parses to a `string[]` where `ExploreParams` says `string`.
+     * Unreachable only because nothing links into the app yet (R-44) — the day the web export's
+     * URL reaches the navigator, this read is live.
+     *
+     * Refused, never joined and never first-taken: `readStringParam`'s stated reason is that there
+     * is no honest single answer to which one the user meant, and a search box holding
+     * `rice,ricotta` would be the screen inventing one and then showing the user results for it.
+     *
+     * **The second half is what makes the first half mean something.** A reader that refused every
+     * value would satisfy the refusal assertions on its own, so the same param is rendered again as
+     * a single value and is required to arrive.
+     */
+    const refused = deferredClient();
+    const refusedView = renderExplore(refused.client, { query: ['rice', 'ricotta'] });
+    await tick();
+
+    expect(searchInput(refusedView.host).getAttribute('value') ?? '').toBe('');
+    expect(refusedView.text()).not.toContain('rice,ricotta');
+    // No `query` key at all rather than an empty one: §11.3 makes a wrong-typed parameter a 400,
+    // so a coerced array would earn the user an error state for a search they never typed.
+    expect(refused.calls[0]).toStrictEqual({ page: 1, pageSize: 20 });
+
+    const honoured = deferredClient();
+    const honouredView = renderExplore(honoured.client, { query: 'rice' });
+    await tick();
+
+    expect(searchInput(honouredView.host).getAttribute('value')).toBe('rice');
+    expect(honoured.calls[0]).toMatchObject({ query: 'rice' });
+  });
+
+  it('refuses an array-valued AND an unrecognised `period` (T-22-05)', async () => {
+    /**
+     * `period` is a union, so `readUnionParam` against `MEAL_PERIODS` is the right reader and the
+     * array is only half of what it has to refuse: `?period=brunch` is as invalid as
+     * `?period=lunch&period=dinner`, and a `readStringParam`-only guard would pass `brunch`
+     * straight through to `queryFrom` and into a 400.
+     *
+     * Asserted on the chips as well as on the request, because the chips are what the user reads:
+     * a period the screen filtered by without showing it selected would be a filter they cannot
+     * find or remove.
+     */
+    const array = deferredClient();
+    const arrayView = renderExplore(array.client, { period: ['lunch', 'dinner'] });
+    await tick();
+
+    expect(arrayView.must('chip-period-lunch').getAttribute('aria-checked')).toBe('false');
+    expect(arrayView.must('chip-period-dinner').getAttribute('aria-checked')).toBe('false');
+    expect(Object.keys(array.calls[0] ?? {})).not.toContain('period');
+
+    const unknown = deferredClient();
+    const unknownView = renderExplore(unknown.client, { period: 'brunch' });
+    await tick();
+
+    expect(Object.keys(unknown.calls[0] ?? {})).not.toContain('period');
+    // The toolbar counts what is active, so an unrecognised value that had been admitted to the
+    // filter state would be visible here even though it matches no chip.
+    expect(unknownView.must('explore-filters').getAttribute('aria-label')).toBe(
+      'Filters, 0 active',
+    );
+
+    const honoured = deferredClient();
+    const honouredView = renderExplore(honoured.client, { period: 'lunch' });
+    await tick();
+
+    expect(honouredView.must('chip-period-lunch').getAttribute('aria-checked')).toBe('true');
+    expect(honouredView.must('explore-filters').getAttribute('aria-label')).toBe(
+      'Filters, 1 active',
+    );
+    expect(honoured.calls[0]).toMatchObject({ period: 'lunch' });
   });
 
   it('opens a meal through the navigator, carrying the origin', async () => {

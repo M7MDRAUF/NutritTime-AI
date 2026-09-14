@@ -140,6 +140,15 @@ export function HomeScreen({
         **`recovered` means the stored profile was quarantined and reset to defaults**, allergies
         included. Surfaced here as well as on the setup form, because Home is where a user would
         otherwise see meals filtered by an empty allergy list and have no reason to doubt them.
+
+        **`announceOnMount`, and it is the only notice on this screen that carries it.** The
+        others are either always present (the disclaimer, which is read in normal document order
+        because it is there before the user is) or already live in their own right —
+        `OfflineState` is a polite region and `ErrorState` is an alert. This one is the
+        safety-relevant arrival: it says the declared allergy list is empty and nothing is being
+        filtered out, so a user who cannot see the amber panel has to be told. `entryStatus` is
+        taken from the hydration snapshot and cannot change for the life of the provider, so the
+        branch mounts once and the alert is spoken once.
       */}
       {preferencesStatus.entryStatus === 'recovered' ? (
         <StatusMessage
@@ -148,6 +157,7 @@ export function HomeScreen({
           icon="alertCircle"
           title="Your preferences were reset"
           description="The saved copy could not be read, so your allergy list is empty. Set it again before relying on these suggestions."
+          announceOnMount
         />
       ) : null}
 

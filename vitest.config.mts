@@ -106,7 +106,19 @@ export default defineConfig({
               ],
             },
           },
-          include: ['apps/mobile/src/**/*.dom.test.{ts,tsx}'],
+          // **Two patterns, because `App.tsx` and `index.ts` sit OUTSIDE `src/`.**
+          //
+          // `App.tsx` is the composition root -- the provider spine, the boot-phase gate and the
+          // font gate -- and R-44 lived in one line of it for nine phases while no test could see
+          // it. The first test of that file landed at P22 as `apps/mobile/App.dom.test.tsx`, beside
+          // its subject, and the `src/**` pattern collected **zero** files: the suite was green
+          // and inert. Caught only because `passWithNoTests` is deliberately unset above, so a glob
+          // matching nothing exits 1 rather than reporting success.
+          //
+          // `apps/mobile/tsconfig.json` already lists `App.tsx` explicitly for the same reason, and
+          // its docstring records that `rootDir` was removed because that file "was invisible to
+          // the gate". This is the same gap, one layer over.
+          include: ['apps/mobile/src/**/*.dom.test.{ts,tsx}', 'apps/mobile/*.dom.test.{ts,tsx}'],
           exclude: ['**/node_modules/**'],
         },
       },

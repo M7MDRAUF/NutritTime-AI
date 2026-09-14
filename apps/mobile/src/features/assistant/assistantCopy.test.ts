@@ -81,37 +81,44 @@ function deniedClaimIn(text: string): string | undefined {
   return DENIED_CLAIMS.find((claim) => flat.includes(` ${claim} `));
 }
 
-/** Every string a user can read from this feature's copy module. */
+/**
+ * Every string a user can read from this feature's copy module — **collected by WALKING the two
+ * objects, not by listing their keys.**
+ *
+ * The list this replaced was hand-written, and a hand-written sweep makes every future string
+ * **opt-in to the guard**. That is R-70's defect in structural form: the register row records that
+ * "a guard aimed at one source of text does not cover another", and P20's CRITICAL was a server
+ * copy string reading *"allergen free"* that failed **0 of 824** tests. One string was already
+ * outside this list when it was found (`aiProgress`, written in `AssistantTurnRow.tsx` and since
+ * moved into the module) — not through carelessness, but because nothing made it impossible.
+ *
+ * A walk cannot be forgotten. Adding a key to `ASSISTANT_COPY` now adds it to the sweep, and the
+ * count assertion below is what stops a walk that silently finds nothing from passing every
+ * "contains no denied claim" check vacuously — the same failure mode T-19-09's acceptance names
+ * for an empty permitted figure set.
+ *
+ * `null` is skipped rather than stringified because `actionLabel` is legitimately `null` when a
+ * retry cannot help; numbers are skipped because the digit rule below is about the copy constants,
+ * and the bound reaches the user through the three functions that take it as an argument.
+ */
+function collectStrings(value: unknown, into: string[]): void {
+  if (typeof value === 'string') {
+    into.push(value);
+    return;
+  }
+  if (value === null || typeof value !== 'object') {
+    return;
+  }
+  for (const nested of Object.values(value)) {
+    collectStrings(nested, into);
+  }
+}
+
 function everyCopyString(): readonly string[] {
-  const failures = ASSISTANT_FAILURES.flatMap((failure) => {
-    const copy = ASSISTANT_FAILURE_COPY[failure];
-    const action = copy.actionLabel;
-    return [
-      copy.title,
-      copy.description,
-      copy.stillAvailable,
-      ...(action === null ? [] : [action]),
-    ];
-  });
-  const screen = [
-    ASSISTANT_COPY.heading,
-    ASSISTANT_COPY.intro,
-    ASSISTANT_COPY.privacyNote,
-    ASSISTANT_COPY.questionLabel,
-    ASSISTANT_COPY.questionPlaceholder,
-    ASSISTANT_COPY.askLabel,
-    ASSISTANT_COPY.askHint,
-    ASSISTANT_COPY.submitting,
-    ASSISTANT_COPY.idleTitle,
-    ASSISTANT_COPY.questionHeading,
-    ASSISTANT_COPY.answerHeading,
-    ASSISTANT_COPY.citationsHeading,
-    ASSISTANT_COPY.citationHint,
-    ASSISTANT_COPY.noInformation.title,
-    ASSISTANT_COPY.noInformation.stillAvailable,
-    ASSISTANT_COPY.emptyQuestion,
-  ];
-  return [...failures, ...screen];
+  const found: string[] = [];
+  collectStrings(ASSISTANT_FAILURE_COPY, found);
+  collectStrings(ASSISTANT_COPY, found);
+  return found;
 }
 
 const CHAT_PREFERENCES = { diet: 'regular', allergies: ['peanut'], dislikedIngredients: [] };

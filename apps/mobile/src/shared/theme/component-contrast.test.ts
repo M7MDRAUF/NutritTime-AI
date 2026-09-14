@@ -4,7 +4,6 @@ import path from 'node:path';
 import type { ColorScheme, SemanticTokens } from './semantic.js';
 import { colorsByScheme } from './semantic.js';
 import { buildComponentTokens } from './component.js';
-import { touch } from './primitive.js';
 
 /**
  * **The COMPONENT tokens, on the surfaces they define. Split out of `contrast.test.ts` at P12.**
@@ -22,6 +21,25 @@ import { touch } from './primitive.js';
  * `buildComponentTokens` compose a readable pair", which is a different question with different
  * inputs.
  *
+ * **P23 T-23-07 — the repair above closed the instance and not the class.** Six hand-written rows
+ * reached seven of the 79 colour-valued members of `ComponentTokens` — the four `toast.tone*`, both
+ * toast text tones, and `toast.background` as the ground under all six — and the card rows reached
+ * `card.skeleton`, `card.background`, `card.imageScrim` and `card.imageText`. **The other 68 were
+ * measured by nothing**, on the layer the original defect lived on — so pointing
+ * `chip.labelSelected` at `content.tertiary` passed the whole gate, at a measured **2.0110:1 in
+ * light and 1.3219:1 in dark** against AA's 4.5. (The figure the task was briefed with was ~1.5:1,
+ * which is neither of them; both were recomputed here rather than quoted.) A hand-written table
+ * cannot close that: a missing row looks exactly like a passing one, and that sentence is now
+ * written three times in this repository about three different tables.
+ *
+ * So the pairing set below is **derived** rather than listed. `buildComponentTokens` is walked for
+ * its string leaves, each leaf is classified by its own member name, and the thing it is painted on
+ * comes from its siblings in the same group — `label` on `background`, `labelSelected` on
+ * `backgroundSelected`, `neutralText` on `neutralBackground`, and a mark whose group offers no
+ * ground on all four surfaces a screen can choose. A member added to `ComponentTokens` therefore
+ * arrives already measured, and one that the derivation cannot place **fails** instead of being
+ * skipped.
+ *
  * The WCAG arithmetic is duplicated rather than exported from a test file. Twenty lines, and both
  * copies are checked against the same known values.
  */
@@ -31,6 +49,9 @@ const AA_NON_TEXT = 3;
 
 /** A decorative rule may sit under 3:1, but it must not vanish into its own background. */
 const VISIBLE_MINIMUM = 1.05;
+
+/** No upper bound: most pairings may be as strong as they like. */
+const UNBOUNDED = Number.POSITIVE_INFINITY;
 
 const SCHEMES: readonly ColorScheme[] = ['light', 'dark'];
 
@@ -79,330 +100,540 @@ function contrastRatio(foreground: string, background: string): number {
   return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 }
 
-describe('component tokens are readable on their own backgrounds', () => {
-  const componentPairings = [
-    ['toast.text', (t: ReturnType<typeof buildComponentTokens>) => t.toast.text, AA_NORMAL_TEXT],
-    [
-      'toast.actionText',
-      (t: ReturnType<typeof buildComponentTokens>) => t.toast.actionText,
-      AA_NORMAL_TEXT,
-    ],
-    [
-      'toast.toneInfo',
-      (t: ReturnType<typeof buildComponentTokens>) => t.toast.toneInfo,
-      AA_NON_TEXT,
-    ],
-    [
-      'toast.toneSuccess',
-      (t: ReturnType<typeof buildComponentTokens>) => t.toast.toneSuccess,
-      AA_NON_TEXT,
-    ],
-    [
-      'toast.toneWarning',
-      (t: ReturnType<typeof buildComponentTokens>) => t.toast.toneWarning,
-      AA_NON_TEXT,
-    ],
-    [
-      'toast.toneDanger',
-      (t: ReturnType<typeof buildComponentTokens>) => t.toast.toneDanger,
-      AA_NON_TEXT,
-    ],
-  ] as const;
+/**
+ * **A translucent fill over an opaque one — the load-bearing helper, so it gets its own check.**
+ *
+ * `MealCard` lays the meal's name on a remote photograph, which is the one background this theme
+ * does not choose and cannot measure. What it does choose is `card.imageScrim` — a translucent fill
+ * drawn between the two — and the scrim's ALPHA is the whole of the guarantee, so the pairing has to
+ * be computed by compositing rather than read off a token.
+ *
+ * My first version of the image test measured `imageText` against bare `card.skeleton` with no
+ * scrim and reported 1.10:1 as a defect. It was the test that was wrong, not the tokens: the text is
+ * never on the bare skeleton. Recorded because a false positive in a contrast suite costs exactly as
+ * much trust as a false negative.
+ */
+function compositeOver(translucent: string, opaqueHex: string): string {
+  const top = parseHex(translucent);
+  const bottom = parseHex(opaqueHex);
+  const mix = (t: number, b: number): number => Math.round(top.a * t + (1 - top.a) * b);
+  const hex = (value: number): string => value.toString(16).padStart(2, '0');
+  return `#${hex(mix(top.r, bottom.r))}${hex(mix(top.g, bottom.g))}${hex(mix(top.b, bottom.b))}`;
+}
 
-  it.each(SCHEMES)('a decorative rule stays visible on EVERY surface in %s', (scheme) => {
-    /**
-     * **The exemption row that hard-coded one surface, which is how an invisible divider shipped.**
-     *
-     * `border.subtle` is exempt from 1.4.11's 3:1 because it is a decorative rule, and the
-     * exemption is bounded below by `VISIBLE_MINIMUM` so it cannot drift INTO its background. That
-     * bound was checked against `surface.canvas` alone. Dark `border.subtle` was `ink[700]` and
-     * `surface.overlay` is `ink[800]` - adjacent steps - so a dark `Sheet`'s divider measured
-     * 1.0469 and was invisible, while the test reported 1.3662 and passed.
-     *
-     * All four surfaces now, both bounds, because `Divider` is a shared component and a screen
-     * chooses where it goes.
-     */
-    const colors = colorsByScheme[scheme];
-    for (const [name, background] of TEXT_SURFACES) {
-      const ratio = contrastRatio(colors.border.subtle, background(colors));
-      expect(
-        ratio,
-        `border.subtle on surface.${name} measures ${ratio.toFixed(4)}:1 - it has drifted into its own background`,
-      ).toBeGreaterThan(VISIBLE_MINIMUM);
-      expect(
-        ratio,
-        `border.subtle on surface.${name} measures ${ratio.toFixed(4)}:1 - too strong for a decorative rule`,
-      ).toBeLessThan(AA_NON_TEXT);
+// ---------------------------------------------------------------------------------------------
+// The derivation
+// ---------------------------------------------------------------------------------------------
+
+/** Every colour-valued leaf of a built `ComponentTokens`, as a dotted member path. */
+function colourMembers(
+  node: unknown,
+  prefix: readonly string[] = [],
+): ReadonlyArray<readonly [string, string]> {
+  const found: Array<readonly [string, string]> = [];
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (typeof value === 'string') {
+      found.push([[...prefix, key].join('.'), value]);
+    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      found.push(...colourMembers(value, [...prefix, key]));
     }
-  });
+  }
+  return found;
+}
 
-  it.each(SCHEMES)('the loading fill stays visible against a card in %s', (scheme) => {
-    // `effect.skeleton` had NO assertion anywhere, and its exemption was justified by a sentence
-    // written for `ripple` and `highlight`: "a press layer whose own contrast is meaningless
-    // because it composites over whatever it is pressed against". A skeleton is an opaque fill,
-    // not a composite, and PRD 12 makes it the loading state - so it has to be visible against
-    // the card it sits in, which is the pairing it actually has.
-    const colors = colorsByScheme[scheme];
-    const tokens = buildComponentTokens(colors);
-    const ratio = contrastRatio(tokens.card.skeleton, tokens.card.background);
-    expect(
-      ratio,
-      `card.skeleton on card.background measures ${ratio.toFixed(4)}:1`,
-    ).toBeGreaterThan(VISIBLE_MINIMUM);
-    expect(ratio).toBeLessThan(AA_NON_TEXT);
-  });
-
-  it.each(SCHEMES)('on the toast surface in %s', (scheme) => {
-    const tokens = buildComponentTokens(colorsByScheme[scheme]);
-    for (const [name, foreground, minimum] of componentPairings) {
-      const ratio = contrastRatio(foreground(tokens), tokens.toast.background);
-      expect(
-        ratio,
-        `${name} measures ${ratio.toFixed(2)}:1 on toast.background`,
-      ).toBeGreaterThanOrEqual(minimum);
+/** The same walk over the numbers, so a boundary's width can be read beside its colour. */
+function numberMembers(node: unknown, prefix: readonly string[] = []): ReadonlyMap<string, number> {
+  const found = new Map<string, number>();
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (typeof value === 'number') {
+      found.set([...prefix, key].join('.'), value);
+    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      for (const [member, width] of numberMembers(value, [...prefix, key])) {
+        found.set(member, width);
+      }
     }
-  });
+  }
+  return found;
+}
+
+/**
+ * **Which semantic role each member is assigned, read from `component.ts` itself.**
+ *
+ * The values come from calling `buildComponentTokens`; the ROLE NAMES cannot, because a value does
+ * not identify a role. In light, `accent.brand`, `surface.brand`, `border.brand` and `border.focus`
+ * are all `#059669`, and in dark all four are `green[400]` — so a value lookup cannot tell a fill
+ * apart from a tint, which is precisely the distinction the tab-bar defect turned on. Reading the
+ * assignment from source is the only way to know, and it is the second authority this file measures
+ * against: a member the parser cannot place fails `every member is assigned exactly one semantic
+ * role`, rather than quietly dropping out of the pairing set.
+ */
+function assignedRoles(): ReadonlyMap<string, string> {
+  const source = fs
+    .readFileSync(path.join(import.meta.dirname, 'component.ts'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  const body = source.slice(source.indexOf('export function buildComponentTokens'));
+  const stack: string[] = [];
+  const roles = new Map<string, string>();
+  for (const line of body.split('\n')) {
+    const opened = /^\s*([A-Za-z]+):\s*\{\s*$/.exec(line);
+    if (opened?.[1] !== undefined) {
+      stack.push(opened[1]);
+      continue;
+    }
+    if (/^\s*\},?;?\s*$/.test(line)) {
+      stack.pop();
+      continue;
+    }
+    const assigned = /^\s*([A-Za-z]+):\s*color\.([A-Za-z]+)\.([A-Za-z]+)\s*,\s*$/.exec(line);
+    if (assigned?.[1] !== undefined) {
+      roles.set([...stack, assigned[1]].join('.'), `${assigned[2] ?? ''}.${assigned[3] ?? ''}`);
+      continue;
+    }
+    const literal = /^\s*([A-Za-z]+):\s*'([^']*)'\s*,\s*$/.exec(line);
+    if (literal?.[1] !== undefined) {
+      roles.set([...stack, literal[1]].join('.'), `literal:${literal[2] ?? ''}`);
+    }
+  }
+  return roles;
+}
+
+/**
+ * What a member is, from its own name. Seven classes, and the name is the whole of the input, so a
+ * member added to `ComponentTokens` is classified without anyone deciding to classify it.
+ */
+type MemberClass = 'ground' | 'mark' | 'boundary' | 'scrim' | 'shadow' | 'fill' | 'imageMark';
+
+function nameOf(member: string): string {
+  return member.slice(member.lastIndexOf('.') + 1);
+}
+
+function groupOf(member: string): string {
+  return member.slice(0, member.lastIndexOf('.'));
+}
+
+function classOf(member: string): MemberClass {
+  const name = nameOf(member);
+  if (name === 'imageScrim' || name === 'backdrop') return 'scrim';
+  if (name === 'shadowColor') return 'shadow';
+  if (name === 'skeleton') return 'fill';
+  if (name === 'imageText') return 'imageMark';
+  if (name.startsWith('borderColor')) return 'boundary';
+  if (name.startsWith('background') || name.endsWith('Background')) return 'ground';
+  return 'mark';
+}
+
+/** `labelSelected` -> `Selected`. The state a member belongs to, so a pairing matches state to state. */
+function stateOf(name: string): string {
+  return /(Pressed|Disabled|Selected|Focused|Error)$/.exec(name)?.[1] ?? '';
+}
+
+/** `neutralText` -> `neutral`, `statusInfoBackground` -> `statusInfo`, `label` -> ``. */
+function familyOf(name: string): string {
+  return /^(.*?)(?:Text|Background)$/.exec(name)?.[1] ?? '';
+}
+
+/** Text owes 1.4.3's 4.5:1; an icon, a rule or a handle owes 1.4.11's 3:1. */
+function isText(name: string): boolean {
+  return name.endsWith('Text') || /^(text|label|placeholder|hint)/.test(name);
+}
+
+/**
+ * **The residue: the members whose obligation is a band rather than a floor, listed by hand.**
+ *
+ * WCAG 1.4.11 reaches information "required to identify user interface components"; a rule between
+ * two list rows identifies nothing, so these three are exempt from 3:1 — and are bounded on BOTH
+ * sides instead, because an exemption that requires no measurement is not a guard. The lower bound
+ * is what stops one drifting into its own background: dark `border.subtle` was `ink[700]` and
+ * `surface.overlay` is `ink[800]` — adjacent steps — so a dark `Sheet`'s divider measured 1.0469 and
+ * was invisible while the test, which checked `surface.canvas` alone, reported 1.3662 and passed.
+ * The upper bound is what stops the opposite: a "decorative" rule at 6:1 is a control boundary, and
+ * someone should be told rather than have the exemption quietly cover it.
+ *
+ * Keyed on the MEMBER and not on the role it points at. Keying it on `border.subtle` would mean
+ * repointing `field.borderColor` at `border.subtle` moved a control's boundary into the exemption
+ * and passed — the shape of vacuity this whole pass exists to remove. Three of 79; every other
+ * boundary owes the full 3:1.
+ */
+const DECORATIVE_RULES: ReadonlySet<string> = new Set([
+  'card.borderColor',
+  'sheet.divider',
+  'divider.color',
+]);
+
+/**
+ * `SemanticTokens`' groups, split by the direction the group is authored for.
+ *
+ * `surface`, `statusSurface` and `scrim` are grounds; `content`, `border` and `statusOnInverse` are
+ * marks. `accent`, `status` and `effect` are legitimately both — `accent.brand` is a fill and
+ * `accent.protein` is a text tone, `status.danger` is the danger text tone AND the destructive fill
+ * — so no direction rule can reach them and the measured ratio is what carries those. That is the
+ * honest boundary of this check: it catches a mark assigned a ground role, which is what a
+ * foreground/background swap looks like in source, and it does not catch a label pointed at
+ * `accent.brand`, which is what the tab bar did. The ratio catches that one.
+ */
+const GROUND_GROUPS: ReadonlySet<string> = new Set(['surface', 'statusSurface', 'scrim']);
+const MARK_GROUPS: ReadonlySet<string> = new Set(['content', 'border', 'statusOnInverse']);
+
+/** One measurement: what it is, what it measured, and the two bounds it has to sit between. */
+interface Check {
+  /** The `ComponentTokens` members this measurement covers. Coverage is counted from these. */
+  readonly members: readonly string[];
+  readonly what: string;
+  readonly measured: number;
+  readonly floor: number;
+  readonly ceiling: number;
+}
+
+function derive(scheme: ColorScheme): readonly Check[] {
+  const colors = colorsByScheme[scheme];
+  const tokens = buildComponentTokens(colors);
+  const members = colourMembers(tokens);
+  const widths = numberMembers(tokens);
+  const paint = new Map(members);
+  const checks: Check[] = [];
+  const surfaces = TEXT_SURFACES.map(([name, read]) => [`surface.${name}`, read(colors)] as const);
+  const add = (
+    covers: readonly string[],
+    what: string,
+    measured: number,
+    floor: number,
+    ceiling: number = UNBOUNDED,
+  ): void => {
+    checks.push({ members: covers, what, measured, floor, ceiling });
+  };
+  const siblingNames = (member: string): readonly string[] =>
+    members.filter(([other]) => groupOf(other) === groupOf(member)).map(([other]) => nameOf(other));
+
+  /** The ground a mark is painted on: its family's, then its state's, then its group's base. */
+  const groundFor = (member: string): string | null => {
+    const siblings = siblingNames(member);
+    const family = familyOf(nameOf(member));
+    const state = stateOf(nameOf(member));
+    const candidates = [
+      ...(family === '' ? [] : [`${family}Background`]),
+      ...(state === '' ? [] : [`background${state}`]),
+      'background',
+    ];
+    return candidates.find((candidate) => siblings.includes(candidate)) ?? null;
+  };
 
   /**
-   * **`card.imageText` over the scrim, over the worst photograph there can be.**
+   * The two bounds, from the member's own name and nothing else.
    *
-   * `MealCard` lays the meal's name on a remote photograph, which is the one background this theme
-   * does not choose and cannot measure. What it does choose is `card.imageScrim` - a translucent
-   * fill drawn between the two - and the scrim's ALPHA is the whole of the guarantee. So the
-   * pairing is computed by compositing the scrim over a backdrop and measuring against that.
-   *
-   * **Pure white is the worst case and the only one that needs to hold**, because no photograph can
-   * be brighter than white, and the scrim darkens whatever is under it. `card.skeleton` is checked
-   * too, since it is what the box is painted with while an image loads or after it fails - and it
-   * is the pairing a user sees when the network is down, which for this product is often.
-   *
-   * My first version of this test measured `imageText` against bare `card.skeleton` with no scrim
-   * and reported 1.10:1 as a defect. It was the test that was wrong, not the tokens: the text is
-   * never on the bare skeleton. Recorded because a false positive in a contrast suite costs
-   * exactly as much trust as a false negative.
+   * WCAG 1.4.3 exempts "text that is part of an inactive user interface component", so a pairing
+   * with `Disabled` on either side is bounded below rather than at AA — measured and not omitted,
+   * because a disabled label at 1.01:1 is invisible, which is a usability failure even where it is
+   * not a conformance one.
    */
-  function compositeOver(translucent: string, opaqueHex: string): string {
-    const channels = (hex: string): readonly number[] => {
-      const digits = hex.replace('#', '');
-      const full =
-        digits.length === 3
-          ? digits
-              .split('')
-              .map((character) => character + character)
-              .join('')
-          : digits;
-      return [0, 1, 2].map((index) => Number.parseInt(full.slice(index * 2, index * 2 + 2), 16));
-    };
+  const bounds = (member: string, inactive: boolean): readonly [number, number] => {
+    if (DECORATIVE_RULES.has(member)) return [VISIBLE_MINIMUM, AA_NON_TEXT];
+    if (inactive) return [VISIBLE_MINIMUM, UNBOUNDED];
+    return [isText(nameOf(member)) ? AA_NORMAL_TEXT : AA_NON_TEXT, UNBOUNDED];
+  };
 
-    // The theme writes its scrims as 8-digit hex, so the alpha is the last pair.
-    const raw = translucent.replace('#', '');
-    const alpha = raw.length === 8 ? Number.parseInt(raw.slice(6, 8), 16) / 255 : 1;
-    const front = channels(`#${raw.slice(0, 6)}`);
-    const back = channels(opaqueHex);
+  const onEverySurface = (member: string, value: string): void => {
+    const [floor, ceiling] = bounds(member, nameOf(member).endsWith('Disabled'));
+    for (const [surfaceName, background] of surfaces) {
+      const what = `${member} ${value} on ${surfaceName} ${background}`;
+      add([member], what, contrastRatio(value, background), floor, ceiling);
+    }
+  };
 
-    const mixed = [0, 1, 2].map((index) => {
-      const f = front[index] ?? 0;
-      const b = back[index] ?? 0;
-      return Math.round(f * alpha + b * (1 - alpha));
-    });
-    return `#${mixed.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+  const pair = (mark: string, ground: string): void => {
+    const [floor, ceiling] = bounds(
+      mark,
+      nameOf(mark).endsWith('Disabled') || nameOf(ground).endsWith('Disabled'),
+    );
+    const above = paint.get(mark) ?? '';
+    const below = paint.get(ground) ?? '';
+    add(
+      [mark, ground],
+      `${mark} ${above} on ${ground} ${below}`,
+      contrastRatio(above, below),
+      floor,
+      ceiling,
+    );
+  };
+
+  /** Grounds a mark has already answered for, so the sweep below knows which are still open. */
+  const grounded = new Set<string>();
+
+  for (const [member, value] of members) {
+    const group = groupOf(member);
+    const kind = classOf(member);
+
+    if (kind === 'mark' || kind === 'boundary') {
+      // A boundary separates a control from what is OUTSIDE it, so it is measured against the
+      // surfaces a screen can put the control on and never against the control's own fill:
+      // `button.primary.borderColor` is `accent.brand`, the same colour as the fill it surrounds,
+      // and pairing those two reports 1.00:1 for a border doing what it was authored to do.
+      const ground = kind === 'boundary' ? null : groundFor(member);
+      const width =
+        widths.get(`${group}.borderWidth${stateOf(nameOf(member))}`) ??
+        widths.get(`${group}.borderWidth`) ??
+        0;
+
+      if (kind === 'boundary' && (width === 0 || value === 'transparent')) {
+        // Nothing is painted, or nothing is named, and the two have to agree. A `borderColor`
+        // carrying a real value behind a zero width is a token that looks satisfied and draws
+        // nothing; a transparent one behind a real width is a border nobody can see.
+        const agrees = value === 'transparent' && width === 0;
+        const what = `${member} is '${value}' and ${group}.borderWidth is ${String(width)}, which must agree`;
+        add([member], what, agrees ? 0 : 1, 0, 1);
+        continue;
+      }
+      if (ground === null || paint.get(`${group}.${ground}`) === 'transparent') {
+        // No ground in the group, or a transparent one that lets the screen show through: either
+        // way the surfaces are the real backgrounds. The ground is deliberately NOT recorded as
+        // claimed, so the sweep below still has to account for it.
+        onEverySurface(member, value);
+        continue;
+      }
+      grounded.add(`${group}.${ground}`);
+      pair(member, `${group}.${ground}`);
+      continue;
+    }
+
+    if (kind === 'shadow') {
+      // A shadow is not a pairing, and DECISIONS.md 5 flattens it to two elevations of which dark's
+      // are both 0. What is still measurable is its direction: a shadow lightens nothing, so its
+      // luminance must sit below every surface it can be cast on. Repointing this at a light tone
+      // would make a glow, and nothing else in the suite would notice.
+      const darkest = Math.min(...surfaces.map(([, background]) => relativeLuminance(background)));
+      const what = `${member} ${value} luminance must sit below the darkest surface (${darkest.toFixed(4)})`;
+      add([member], what, relativeLuminance(value), 0, darkest);
+      continue;
+    }
+
+    if (kind === 'scrim') {
+      // A scrim separates what is above it from what is below, and the least dimmable thing below
+      // is a white one. 3:1 is borrowed from 1.4.11 as the boundary-visibility figure, the way
+      // `contrast.test.ts` borrows it for `scrim.backdrop`.
+      const dimmed = compositeOver(value, '#ffffff');
+      const what = `${member} ${value} over a white app composites to ${dimmed} and must dim it`;
+      add([member], what, contrastRatio(dimmed, '#ffffff'), AA_NON_TEXT);
+      continue;
+    }
+
+    if (kind === 'fill') {
+      // `effect.skeleton` had NO assertion anywhere, and its exemption was justified by a sentence
+      // written for `ripple` and `highlight`: "a press layer whose own contrast is meaningless
+      // because it composites over whatever it is pressed against". A skeleton is an opaque fill,
+      // not a composite, and PRD 12 makes it the loading state — so it has to be visible against
+      // the card it sits in and must not be so strong that an unloaded card reads as content.
+      //
+      // A fill is not a mark, so this does not claim the ground: the sweep below still makes
+      // `card.background` answer for what it is.
+      const ground = `${group}.background`;
+      const below = paint.get(ground) ?? '';
+      const what = `${member} ${value} on ${ground} ${below}`;
+      add([member, ground], what, contrastRatio(value, below), VISIBLE_MINIMUM, AA_NON_TEXT);
+      continue;
+    }
+
+    if (kind === 'imageMark') {
+      // **Pure white is the worst case and the only one that needs to hold**, because no photograph
+      // can be brighter than white and the scrim darkens whatever is under it. `card.skeleton` is
+      // checked too, since it is what the box is painted with while an image loads or after it
+      // fails — the pairing a user sees when the network is down, which for this product is often.
+      const scrim = paint.get(`${group}.imageScrim`) ?? '';
+      for (const [label, backdrop] of [
+        ['a pure-white photograph', '#ffffff'],
+        [`${group}.skeleton, the unloaded-image floor`, paint.get(`${group}.skeleton`) ?? ''],
+      ] as const) {
+        const behind = compositeOver(scrim, backdrop);
+        const what = `${member} ${value} over ${group}.imageScrim over ${label} (${behind})`;
+        add([member], what, contrastRatio(value, behind), AA_NORMAL_TEXT);
+      }
+      continue;
+    }
   }
 
-  it.each(SCHEMES)('a meal name stays readable on any photograph in %s', (scheme) => {
-    const tokens = buildComponentTokens(colorsByScheme[scheme]);
-
-    for (const [label, backdrop] of [
-      ['a pure-white photograph', '#FFFFFF'],
-      ['card.skeleton, the unloaded-image floor', tokens.card.skeleton],
-    ] as const) {
-      const behind = compositeOver(tokens.card.imageScrim, backdrop);
-      const ratio = contrastRatio(tokens.card.imageText, behind);
-      expect(
-        ratio,
-        `card.imageText over card.imageScrim over ${label} measures ${ratio.toFixed(2)}:1`,
-      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+  // The grounds no mark claimed, in the three shapes they come in.
+  for (const [member, value] of members) {
+    if (classOf(member) !== 'ground' || grounded.has(member)) {
+      continue;
     }
+    const group = groupOf(member);
+    const state = stateOf(nameOf(member));
+    const marks = siblingNames(member).filter((name) => classOf(`${group}.${name}`) === 'mark');
+
+    if (value === 'transparent') {
+      // `button.ghost` has no fill, so the screen shows through and its marks were measured on all
+      // four surfaces above. What is left to assert is that there IS a mark those measurements
+      // covered: a transparent ground with nothing drawn over it is measured by nothing.
+      const what = `${member} is transparent, so ${group}'s marks must be measured on the surfaces instead`;
+      add([member], what, marks.length, 1);
+      continue;
+    }
+
+    // A state fill with no mark of its own keeps the base mark: there is no `labelPressed`, so a
+    // pressed button shows the SAME label over a different fill, and that is the pairing —
+    // `content.onBrand on accent.brandPressed` at the semantic layer. Derived from the absence of
+    // the state's own mark, not from a list of which states reuse which label.
+    const inherited = marks.filter((name) => groundFor(`${group}.${name}`) === 'background');
+    if (state !== '' && inherited.length > 0) {
+      for (const mark of inherited) {
+        pair(`${group}.${mark}`, member);
+      }
+      continue;
+    }
+
+    // And `card.background`, which has no mark in its own group at all. The claim that covers it is
+    // that it IS one of the four surfaces `contrast.test.ts` measures every text tone against, so a
+    // `card.background` moved to `accent.brand` satisfies neither this branch nor either other.
+    const matching = surfaces.filter(([, background]) => background === value);
+    const where = state === '' ? '' : ` for the ${state} state`;
+    const what = `${member} ${value} has no mark in ${group}${where}, so it must be one of the four measured surfaces`;
+    add([member], what, matching.length, 1);
+  }
+
+  return checks;
+}
+
+describe.each(SCHEMES)('%s: every colour member of ComponentTokens is measured', (scheme) => {
+  const checks = derive(scheme);
+  const tokens = buildComponentTokens(colorsByScheme[scheme]);
+  const members = colourMembers(tokens).map(([member]) => member);
+
+  it.each(checks.map((check) => [check.what, check] as const))('%s', (_what, check) => {
+    expect(
+      check.measured,
+      `${check.what} measures ${check.measured.toFixed(4)}, needs at least ${String(check.floor)}`,
+    ).toBeGreaterThanOrEqual(check.floor);
+    if (check.ceiling !== UNBOUNDED) {
+      expect(
+        check.measured,
+        `${check.what} measures ${check.measured.toFixed(4)}, needs under ${String(check.ceiling)}`,
+      ).toBeLessThan(check.ceiling);
+    }
+  });
+
+  it('leaves no colour member unmeasured', () => {
+    const measured = new Set(checks.flatMap((check) => check.members));
+    expect(
+      members.filter((member) => !measured.has(member)),
+      'colour-valued ComponentTokens members the derivation could not place',
+    ).toEqual([]);
+    // The count is part of the claim: T-23-07 found 11 of 79 measured, and a derivation that
+    // silently stopped enumerating would satisfy the emptiness assertion above on its own.
+    expect(members.length).toBe(79);
+    expect(measured.size).toBe(79);
+  });
+
+  it('measures every member against something it is really painted on', () => {
+    // A check whose two sides are the same member would be 1:1 and vacuous, and a check that
+    // claims a member it does not name would let a member ride on another's measurement.
+    for (const check of checks) {
+      expect(new Set(check.members).size, check.what).toBe(check.members.length);
+      for (const member of check.members) {
+        expect(check.what, `${check.what} does not name ${member}`).toContain(member);
+      }
+    }
+  });
+});
+
+describe('the component layer composes roles in the direction they were authored for', () => {
+  const roles = assignedRoles();
+  const members = colourMembers(buildComponentTokens(colorsByScheme.light));
+
+  it('assigns every member exactly one semantic role, and no colour literal', () => {
+    // The parser is the second authority, so it must not be allowed to miss a member: a member it
+    // cannot place would otherwise drop out of the direction check below with no trace. And
+    // TSD 6.6 puts the colours in `semantic.ts` — the only literal layer 3 may name is the absence
+    // of a colour, which is what lets `button.ghost` have no fill and no border.
+    const unplaced = members.map(([member]) => member).filter((member) => !roles.has(member));
+    expect(unplaced, 'members with no `color.<group>.<member>` assignment in component.ts').toEqual(
+      [],
+    );
+    const literals = [...roles].filter(([, role]) => role.startsWith('literal:'));
+    expect(
+      literals.filter(([, role]) => role !== 'literal:transparent'),
+      'colour literals authored into component.ts instead of a semantic role',
+    ).toEqual([]);
+    expect(literals.length).toBe(3);
+  });
+
+  it('agrees with the values buildComponentTokens actually produced', () => {
+    // Source and runtime, cross-checked. A parser that drifted from the file — a reformat that
+    // moved an assignment onto two lines, say — would otherwise keep reporting the role it last
+    // managed to read, and the direction check would be measuring a stale map.
+    for (const scheme of SCHEMES) {
+      const colors: SemanticTokens = colorsByScheme[scheme];
+      const groups = colors as unknown as Record<string, Record<string, unknown>>;
+      for (const [member, value] of colourMembers(buildComponentTokens(colors))) {
+        const role = roles.get(member) ?? '';
+        if (role.startsWith('literal:')) {
+          expect(value, `${member} in ${scheme}`).toBe(role.slice('literal:'.length));
+          continue;
+        }
+        const [group, name] = role.split('.');
+        expect(groups[group ?? '']?.[name ?? ''], `${member} is ${role} in ${scheme}`).toBe(value);
+      }
+    }
+  });
+
+  it('never paints a mark with a ground role or fills a ground with a mark role', () => {
+    // **The direction assertion, and the one a swap fails.** Contrast is order-independent, so
+    // exchanging `chip.labelSelected` and `chip.backgroundSelected` measures the same ratio and no
+    // threshold can see it. What changes is the role each member points at, and `semantic.ts`
+    // authors `surface.*` to sit under something and `content.*` to sit on top of it.
+    const wrongWay: string[] = [];
+    for (const [member] of members) {
+      const role = roles.get(member) ?? '';
+      const group = role.split('.')[0] ?? '';
+      const kind = classOf(member);
+      if (
+        (kind === 'mark' || kind === 'boundary' || kind === 'imageMark') &&
+        GROUND_GROUPS.has(group)
+      ) {
+        wrongWay.push(`${member} is drawn on top of something but points at ${role}`);
+      }
+      if (kind === 'ground' && MARK_GROUPS.has(group)) {
+        wrongWay.push(`${member} is drawn underneath something but points at ${role}`);
+      }
+      if (kind === 'scrim' && group !== 'scrim') {
+        wrongWay.push(`${member} is a translucent overlay but points at ${role}`);
+      }
+      if ((kind === 'shadow' || kind === 'fill') && group !== 'effect') {
+        wrongWay.push(`${member} is a surface effect but points at ${role}`);
+      }
+    }
+    expect(wrongWay).toEqual([]);
+  });
+
+  it('states what is still declared rather than derived, with the count', () => {
+    // Two lists remain hand-written at this layer and nothing else does. Recorded as a count so
+    // the residue is visible: a fourth entry in either one is a decision someone took, and a
+    // reviewer can see that it was taken without reading the derivation.
+    expect(DECORATIVE_RULES.size).toBe(3);
+    expect(GROUND_GROUPS.size + MARK_GROUPS.size).toBe(6);
+    // The other three groups — `accent`, `status`, `effect` — carry roles used in both directions,
+    // so they are deliberately unconstrained here and the ratio is what covers them.
+    const groups = Object.keys(colorsByScheme.light);
+    expect(groups.filter((group) => !GROUND_GROUPS.has(group) && !MARK_GROUPS.has(group))).toEqual([
+      'accent',
+      'status',
+      'effect',
+    ]);
+  });
+});
+
+describe('the WCAG arithmetic in this file matches the one in contrast.test.ts', () => {
+  it('returns 21:1 for black on white and 1:1 for a colour on itself', () => {
+    expect(contrastRatio('#000000', '#FFFFFF')).toBeCloseTo(21, 5);
+    expect(contrastRatio('#059669', '#059669')).toBeCloseTo(1, 10);
   });
 
   it('composites a known alpha correctly', () => {
-    // The helper above is the load-bearing part of the assertion, so it gets its own check rather
-    // than being trusted - and it earned it immediately: I wrote `#808080` here and the real answer
-    // is `#7f7f7f`, because `0x80` is 128/255 = 0.50196, not 0.5, so white contributes 127.0 and
-    // rounds down. A contrast suite whose compositor is a percent out is worse than no suite,
+    // The compositor is the load-bearing part of the image assertion, so it gets its own check
+    // rather than being trusted - and it earned it immediately: I wrote `#808080` here and the real
+    // answer is `#7f7f7f`, because `0x80` is 128/255 = 0.50196, not 0.5, so white contributes 127.0
+    // and rounds down. A contrast suite whose compositor is a percent out is worse than no suite,
     // since every ratio it reports would be plausible and slightly wrong.
     expect(compositeOver('#00000080', '#FFFFFF')).toBe('#7f7f7f');
     expect(compositeOver('#123456FF', '#FFFFFF')).toBe('#123456');
     expect(compositeOver('#12345600', '#FFFFFF')).toBe('#ffffff');
-  });
-});
-
-/**
- * **The navigation chrome — the third composer, and the one that shipped a live AA failure.**
- *
- * `contrast.test.ts` answers "is this colour pair readable" and the block above answers "did
- * `buildComponentTokens` compose a readable pair". Neither can see the third composer: React
- * Navigation's own chrome, whose tints `TabNavigator.tsx` and `navigationTheme.ts` assemble from
- * semantic tokens directly. `tabBarActiveTintColor` was `accent.brand` — a FILL role, authored to
- * sit *under* `content.onBrand` — over `surface.raised`, which is **3.77:1** in light against AA's
- * 4.5:1 for normal text. Both tokens in that pair were individually correct and the composition was
- * not, which is exactly the class of defect P12's split was written for; the chrome was simply in
- * neither half.
- *
- * **Both sides of every pair are read from the source file that sets them**, the way
- * `typography.test.ts` reads `App.tsx`. Restating the pair here is what would let the two drift: a
- * test that measures `content.link on surface.raised` passes forever regardless of what the
- * navigator is actually pointed at. A slot pointed at a colour literal, or at something that is not
- * a colour role, fails to resolve and fails the test rather than silently measuring nothing.
- */
-const navigationDirectory = path.resolve(import.meta.dirname, '..', '..', 'navigation');
-
-/** Comments in those files name these very tokens, so they are stripped before anything matches. */
-function sourceOf(file: string): string {
-  return fs
-    .readFileSync(path.join(navigationDirectory, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/[^\n]*/g, '');
-}
-
-/** The `<group>.<member>` role a named slot is pointed at, in the file that sets it. */
-function roleAt(file: string, slot: string): string {
-  const match = new RegExp(`\\b${slot}:\\s*colors\\.([A-Za-z]+)\\.([A-Za-z]+)`).exec(
-    sourceOf(file),
-  );
-  if (match === null) {
-    throw new Error(`${file} does not point ${slot} at a semantic colour token`);
-  }
-  return `${match[1] ?? ''}.${match[2] ?? ''}`;
-}
-
-/** Every `<group>.<member>` that resolves to a colour, so a role read from source can be looked up. */
-function colourValues(tokens: SemanticTokens): Map<string, string> {
-  const values = new Map<string, string>();
-  for (const [group, members] of Object.entries(tokens)) {
-    // The same widening `contrast.test.ts`'s own walker uses: the groups are heterogeneous —
-    // `effect` carries numbers — so one walker cannot read them all without it.
-    for (const [member, value] of Object.entries(members as Record<string, unknown>)) {
-      if (typeof value === 'string') {
-        values.set(`${group}.${member}`, value);
-      }
-    }
-  }
-  return values;
-}
-
-/** Each chrome slot that paints TEXT, and the slot in the same file naming what sits behind it. */
-const CHROME_TEXT_SLOTS = [
-  { file: 'TabNavigator.tsx', foreground: 'tabBarActiveTintColor', background: 'backgroundColor' },
-  {
-    file: 'TabNavigator.tsx',
-    foreground: 'tabBarInactiveTintColor',
-    background: 'backgroundColor',
-  },
-  { file: 'navigationTheme.ts', foreground: 'primary', background: 'card' },
-  { file: 'navigationTheme.ts', foreground: 'text', background: 'card' },
-] as const;
-
-describe('the navigation chrome composes a readable pair', () => {
-  it.each(SCHEMES)('every tint the navigator paints text with is AA in %s', (scheme) => {
-    const values = colourValues(colorsByScheme[scheme]);
-    for (const { file, foreground, background } of CHROME_TEXT_SLOTS) {
-      const foregroundRole = roleAt(file, foreground);
-      const backgroundRole = roleAt(file, background);
-      const tint = values.get(foregroundRole);
-      const behind = values.get(backgroundRole);
-      if (tint === undefined || behind === undefined) {
-        throw new Error(`${file}: ${foregroundRole} or ${backgroundRole} is not a colour role`);
-      }
-      const ratio = contrastRatio(tint, behind);
-      expect(
-        ratio,
-        `${file}: ${foreground} is ${foregroundRole} ${tint} on ${background} ${backgroundRole} ${behind} = ${ratio.toFixed(2)}:1`,
-      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
-    }
-  });
-
-  it('paints a tab LABEL with that tint, which is why the threshold is 4.5 and not 3', () => {
-    // The premise the threshold rests on. Each `Tabs.Screen` supplies a `title` and no
-    // `tabBarLabel`, so React Navigation renders the tab's text in the active tint - a bare glyph
-    // would owe only 1.4.11's 3:1, which light's `accent.brand` at 3.77:1 would have cleared. If
-    // the labels are ever hidden, this is the assertion that says the threshold may move.
-    const source = sourceOf('TabNavigator.tsx');
-    const titles = [...source.matchAll(/title: '([A-Za-z]+)'/g)].map((match) => match[1]);
-    expect(titles).toEqual(['Home', 'Explore', 'Assistant', 'Saved', 'Settings']);
-    expect(source).not.toContain('tabBarShowLabel');
-  });
-});
-
-/**
- * **PRD 10.5's other measurable rule — pinned to the requirement, not to itself.**
- *
- * Every touch-target assertion in this repo is of the form
- * `expect(chip.style.minHeight).toBe(String(light.minHeight) + 'px')` — the rendered geometry
- * compared to the token it was rendered from. Both sides move together, so changing
- * `touch.buildTo` from 48 to 20 shrinks every button, chip and field in the app and the whole gate
- * stays green. The three figures below are PRD 10.5's own literals, restated here because that is
- * the only way a token change can fail against the rule rather than against its own new value.
- *
- * `touch.iosMinPt`, `touch.androidMinDp` and `touch.webMinPx` had zero consumers and zero
- * assertions; these are their first. `touch.gap` still has no consumer — `button.gap` and
- * `chip.gap` read `space.*` — so it is bounded here and reported as unintegrated rather than given
- * a consumer it does not have.
- */
-const PRD_IOS_MIN_PT = 44;
-const PRD_ANDROID_MIN_DP = 48;
-const PRD_WEB_MIN_PX = 24;
-/** Apple HIG and Material both put 8 between two adjacent targets. */
-const HIG_MIN_GAP = 8;
-const PRD_TARGET_FLOOR = Math.max(PRD_IOS_MIN_PT, PRD_ANDROID_MIN_DP, PRD_WEB_MIN_PX);
-
-describe('touch targets meet PRD 10.5', () => {
-  it('states the three platform minima as PRD 10.5 states them', () => {
-    expect([touch.iosMinPt, touch.androidMinDp, touch.webMinPx]).toEqual([
-      PRD_IOS_MIN_PT,
-      PRD_ANDROID_MIN_DP,
-      PRD_WEB_MIN_PX,
-    ]);
-    expect(touch.gap).toBeGreaterThanOrEqual(HIG_MIN_GAP);
-  });
-
-  it('builds to a single value that satisfies all three platforms at once', () => {
-    // PRD 10.5: "48 dp satisfies all three, so it is the single value to build to."
-    expect(touch.buildTo).toBeGreaterThanOrEqual(PRD_TARGET_FLOOR);
-  });
-
-  it.each(SCHEMES)('every tappable component group clears the floor in %s', (scheme) => {
-    const tokens = buildComponentTokens(colorsByScheme[scheme]);
-    for (const [name, minHeight] of [
-      ['button', tokens.button.minHeight],
-      ['field', tokens.field.minHeight],
-      ['chip', tokens.chip.minHeight],
-    ] as const) {
-      expect(
-        minHeight,
-        `${name}.minHeight is ${String(minHeight)}, under PRD 10.5's ${String(PRD_TARGET_FLOOR)}`,
-      ).toBeGreaterThanOrEqual(PRD_TARGET_FLOOR);
-    }
-  });
-
-  it('sizes a target identically in both schemes', () => {
-    // Geometry is not a scheme decision. `buildComponentTokens` takes only the colour map, so a
-    // height that differed between the two could only come from a scheme-aware expression.
-    const light = buildComponentTokens(colorsByScheme.light);
-    const dark = buildComponentTokens(colorsByScheme.dark);
-    expect([light.button.minHeight, light.field.minHeight, light.chip.minHeight]).toEqual([
-      dark.button.minHeight,
-      dark.field.minHeight,
-      dark.chip.minHeight,
-    ]);
-  });
-
-  it('records the badge exemption rather than omitting it', () => {
-    // `NutritionBadge` is read, not tapped — TSD 6.7 makes it a separate component from `Chip` for
-    // exactly that reason — so the floor does not apply to it. Asserted as an exemption in the
-    // house style of `border.subtle`: a badge that grew to a tappable height would tell someone,
-    // and so would a floor that fell under the web minimum.
-    const badge = buildComponentTokens(colorsByScheme.light).badge;
-    expect(badge.minHeight).toBeLessThan(PRD_TARGET_FLOOR);
-    expect(badge.minHeight).toBeGreaterThanOrEqual(PRD_WEB_MIN_PX);
   });
 });

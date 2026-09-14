@@ -7,6 +7,27 @@
  * Native 0.86 has no `dialog` accessibility role to set by hand - `AccessibilityRole` stops at
  * `alert` - so on the web surface the role arrives only because `Modal` is doing the work.
  *
+ * **The accessible name is therefore a prop of `Modal`, not of the panel below it (M-20).** This
+ * is not where it feels natural, and putting it where it felt natural is what broke it. In
+ * react-native-web 0.21.2, `Modal` renders `ModalPortal > ModalAnimation > ModalFocusTrap >
+ * ModalContent`, and `ModalContent` is the one that owns the semantics: its `View` gets
+ * `role={active ? 'dialog' : null}` and a hardcoded `aria-modal`, and every prop `Modal` and
+ * `ModalContent` do not destructure is spread onto that *same* `View`. The panel below is three
+ * `div`s down, so a name set there landed on a roleless element: the dialog had a role with no
+ * name and a name with no role, and a screen reader announced all three destructive confirmations
+ * as bare "dialog" (PRD 10.5 requires a name on every interactive element). `aria-label` passed
+ * to `Modal` rides that spread onto the element that has the role, which is the only arrangement
+ * an accessible name has ever meant.
+ *
+ * **`aria-modal` is deliberately absent below.** It was on the panel, where it was invalid - ARIA
+ * defines `aria-modal` only on a dialog role, and the panel has no role - and redundant, because
+ * `ModalContent` already sets it on the element that does have the role. So it is dropped rather
+ * than moved: there is nowhere to move it to that does not already have it.
+ *
+ * **`accessibilityViewIsModal` stays on the panel because it is iOS-only.** It appears nowhere in
+ * react-native-web 0.21.2, so it cannot be the web surface's modal flag; on iOS it is what makes
+ * VoiceOver ignore the views behind the sheet, and the panel is the subtree that should trap it.
+ *
  * **Safe-area insets are a PROP, not a hook.** `react-native-safe-area-context` ships its web
  * build as `*.web.js` platform files, which Metro resolves and Vitest does not, so calling
  * `useSafeAreaInsets()` here would make this component untestable in the `dom` project. Injected
@@ -65,6 +86,11 @@ export function Sheet({
       visible={visible}
       transparent
       animationType="none"
+      // The name has to be set HERE, on the element react-native-web gives the `dialog` role to.
+      // See the note above: `Modal` spreads what it does not consume onto that element, and the
+      // panel below is three levels too low to be named. `aria-label` rather than the deprecated
+      // `accessibilityLabel`, which 0.21 maps to it anyway.
+      aria-label={title}
       // Android's hardware back button, and the whole reason this is a `Modal`.
       onRequestClose={onClose}
     >
@@ -86,11 +112,11 @@ export function Sheet({
 
         <View
           testID={testID}
-          // Both spellings: `accessibilityViewIsModal` is what iOS reads, `aria-modal` is what the
-          // web export and this suite read, and react-native-web 0.21 maps neither from the other.
+          // iOS-only, and the only modal flag this element needs: it is what stops VoiceOver
+          // reaching the views behind the sheet. The web's `aria-modal` is set by `ModalContent`
+          // on the element that carries `role="dialog"`, and neither the name nor `aria-modal`
+          // belongs here - see the note at the top of the file.
           accessibilityViewIsModal
-          aria-modal
-          accessibilityLabel={title}
           // VoiceOver's two-finger scrub. The gesture exists to dismiss exactly this.
           onAccessibilityEscape={onClose}
           style={{
@@ -129,7 +155,7 @@ export function Sheet({
             }}
           >
             {/*
-              `hideTitle` hides the heading, never the name: `accessibilityLabel` above carries
+              `hideTitle` hides the heading, never the name: the `aria-label` on `Modal` carries
               `title` in both cases, so a sheet whose heading would duplicate its content is still
               announced by name. The flex box is what lets a long title wrap beside the button.
             */}

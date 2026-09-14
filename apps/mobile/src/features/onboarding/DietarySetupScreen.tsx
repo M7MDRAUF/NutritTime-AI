@@ -182,6 +182,13 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
         The save state, when there is one to report. `saveBlocked` is a different message from
         `saveError` because there is nothing to retry (TSD §6.3) - and `preferences` has no bound,
         so reaching it here would itself be a defect worth seeing.
+
+        **`announceOnMount`, because this notice ARRIVES.** It is mounted by a write that was
+        refused after the user had already made their choices, which is T-23-05's "async results
+        announced" in its most expensive form: without it, a screen-reader user goes on setting
+        preferences that are not being kept and is told nothing until the next launch loses them.
+        `StatusMessage` implements it as `role="alert"`, whose INSERTION is the announcement, plus
+        an `announceForAccessibility` call on iOS.
       */}
       {status.saveError !== null ? (
         <StatusMessage
@@ -191,6 +198,7 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
           title={status.saveBlocked ? 'That list is full' : 'Your changes are not saved'}
           description={status.saveError}
           {...(status.saveBlocked ? {} : { actionLabel: 'Try again', onAction: status.retrySave })}
+          announceOnMount
         />
       ) : null}
 
@@ -202,6 +210,13 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
         **`recovered` means the stored entry was quarantined and the profile reset to defaults** —
         including `allergies: []`. That is the one reset a user has to be told about: the app looks
         normal, Home paints meals, and nothing is filtering them. Surfaced here and on Home.
+
+        **And it is the one that most needs announcing**, which is why Home's copy carries
+        `announceOnMount` and this one now does too. The state says the declared allergy list is
+        empty and every meal therefore passes the filter; a user who cannot see the amber panel has
+        no other way to learn it. `entryStatus` comes from the hydration snapshot and cannot change
+        for the life of the provider, so the branch mounts once and speaks once — which is the
+        distinction Plan §20 draws between focus and announcement "moved deliberately" and noise.
       */}
       {status.entryStatus === 'recovered' ? (
         <StatusMessage
@@ -210,9 +225,14 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
           icon="alertCircle"
           title="Your preferences were reset"
           description="The saved copy could not be read, so these are the defaults — including an empty allergy list. Please set your allergies again."
+          announceOnMount
         />
       ) : null}
 
+      {/*
+        Announced for the same reason: it arrives at hydration, it says the choices made on this
+        screen will not survive the app closing, and nothing later in the session repeats it.
+      */}
       {status.entryStatus === 'unavailable' ? (
         <StatusMessage
           testID="dietary-setup-unavailable"
@@ -220,6 +240,7 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
           icon="warning"
           title="Changes will not be kept"
           description="Your saved preferences could not be read on this device, so nothing is being written over them. What you set here applies until you close the app."
+          announceOnMount
         />
       ) : null}
 

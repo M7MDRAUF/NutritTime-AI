@@ -243,32 +243,329 @@ test.describe('Explore, end to end', () => {
   });
 
   /**
-   * **Known broken on web, and kept rather than deleted (R-44).**
+   * **R-44, closed — and `test.fail` is gone, which is exactly what it was kept for** (T-22-03).
    *
-   * `/explore?query=chicken` lands on Home. `routes.test.ts` and `linking.dom.test.ts` both pass —
-   * `getStateFromPath` parses the path correctly in isolation — so what is missing is the wiring
-   * between the browser's URL and that parse. Adding `window.location.origin` to `prefixes` was
-   * the obvious candidate and changed nothing, so the cause is **not yet identified**.
+   * The cause was never in `linking.ts`. `App.tsx` mounted `NavigationContainer` above
+   * `<RootNavigator phase={fontsReady ? phase : 'hydrating'} />`, and the container resolves the
+   * URL **once**, at its first mount, against whatever routes the stack then holds — only
+   * `Splash`, because on the web a `Font.loadAsync` fetch always loses to a synchronous
+   * `localStorage` read. `StackRouter` discarded the parsed `Tabs` route as unknown and the
+   * address bar was rewritten to `/home`. The font gate now holds the container's MOUNT.
    *
-   * **R-44 is narrower than its own wording, and this comment says so rather than repeating it.**
-   * A **path** does restore: `favorite-persists.spec.ts` reloads on `/saved` and the app comes back
-   * up on Saved with the row already fetched. A **cold `goto`** of a path is rewritten to `/home`
-   * (`settings-reset.spec.ts` measured `goto('/settings')` doing exactly that, with Settings never
-   * mounted). It is the **query-param** case below that lands on Home, which is why
-   * `custom-meal-crud.spec.ts` never reloads `MealForm` — its `mealId` is a query param.
+   * **Two of R-44's recorded symptoms were wrong, and both change these tests.**
+   *  1. "A path does restore." None did. `/saved` looked right because `ui.lastTab` was feeding
+   *     `TabNavigator`'s `initialRouteName` — the right screen for an unrelated reason. So every
+   *     case seeds a RIVAL tab, and `beats the stored tab` proves that seed is live.
+   *  2. The old body had no `enterApp`, so it could not have passed even once fixed: P14 added the
+   *     onboarding gate after it was written, and an empty device holds no `Tabs` route at all.
    *
-   * **`test.fail`, not `test.fixme`, and the difference is the whole point of keeping this test.**
-   * `fixme` **skips**: the body never runs, so it cannot tell T-22-01 and T-22-02 anything — they
-   * could fix web linking and the suite would stay silent until a human deleted the marker, and
-   * meanwhile the assertions below would be dead code that had never once executed against the
-   * real export. `test.fail` runs the body, records the failure as expected so the suite stays
-   * green, and **turns red the moment the deep link starts working** — an unexpected pass is a
-   * failure. That is the same shape P18 used for R-53 with vitest's `it.fails`.
+   * **`toHaveURL` on every case**, because the recorded symptom includes the URL being *rewritten*:
+   * a screen assertion alone passes for an app that landed correctly and then lied about where.
    */
-  test.fail('a deep link opens Explore with its query already applied', async ({ page }) => {
-    await page.goto('/explore?query=chicken');
+  test.describe('a cold URL loads its own screen (T-22-03)', () => {
+    /** TSD §5.1, stated as `assistant.spec.ts` states it — a spec asserts from outside the app. */
+    const API = 'http://127.0.0.1:4000';
+    /** TSD §6.4's key name, restated for the same reason `appPhase.ts` restates its two. */
+    const UI_KEY = '@nutritime/ui/v1';
 
-    await expect(page.getByTestId('explore-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
-    await expect(page.getByTestId('explore-search').locator('input')).toHaveValue('chicken');
+    /**
+     * The ten `ROUTE_PATHS` entries, less `/splash` which has its own case below.
+     *
+     * `rival` is a stored tab the URL does **not** name, so no row can be won by
+     * `initialRouteName` defaulting onto the right screen. `seed: false` means a genuinely empty
+     * device, which is the only phase `Onboarding` exists in (TSD §6.1). `{id}` is filled from the
+     * catalog — a hard-coded meal id would make this a fixture rather than a URL.
+     */
+    const COLD_PATHS = [
+      { url: '/home', screen: 'home-screen', rival: 'settings', seed: true },
+      { url: '/explore', screen: 'explore-screen', rival: 'settings', seed: true },
+      { url: '/assistant', screen: 'assistant-screen', rival: 'settings', seed: true },
+      { url: '/saved', screen: 'saved-screen', rival: 'settings', seed: true },
+      { url: '/settings', screen: 'settings-screen', rival: 'saved', seed: true },
+      { url: '/meal-form', screen: 'meal-form-screen', rival: 'saved', seed: true },
+      { url: '/meal-details/{id}', screen: 'meal-details-screen', rival: 'saved', seed: true },
+      { url: '/dietary-setup', screen: 'dietary-setup-screen', rival: 'saved', seed: true },
+      { url: '/onboarding', screen: 'onboarding-screen', rival: 'home', seed: false },
+    ] as const;
+
+    /** Written through the real envelope, so hydration accepts it rather than quarantining it. */
+    async function seedTab(page: Page, lastTab: string): Promise<void> {
+      await page.evaluate(
+        ({ key, tab }) => {
+          window.localStorage.setItem(
+            key,
+            JSON.stringify({
+              schemaVersion: 1,
+              updatedAt: new Date().toISOString(),
+              value: { lastTab: tab, disclaimerAcknowledged: false },
+            }),
+          );
+        },
+        { key: UI_KEY, tab: lastTab },
+      );
+    }
+
+    /** A real catalog id, read from the running server. */
+    async function firstMealId(page: Page): Promise<string> {
+      const response = await page.request.get(`${API}/api/v1/meals?pageSize=1&page=1`);
+      expect(response.ok(), 'the catalog must be readable for this case to mean anything').toBe(
+        true,
+      );
+      const body = (await response.json()) as { readonly meals: readonly { id: string }[] };
+      const [first] = body.meals;
+      if (first === undefined) {
+        throw new Error('the catalog answered with no meals; this case cannot mean anything');
+      }
+      return first.id;
+    }
+
+    for (const { url, screen, rival, seed } of COLD_PATHS) {
+      test(`${url} opens ${screen}`, async ({ page }) => {
+        const target = url.includes('{id}')
+          ? url.replace('{id}', await firstMealId(page))
+          : url.toString();
+        if (seed) {
+          // A cold deep link into the app phase is a RETURNING user's link: the device already
+          // holds the onboarding answer, and `goto` is still a full document load at that URL.
+          await enterApp(page);
+          await seedTab(page, rival);
+        }
+
+        await page.goto(target);
+
+        await expect(page.getByTestId(screen)).toBeVisible({ timeout: FIRST_PAINT_MS });
+        await expect(page).toHaveURL(target);
+      });
+    }
+
+    test('beats the stored tab, so the right screen is not a coincidence', async ({ page }) => {
+      await enterApp(page);
+      await seedTab(page, 'settings');
+
+      // The seed is LIVE: with no path to obey, `initialRouteName` opens Settings. Without this
+      // half, "the URL won" would be indistinguishable from "the stored tab agreed".
+      await page.goto('/');
+      await expect(page.getByTestId('settings-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+
+      // Same seed, a path naming another tab — and the path wins, screen and address bar both.
+      await page.goto('/saved');
+      await expect(page.getByTestId('saved-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await expect(page).toHaveURL('/saved');
+    });
+
+    /**
+     * **`/splash` is the one of the ten that cannot restore, and that is TSD §6.1 rather than a
+     * defect here.** `Splash` is in the navigator only during `hydrating`, and the hydration gate
+     * renders INSTEAD of the navigator — so the phase has always settled by the time the container
+     * mounts, and `Splash` is not a route it can resolve to. Asserted as the degradation it is.
+     */
+    test('/splash degrades to the app rather than stranding the user on a boot surface', async ({
+      page,
+    }) => {
+      await enterApp(page);
+
+      await page.goto('/splash');
+
+      await expect(page.getByTestId('home-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await expect(page).not.toHaveURL('/splash');
+    });
+
+    test('applies a query param from the URL, which is R-44 verbatim', async ({ page }) => {
+      await enterApp(page);
+      await seedTab(page, 'settings');
+
+      await page.goto('/explore?query=chicken');
+
+      await expect(page.getByTestId('explore-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await expect(page.getByTestId('explore-search').locator('input')).toHaveValue('chicken');
+      await expect(page).toHaveURL('/explore?query=chicken');
+    });
+  });
+
+  /**
+   * **T-24-03's second surface — and Explore's correct behaviour is the OPPOSITE of Home's.**
+   *
+   * `home-allergy.spec.ts` asserts that a conflicting meal is **absent** from the three
+   * recommendations. This block asserts that the same meal is **present** in Explore and that the
+   * user is told about the conflict when they open it. Both halves are the one acceptance row, and
+   * asserting absence here would pin a defect as the design.
+   *
+   * **The authority, because two documents disagree and the code sides with the higher one.**
+   * `TSD.md` §8.4 case 2 says a declared peanut allergy keeps peanut meals "off Home and **out of
+   * Explore**". `PRD.md` FR-007 scopes the rejection to *candidates* — the recommendation path —
+   * and FR-010 gives Explore a search and three filters with no allergy among them; FR-011 puts the
+   * allergen notice on the **detail** screen. PRD outranks TSD, and the shipped code is
+   * unambiguous on the same side: `GET /api/v1/meals`' parameter allowlist
+   * (`apps/server/src/routes/meals.ts`) has no `allergies` key at all, `ExploreScreen`'s docstring
+   * says it "filters nothing and ranks nothing", and `MealDetailsBody`'s own user-facing copy reads
+   * *"The catalog lists every meal, which is how you reached it."* TSD §8.4's wording is recorded as
+   * a divergence in this phase's report; it is not repaired by a test that fails against a correct
+   * app.
+   *
+   * **The fixture is hard-named from the catalog, not asked of the domain.** Deriving "the peanut
+   * meals" from `allergenTags` — which is what the filter itself consults — would let a change that
+   * broke the exclusion quietly shrink the fixture set instead of reddening anything.
+   * `pad-see-ew` is named because `packages/catalog/meals.json` records it with
+   * `allergenTags: ["egg","gluten","peanut","shellfish","soy","wheat"]` **and** `peanut oil` among
+   * its ingredients, so it conflicts by both of `conflictingAllergens`' first two paths.
+   *
+   * **`peanut` is canonical**, which R-30 makes a thing to check rather than assume:
+   * `CANONICAL_ALLERGENS` in `packages/contracts/src/core.ts` lists it, and
+   * `allergen-lexicon.ts` carries `peanut butter`, `peanut oil` and `peanut sauce`. A spec written
+   * around `cilantro` would pass or fail for reasons that have nothing to do with this surface.
+   */
+  test.describe('a declared allergy does not empty the catalogue (T-24-03)', () => {
+    /** TSD §5.1, restated as the specs above restate it: a spec asserts from outside the app. */
+    const API = 'http://127.0.0.1:4000';
+
+    /** Hard-named from `packages/catalog/meals.json`, for the reason in the block docstring. */
+    const PEANUT_MEAL = { id: 'pad-see-ew', name: 'Pad See Ew' } as const;
+    /**
+     * A second catalog record with no peanut, so "shows a notice" cannot be true of every meal.
+     * `allergenTags` is `["milk"]` — it carries an allergen, just not the declared one, which is a
+     * sharper control than a record with no tags at all.
+     *
+     * The casing is the catalog's own (`Stilton soup`, not `Stilton Soup`): the first version of
+     * this constant was title-cased from memory and failed on `meal-details-name`. Transcribed.
+     */
+    const CLEAN_MEAL = { id: 'broccoli-stilton-soup', name: 'Broccoli & Stilton soup' } as const;
+
+    /** Search by name and open the row, which is the path a browsing user actually takes. */
+    async function openFromExplore(
+      page: Page,
+      meal: { readonly id: string; readonly name: string },
+    ): Promise<void> {
+      /**
+       * **`MealDetails` is a stack screen ABOVE the tab bar, so there is no tab to tap from it.**
+       * Measured, not assumed: calling this twice in one test timed out on
+       * `getByRole('tab', { name: 'Explore' })` with the details screen showing. Browser back is
+       * also the gesture a web user actually has, and the assertion that Explore came back is what
+       * stops a failed navigation being read as a missing notice two lines later.
+       */
+      if (await page.getByTestId('meal-details-screen').isVisible()) {
+        await page.goBack();
+        await expect(page.getByTestId('explore-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+      }
+      await page.getByRole('tab', { name: 'Explore' }).click();
+      const input = page.getByTestId('explore-search').locator('input');
+      await input.fill('');
+      await input.pressSequentially(meal.name, { delay: 20 });
+      // Scoped to the Explore screen: Home stays mounted behind it and gives its own cards the
+      // same `meal-<id>` ids, so a page-wide selector can match a covered row it cannot click.
+      const row = page.getByTestId('explore-screen').getByTestId(`meal-${meal.id}`);
+      await expect(row).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await row.click();
+      await expect(page.getByTestId('meal-details-screen')).toBeVisible({
+        timeout: FIRST_PAINT_MS,
+      });
+      await expect(page.getByTestId('meal-details-name')).toHaveText(meal.name);
+    }
+
+    /**
+     * **The "and" of T-24-03, in one profile across two surfaces.**
+     *
+     * The same declared allergy is put to both endpoints the app uses, and they must answer
+     * *differently*: the catalogue still lists the meal, the recommendation set does not contain
+     * it. No single constant satisfies that pair — a server whose allergen filter is dead fails the
+     * second assertion, and one that filtered the catalogue too would fail the first.
+     *
+     * The browser half is the claim a route-level test cannot make: the row is really painted for a
+     * user whose stored profile declares the allergy, at this viewport, through the real bundle.
+     */
+    test('Explore still lists a conflicting meal that Home will not recommend', async ({
+      page,
+    }) => {
+      await enterApp(page, { allergies: ['peanut'] });
+
+      const declared = {
+        diet: 'regular',
+        allergies: ['peanut'],
+        goal: 'balanced',
+        budget: 'low',
+        dislikedIngredients: [],
+      } as const;
+
+      // Explore's own data path, with the allergy declared: the meal is there.
+      const listed = await page.request.get(
+        `${API}/api/v1/meals?query=${encodeURIComponent(PEANUT_MEAL.name)}`,
+      );
+      expect(listed.ok()).toBe(true);
+      const listedBody = (await listed.json()) as { readonly meals: readonly { id: string }[] };
+      expect(
+        listedBody.meals.map((meal) => meal.id),
+        'the catalogue must still carry the meal, or Explore is filtering and FR-010 is wrong',
+      ).toContain(PEANUT_MEAL.id);
+
+      // The recommendation path, same declared allergy: the meal is not there. This is the half a
+      // dead allergen filter fails, and it is asserted here so the two answers sit side by side.
+      const recommended = await page.request.post(`${API}/api/v1/recommendations`, {
+        data: { mealPeriod: 'lunch', aiEnabled: false, preferences: declared, favoriteMealIds: [] },
+      });
+      expect(recommended.ok()).toBe(true);
+      const recommendedBody = (await recommended.json()) as {
+        readonly recommendations: readonly { readonly meal: { readonly id: string } }[];
+      };
+      expect(
+        recommendedBody.recommendations.map((entry) => entry.meal.id),
+        `${PEANUT_MEAL.id} conflicts with a declared peanut allergy and must not be recommended`,
+      ).not.toContain(PEANUT_MEAL.id);
+
+      // And the row is really on screen, not merely in a response body.
+      await page.getByRole('tab', { name: 'Explore' }).click();
+      const input = page.getByTestId('explore-search').locator('input');
+      await input.fill('');
+      await input.pressSequentially(PEANUT_MEAL.name, { delay: 20 });
+      await expect(
+        page.getByTestId('explore-screen').getByTestId(`meal-${PEANUT_MEAL.id}`),
+      ).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await expect(page.getByTestId('explore-empty')).toBeHidden();
+    });
+
+    /**
+     * **What Explore is asserted for is the NOTICE, and it has to be NAMED rather than present.**
+     *
+     * "Contains allergens" is a sentence the user cannot act on, so the assertion is on the word
+     * `peanut` appearing in the notice — which is also what separates the real
+     * `conflictingAllergens` call from a screen doing its own tag intersection.
+     *
+     * Two cases here and one in the test below, because any one of them alone proves nothing:
+     *  1. the conflicting meal under a declared peanut allergy — the notice, naming peanut;
+     *  2. a peanut-free catalog record under the same declared allergy — no notice, which a "warn
+     *     on every meal while any allergy is declared" constant fails;
+     *  3. the SAME meal with the allergy withdrawn — no notice, which an "always warn" constant
+     *     fails. That one is the test below, because it needs a different stored profile.
+     */
+    test('opening it from Explore names the conflicting allergen', async ({ page }) => {
+      await enterApp(page, { allergies: ['peanut'] });
+      await openFromExplore(page, PEANUT_MEAL);
+
+      const notice = page.getByTestId('meal-details-allergen-conflict');
+      await expect(notice).toBeVisible({ timeout: FIRST_PAINT_MS });
+      await expect(notice, 'the notice must name the allergen, not merely exist').toContainText(
+        'peanut',
+      );
+      // And it must not read as a safety guarantee (PRD §6, PRD §7.3): the copy sends the user to
+      // the label rather than telling them the screen has settled it.
+      await expect(notice).toContainText('check the label');
+
+      // Case 2: another record, same declared allergy, no conflict — so the notice is keyed on the
+      // meal and not on the profile.
+      await openFromExplore(page, CLEAN_MEAL);
+      await expect(page.getByTestId('meal-details-allergen-conflict')).toHaveCount(0);
+    });
+
+    test('and withdraws the notice when no allergy is declared', async ({ page }) => {
+      // Case 3, one field different from the test above: same meal, same route, no allergy.
+      await enterApp(page, { allergies: [] });
+      await openFromExplore(page, PEANUT_MEAL);
+
+      await expect(page.getByTestId('meal-details-allergen-conflict')).toHaveCount(0);
+      // And no "this screen cannot check your allergies" either: an empty list that was read
+      // cleanly is not an unknown one, and that warning here would say something false.
+      await expect(page.getByTestId('meal-details-allergies-unknown')).toHaveCount(0);
+      // The meal's own allergen tags are still shown — a different statement from a conflict, and
+      // FR-011 lists them among the detail screen's fields.
+      await expect(page.getByTestId('meal-details-allergen-tags')).toBeVisible();
+    });
   });
 });

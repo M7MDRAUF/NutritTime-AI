@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getByRole } from '@testing-library/dom';
 import { STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
 import { ASSISTANT_COPY, ASSISTANT_FAILURE_COPY, ASSISTANT_MAX_QUESTION } from './assistantCopy.js';
@@ -22,6 +22,13 @@ import {
  * bound is sent and one character over is not; a whole ask-and-answer cycle writes nothing *while*
  * demonstrably having produced an answer.
  */
+
+/**
+ * PRD §10.1's second threshold, transcribed from the document ("an AI-progress message after
+ * 2 s") rather than imported from the module that implements it — the reasoning is
+ * `Assistant.dom.test.tsx`'s and `Home.dom.test.tsx:682-687`'s (BRIEF §6.1g).
+ */
+const AI_PROGRESS_AT_MS = 2_000;
 
 describe('the Assistant request', () => {
   /**
@@ -155,7 +162,20 @@ describe('the Assistant request', () => {
     expect(requests[1]?.question).toBe(QUESTION);
     // In place: one turn, not two, so a retried failure does not double the transcript.
     expect(screen.find('assistant-turn-2')).toBeNull();
-    expect(screen.find('assistant-turn-1-pending')).not.toBeNull();
+
+    /**
+     * The turn is in flight again, read off the two carriers that hold **from the first
+     * millisecond**.
+     *
+     * This used to assert `assistant-turn-1-pending`, which is no longer the right witness at
+     * 0 ms: PRD §10.1 puts the loading *message* 200 ms after the request starts, so on a real
+     * clock that element does not exist yet and asserting it would have been a race that passed
+     * for the wrong reason. The failure surface being gone and the button being busy are the
+     * claims this test is actually about — the retry replaced the state rather than stacking on
+     * it. The 200 ms surface itself is pinned on a fake clock in `Assistant.dom.test.tsx`.
+     */
+    expect(screen.find('assistant-turn-1-unavailable')).toBeNull();
+    expect(screen.must('assistant-ask').getAttribute('aria-busy')).toBe('true');
   });
 
   /**
@@ -191,5 +211,35 @@ describe('the Assistant request', () => {
     }
     // The control: the registry is not empty, so the sweep above is over real keys.
     expect(Object.keys(STORAGE_KEYS).length).toBeGreaterThan(0);
+  });
+  /**
+   * The other half of PRD §10.1's second threshold: **"the model" is a claim, and it is only
+   * made when the model was actually asked.** Here rather than in the render suite because what it
+   * asserts is that *nothing left the device* — which is this file's seam.
+   *
+   * `useAssistant` gates the user's own AI switch before any request and before `pending` is ever
+   * set, so with AI off there is no pending turn and no escalation at any elapsed time. Home needs
+   * an explicit `aiEnabled` ternary on its AI timer for this; this screen gets it from the gate,
+   * and that is worth pinning rather than assuming — a refactor that set `pending` before the gate
+   * would promise a model that was never contacted, and nothing else would notice.
+   */
+  it('never promises model progress when the user has AI switched off', async () => {
+    vi.useFakeTimers();
+    try {
+      const { client, requests } = deferredClient();
+      const screen = await renderAssistant(client, QUESTION);
+      await screen.setAiEnabled(false);
+      await screen.ask();
+      await screen.advance(AI_PROGRESS_AT_MS * 5);
+
+      expect(requests).toEqual([]);
+      expect(screen.find('assistant-turn-1-pending')).toBeNull();
+      expect(screen.text()).not.toContain(ASSISTANT_COPY.aiProgress);
+      // The presence control: the turn exists and says what happened, so this is a screen that
+      // answered rather than one that rendered nothing at all.
+      expect(screen.find('assistant-turn-1-disabled')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

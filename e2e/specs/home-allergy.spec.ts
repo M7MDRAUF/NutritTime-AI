@@ -10,11 +10,21 @@ import type { Page } from '@playwright/test';
  * `Home.dom.test.tsx`. What none of those can show is the three of them agreeing: a request the
  * client builds, a filter the server applies, and a list the browser paints.
  *
- * The peanut meals are read from the SERVER rather than hard-coded, so the spec cannot be quietly
- * invalidated by a catalog change and fails loudly if the catalog stops having any. What that on
- * its own does not buy is **reachability** — that one of them would have been recommended at all —
+ * The peanut meals are read from the server **and** cross-checked against
+ * {@link CATALOG_PEANUT_MEALS}, which is transcribed from `packages/catalog/meals.json`. The
+ * paragraph here used to argue for the derived set alone — "so the spec cannot be quietly
+ * invalidated by a catalog change" — and that is the wrong half of the risk: the derived set is
+ * read out of `allergenTags`, the same field the filter consults, so a change that dropped the tag
+ * would have shrunk the fixture and the claim together without failing anything. The rationale is
+ * rewritten rather than left, because a stale explanation is how the next reader stops looking.
+ * What neither buys is **reachability** — that one of them would have been recommended at all —
  * and reachability is what makes "it is gone" a claim rather than a coincidence. See the profile
  * above the peanut test for the two settings that buy it and for the vacuity they repair.
+ *
+ * **T-24-03 is this file AND `explore.spec.ts`, and the two assert opposite things on purpose.**
+ * Home must not show a conflicting meal; Explore must still list it and must name the conflict when
+ * the user opens it, because Explore is the catalogue. The reasoning and the document conflict it
+ * rests on are recorded in that file's `a declared allergy does not empty the catalogue` block.
  */
 
 const FIRST_PAINT_MS = 20_000;
@@ -36,6 +46,29 @@ const FIRST_PAINT_MS = 20_000;
  * loudly here rather than silently restoring the vacuity this test exists to repair.
  */
 const INSIDE_THE_LUNCH_WINDOW = new Date(2026, 0, 15, 12, 30, 0);
+
+/**
+ * **The catalog's peanut records, transcribed by hand from `packages/catalog/meals.json`.**
+ *
+ * A fixture must not be drawn from the same source as the code under test, and the set this spec
+ * used to work from was: it asked the server which meals carry a `peanut` tag, which is the field
+ * `conflictingAllergens` reads. A change that dropped the tag from a record would have shrunk the
+ * fixture and the spec's claim together, silently — the exact shape of defect this project keeps
+ * finding. Naming them here makes the catalog and the filter two authorities that have to agree.
+ *
+ * `pad-see-ew`: `allergenTags` `["egg","gluten","peanut","shellfish","soy","wheat"]`, ingredients
+ * include `peanut oil` — so it conflicts by tag AND by ingredient name.
+ * `rocky-road-fudge`: `allergenTags` `["milk","peanut"]`, ingredients include `Peanut Butter` and
+ * `Peanuts`. Snack-only, which is why it is not the one the lunch profile below surfaces.
+ */
+const CATALOG_PEANUT_MEALS = ['pad-see-ew', 'rocky-road-fudge'] as const;
+
+/**
+ * The one of the two that a lunchtime low-budget profile actually recommends, named so the
+ * reachability control below pins a record rather than a count. Measured, not assumed: at `low`
+ * and `lunch` the three are `broccoli-stilton-soup`, `mediterranean-pasta-salad`, `pad-see-ew`.
+ */
+const PEANUT_AT_LUNCH = 'pad-see-ew';
 
 interface OnboardingProfile {
   /** Narrowed through the form's own chips, because the budget band changes the ranking. */
@@ -124,6 +157,12 @@ test.describe('the allergy exclusion, end to end', () => {
      * Read from the SERVER rather than from a fixture: the catalog's peanut meals are whatever the
      * seeded data says they are, so this spec cannot be invalidated by the catalog changing under
      * it, and it fails loudly if the catalog stops having any.
+     *
+     * **And cross-checked against {@link CATALOG_PEANUT_MEALS}, which is the half this was missing**
+     * (T-24-03). `allergenTags` is the same field `conflictingAllergens` consults, so a derived set
+     * is not an independent authority: if a change removed `peanut` from a record, this set would
+     * quietly shrink with it and the exclusion claim would narrow rather than fail. The hard-named
+     * list is transcribed from `packages/catalog/meals.json` and disagreeing with it is a failure.
      */
     const all: { readonly id: string; readonly allergenTags: readonly string[] }[] = [];
     for (const pageNumber of [1, 2]) {
@@ -137,9 +176,9 @@ test.describe('the allergy exclusion, end to end', () => {
 
     const peanutIds = all.filter((meal) => meal.allergenTags.includes('peanut')).map((m) => m.id);
     expect(
-      peanutIds.length,
-      'the catalog must contain a peanut meal for this to mean anything',
-    ).toBeGreaterThan(0);
+      [...peanutIds].sort(),
+      "the catalog's peanut records must be the two transcribed above; a set that drifted from them is a catalog change this spec has to be re-read against, not followed",
+    ).toStrictEqual([...CATALOG_PEANUT_MEALS].sort());
 
     /**
      * **The control, and it is the half without which the rest asserts nothing.** A meal that was
@@ -158,6 +197,15 @@ test.describe('the allergy exclusion, end to end', () => {
       reachable,
       `a peanut meal must be IN the three for its removal to be observable — Home offered ${without.join(', ')} and the catalog's peanut meals are ${peanutIds.join(', ')}`,
     ).not.toHaveLength(0);
+    /**
+     * And it must be the NAMED one. `reachable` being non-empty says some peanut meal ranked; this
+     * says which, so the profile above is pinned to the record it was chosen for rather than to
+     * whatever the ranking currently yields.
+     */
+    expect(
+      reachable,
+      `${PEANUT_AT_LUNCH} is the record ${JSON.stringify(PEANUT_REACHABLE)} was chosen to surface, so its absence means the ranking moved and this profile no longer measures what it was built to measure`,
+    ).toContain(PEANUT_AT_LUNCH);
 
     /**
      * The same profile, one field different. Everything that could move the ranking — budget,

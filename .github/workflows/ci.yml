@@ -1,0 +1,388 @@
+# NutriTime AI — the single CI job (P26, T-26-01 … T-26-04).
+#
+# SDD §16 and Plan §21.2 both specify one GitHub Actions job on push and pull request running
+# `npm ci` → `npm run check` → `build:server` → `build:web` → `test:e2e` with `AI_FAKE=true`.
+# Plan §21.2 puts `npm audit --audit-level=high` at the END of that same sequence, which is where
+# steps 12-14 sit, and Plan §21.3 makes "boot the artefact and call /health" the server build's
+# verification rather than a step of the sequence. TSD §2.4 makes `npm run check` the single gate
+# and lists `test:e2e` as a script of its own, which is why the sequence is five commands and not
+# four: the gate does not contain the E2E suite and must not be read as if it did.
+#
+# **ONE job, deliberately.** A-06 makes the deployment target the developer's own machine and A-07
+# records that no review gate is enforceable on a one-person project, so a platform matrix or a
+# second Node version would be coverage no deployment justifies. T-26-01's acceptance is "one job,
+# on push and PR" and that is exactly what this is.
+#
+# **This file has never run, and that is recorded rather than hidden.** `git remote -v` is empty:
+# the project is private, solo and local-only (A-02, B-03), so there is no forge to host an Actions
+# run and no run URL can exist for T-26-01's evidence column. Every step below was executed
+# locally in this order and its real output recorded in the P26 phase report. A fabricated run URL
+# would be the least trustworthy artefact in the repository, so there is none.
+#
+# Ollama is not installed on any runner, which is what `AI_FAKE` exists for (SDD §16): the
+# assistant's route, retrieval, resolution and containment all execute and only the phrasing call
+# is substituted. Plan P26 Part 5 asks for exactly that — "CI passes without Ollama installed".
+
+name: ci
+
+# T-26-01: push and pull request, with no branch filter. A-07 records that this project has no
+# branch protection and no review gate, so filtering to a default branch would leave most pushes
+# ungated for a policy that does not exist.
+on:
+  push:
+  pull_request:
+
+# Least privilege. Nothing here writes to the repository, comments on a PR, or publishes a
+# package; the job only needs to read the checkout.
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+
+    env:
+      # ---------------------------------------------------------------------------------------
+      # R-59 — the suite's own test count is machine-specific, and this is where that stops.
+      #
+      # `packages/catalog/src/seed/usda-dataset.integration.test.ts:27` hides 7 derivation tests
+      # behind `describe.skipIf(!archiveAvailable)`, gated on `USDA_DATASET_PATH`. That variable
+      # points at a 15.7 MB FoodData Central archive that lives OUTSIDE the repository by design
+      # (TSD §7.4 reads it by path; `.gitignore` refuses `*.csv` so a copy-paste cannot land it in
+      # the tree). `vitest.config.mts` loads `.env`, and `.env` is gitignored — so on the
+      # developer's machine the 7 tests run and the gate reports 2 skipped, while on any clean
+      # checkout the same gate reports 9 skipped and nothing says so.
+      #
+      # Plan §23 (Risk Register) R-59 allows two closes and forbids a third: provide the archive, or
+      # fail loudly when it is absent. Quietly running 7 fewer tests is the one option that must
+      # not ship.
+      #
+      # **Providing it is not available to this project**: the archive cannot be committed, and
+      # with no forge there is no cache, artifact store, release asset or package registry to
+      # fetch it from. So this job fails loudly, and `required` is the default that makes it do so.
+      #
+      # `optional` is the only escape, and it is deliberately an edit to THIS FILE rather than an
+      # environment default: an archive-less run then still happens, but it is a reviewable line in
+      # version control and a warning annotation plus a line in the run summary naming the 7 tests
+      # that did not run. What is unavailable in either case is silence.
+      USDA_ARCHIVE_POLICY: required
+
+      # Supplied as a repository variable, never written here: the archive's location is a
+      # machine-local path and no machine-local path belongs in a committed file. Unset renders as
+      # the empty string, which is precisely what the preflight step tests for.
+      USDA_DATASET_PATH: ${{ vars.USDA_DATASET_PATH }}
+
+    steps:
+      # v-major on both actions, not a commit SHA. A SHA pin is stricter and is the right default
+      # on a repository with Dependabot watching it; this one has no forge, no bot and one
+      # developer, so a SHA nothing ever updates rots into an unpatched action. A major tag keeps
+      # receiving security and bug fixes behind a stable input surface, which is the trade that
+      # fits A-06 and A-07.
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Node's version is read from `package.json` rather than written here, so TSD §2.1's pin
+      # (`>=22.13.0 <25`) has exactly one home and cannot drift between the manifest and the
+      # workflow. `node-version-file` accepts `package.json` and resolves `engines.node` as a
+      # version spec.
+      #
+      # Both lockfiles are listed because `e2e/` is deliberately outside the npm workspaces
+      # (TSD §2.1, `e2e/package.json`): `@playwright/test` pulls browser binaries and the root
+      # lockfile stays free of them. A cache keyed on the root lockfile alone would go stale the
+      # moment the E2E one changed.
+      - name: Set up Node from the manifest's engines field
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+
+      - name: Report the toolchain actually in use
+        run: |
+          node --version
+          npm --version
+
+      # T-26-02, step 1 of 5. `npm ci` and not `npm install`: it installs from the lockfile and
+      # fails if the lockfile and the manifests disagree, which is the property that makes this a
+      # gate rather than a fresh resolution on every run.
+      - name: Install root dependencies
+        run: npm ci
+
+      # R-59's loud failure, placed BEFORE the gate so it costs two seconds rather than twenty
+      # minutes, and so a red run can never be mistaken for "the gate ran and passed".
+      #
+      # It does not read the test file to decide anything — it reads the same environment variable
+      # the test reads, which is the state that actually determines whether those 7 tests execute.
+      - name: Preflight — USDA archive (R-59)
+        run: |
+          set -euo pipefail
+
+          # `:-` on both, and it is not defensive noise. `set -u` aborts on an unset variable, and
+          # executing this block with `USDA_DATASET_PATH` genuinely unset exited 1 with
+          # "unbound variable" instead of R-59's message. The job `env:` above always defines it
+          # (an undefined repository variable renders as the empty string), so this cannot happen
+          # as written — but it would be one deleted `env:` line away from failing for a reason
+          # nobody could read, which is the failure mode this whole step exists to prevent.
+          archive="${USDA_DATASET_PATH:-}"
+          policy="${USDA_ARCHIVE_POLICY:-required}"
+          summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+          present=no
+          if [ -n "${archive}" ] && [ -d "${archive}" ]; then
+            present=yes
+          fi
+
+          if [ "${present}" = 'yes' ]; then
+            echo 'USDA archive present. The 7 derivation tests in'
+            echo 'packages/catalog/src/seed/usda-dataset.integration.test.ts will execute.'
+            {
+              echo '### USDA archive: present'
+              echo ''
+              echo 'All 7 derivation tests run. The suite total is the full total.'
+            } >> "${summary}"
+            exit 0
+          fi
+
+          {
+            echo '### USDA archive: ABSENT (R-59)'
+            echo ''
+            echo '`USDA_DATASET_PATH` is unset or does not name a directory on this runner, so'
+            echo 'the 7 derivation tests in'
+            echo '`packages/catalog/src/seed/usda-dataset.integration.test.ts` cannot execute.'
+            echo 'This run therefore does NOT certify USDA nutrition derivation.'
+          } >> "${summary}"
+
+          if [ "${policy}" = 'optional' ]; then
+            echo "::warning title=R-59::USDA_DATASET_PATH is absent and USDA_ARCHIVE_POLICY is 'optional'. 7 derivation tests will be skipped and this run does not certify USDA nutrition derivation."
+            echo 'Continuing under an explicitly declared archive-less policy.'
+            exit 0
+          fi
+
+          echo "::error title=R-59::USDA_DATASET_PATH is not provisioned on this runner. 7 derivation tests in packages/catalog/src/seed/usda-dataset.integration.test.ts would be skipped and the suite total would move with nothing in the log to say why. Provision the archive (TSD 7.4; set the USDA_DATASET_PATH repository variable to its extracted directory on a runner that holds it), or set USDA_ARCHIVE_POLICY to 'optional' in .github/workflows/ci.yml to declare an archive-less run on the record."
+          exit 1
+
+      # T-26-02, step 2 of 5, and TSD §2.4's single gate:
+      # `format:check && lint && typecheck && test`.
+      #
+      # `--passWithNoTests` is deliberately NOT passed anywhere: `vitest.config.mts` leaves it
+      # unset so an include glob that matches nothing exits 1 instead of reporting success, which
+      # is how the composition root's first test was found to be collecting zero files.
+      - name: Gate — npm run check
+        run: npm run check
+
+      # T-26-02, step 3 of 5. Compilation only. `tsc -p apps/server/tsconfig.build.json` emitting
+      # cleanly proves the sources typecheck with `noEmit` off; it does NOT prove the artefact can
+      # start, which is the distinction R-69 exists for and which the /health step below is the
+      # only thing that tests.
+      - name: Build the server
+        run: npm run build:server
+
+      # T-26-02, step 4 of 5. `expo export --platform web --output-dir dist` writes a plain static
+      # tree into `apps/mobile/dist`, which is what `e2e/serveExport.mjs` serves on 19006 in the
+      # next step. That server exits 1 with a "Run: npm run build:web" message when the directory
+      # is missing, so the ordering here is load-bearing rather than cosmetic.
+      - name: Build the web app
+        run: npm run build:web
+
+      # `e2e/` has its own `package.json` and its own lockfile because it sits outside the npm
+      # workspaces on purpose, so the root `npm ci` above installed none of it.
+      - name: Install the E2E suite
+        run: npm --prefix e2e ci
+
+      # `--with-deps` rather than the package's own `install:browsers` script, which is
+      # `playwright install chromium` with no OS dependencies. On a fresh Linux runner Chromium
+      # needs its shared libraries installed too, and `e2e/package.json` is not this task's to
+      # edit, so the flag is applied at the call site.
+      - name: Install Chromium for Playwright
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+
+      # T-26-02, step 5 of 5, and the step that also carries T-26-05: `e2e/serveExport.mjs` serves
+      # the `apps/mobile/dist` export built above, and `explore.spec.ts:377` and
+      # `history.spec.ts:267` navigate straight to `/explore?query=chicken` and
+      # `/meal-details/<id>?origin=explore` — a served production build answering a deep link,
+      # which is T-26-05's acceptance exactly.
+      #
+      # `AI_FAKE` is set here because T-26-02 and SDD §16 both name it on this step.
+      # `e2e/playwright.config.ts` also sets it in `webServer.env` for the API child process;
+      # both are present so that neither file alone carries the requirement.
+      #
+      # `reuseExistingServer: !process.env['CI']` in that config means the runner starts its own
+      # two servers rather than reusing anything, because GitHub Actions sets `CI` itself. Nothing
+      # here sets `CI`, for the same reason nothing should: it is the runner's to declare.
+      - name: End-to-end suite
+        env:
+          AI_FAKE: 'true'
+        run: npm run test:e2e
+
+      # ---------------------------------------------------------------------------------------
+      # T-26-03 — `npm audit`, as deviation X-08.
+      #
+      # X-08 records that no document asks for an audit and TSD §2.4 names a single gate, so the
+      # audit is kept as an explicitly recorded deviation: it runs, its findings are reported and
+      # triaged, and it is not part of `npm run check` and therefore never blocks a phase gate.
+      #
+      # Split in two on purpose, and with nothing suppressing an exit code in either half:
+      #
+      #   * the recording half runs at `--audit-level=none`, which reports every severity and
+      #     exits 0 for advisory reasons alone. It still fails if npm itself fails, so it is not
+      #     a no-op step.
+      #   * the gating half runs at `--audit-level=high` and its exit code is untouched. There is
+      #     no `|| true` and no `continue-on-error` anywhere in this file; a step that cannot fail
+      #     because something swallows its status is decoration, and X-08 asks for triage, not
+      #     suppression.
+      #
+      # Measured locally at authoring: 18 moderate, 0 high, 0 critical. `--audit-level=high`
+      # exits 0 and `--audit-level=moderate` exits 1 on the same tree, which is the evidence that
+      # the threshold below is live rather than ornamental. All 18 trace to two advisories,
+      # GHSA-vcc3-ghjq-m6fr (`decode-uri-component`, via `query-string` under `@react-navigation`)
+      # and GHSA-w5hq-g745-h8pq (`uuid`, via `xcode` under `expo-splash-screen`), and npm's own
+      # remedy for each is a semver-major DOWNGRADE of a package TSD §2.1 pins exactly — which is
+      # a stop condition, not a fix. Both are recorded as triaged risks in the P26 phase report.
+      - name: Record every dependency advisory (X-08)
+        run: npm audit --audit-level=none
+
+      - name: Summarise advisory counts into the run summary (X-08)
+        run: |
+          set -euo pipefail
+
+          # `$RUNNER_TEMP` and not the workspace root: nothing this job writes for its own use
+          # belongs in the checkout, where it is one `git add .` away from being committed. The
+          # `:-.` fallback is what lets this block be executed by hand outside a runner, which is
+          # how its output was obtained for the P26 phase report.
+          report="${RUNNER_TEMP:-.}/npm-audit.json"
+          npm audit --audit-level=none --json > "${report}"
+          node -e '
+            const fs = require("node:fs");
+            const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const counts = report.metadata.vulnerabilities;
+            const advisories = new Map();
+            for (const name of Object.keys(report.vulnerabilities)) {
+              for (const via of report.vulnerabilities[name].via) {
+                if (typeof via === "object") advisories.set(via.url, via);
+              }
+            }
+            const lines = [
+              "### npm audit (X-08)",
+              "",
+              "| severity | count |",
+              "| --- | --- |",
+              "| critical | " + counts.critical + " |",
+              "| high | " + counts.high + " |",
+              "| moderate | " + counts.moderate + " |",
+              "| low | " + counts.low + " |",
+              "| info | " + counts.info + " |",
+              "| **total** | **" + counts.total + "** |",
+              "",
+              "Distinct advisories: " + advisories.size,
+              "",
+            ];
+            for (const via of advisories.values()) {
+              lines.push(
+                "- `" + via.name + "` " + via.severity + " — " + via.title + " (" + via.url + ")",
+              );
+            }
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          ' "${report}"
+
+      - name: Gate on high and critical advisories (T-26-03)
+        run: npm audit --audit-level=high
+
+      # ---------------------------------------------------------------------------------------
+      # T-26-04 — the built artefact boots and answers /health.
+      #
+      # **This step is EXPECTED TO FAIL until R-69's fix lands, and that is why it is here.**
+      # `packages/contracts`, `packages/domain` and `packages/catalog` each declare
+      # `main: src/index.ts` and no script emits any of them, so `apps/server/dist/app.js` resolves
+      # `@nutritime/contracts` to uncompiled TypeScript and dies on a missing `./core.js`.
+      # Reproduced locally at authoring, exit 1:
+      #
+      #     Error [ERR_MODULE_NOT_FOUND]: Cannot find module '…/packages/contracts/src/core.js'
+      #     imported from …/packages/contracts/src/index.ts
+      #
+      # The repair is a manifest change and every manifest is the orchestrator's, so this step is
+      # written correct and left red rather than written to pass. A step that "verified" the
+      # artefact by not starting it would turn the one defect P26 exists to catch into a green
+      # tick, and `build:server` exiting 0 already proves compilation — runnability is the whole
+      # of what this adds.
+      #
+      # It is ordered LAST because it is the step expected to fail: a job stops at its first
+      # failure, so placing the known-red step after the gate, both builds, the E2E suite and the
+      # audit means one known defect cannot cost the reader every other result. When R-69's recipe
+      # lands it belongs immediately after `npm run build:server`.
+      - name: Boot the server artefact and call /health (T-26-04, R-69)
+        env:
+          AI_FAKE: 'true'
+          PORT: '4000'
+        run: |
+          set -euo pipefail
+
+          # Out of the checkout, for the same reason as the audit report above.
+          log="${RUNNER_TEMP:-.}/server.log"
+          health="${RUNNER_TEMP:-.}/health.json"
+
+          node apps/server/dist/index.js > "${log}" 2>&1 &
+          server=$!
+
+          # 127.0.0.1 and not localhost: `apps/server/src/index.ts` exports
+          # `LISTEN_HOST = '127.0.0.1'` and binds it deliberately, so the probe uses the same
+          # interface the server actually listens on.
+          ready=no
+          alive=yes
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" -o "${health}" 2>/dev/null; then
+              ready=yes
+              break
+            fi
+            # Stop waiting the moment the child is gone, and record which way it went.
+            #
+            # Measured, on the R-69 failure this step exists to catch: without this the step
+            # spent the full 30 seconds retrying a process that had exited in under a second and
+            # buried the real reason under thirty identical connection errors. "Exited" and
+            # "listening but not answering" are different defects and the log has to say which.
+            if ! kill -0 "${server}" 2>/dev/null; then
+              alive=no
+              break
+            fi
+            sleep 1
+          done
+
+          # The one `|| true` in this file, and it suppresses nothing that could be a gate: the
+          # artefact under test may already have exited, in which case `kill` has nothing to
+          # signal and its failure says nothing about the artefact. `ready` below is what decides.
+          kill "${server}" 2>/dev/null || true
+
+          echo '--- artefact stdout and stderr ---'
+          cat "${log}"
+
+          if [ "${ready}" != 'yes' ]; then
+            if [ "${alive}" = 'no' ]; then
+              detail='The artefact exited before answering; its own output is above.'
+            else
+              detail='The artefact stayed up but did not answer /health within 30 seconds.'
+            fi
+            echo "::error title=T-26-04::${detail} R-69 is the known cause of the exiting case: the three workspace packages declare main: src/index.ts and nothing emits them, so dist resolves @nutritime/* to uncompiled TypeScript and dies on a missing ./core.js."
+            exit 1
+          fi
+
+          # The shape is asserted, not just the status line. A health check that passes on any
+          # 200 would accept an artefact serving an empty catalog, and `mealCount` is the field
+          # that distinguishes "listening" from "loaded" (TSD §5.1 step 2 makes an invalid
+          # catalog a non-zero exit, so a booted server with zero meals is a defect, not a state).
+          node -e '
+            const fs = require("node:fs");
+            const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (body.status !== "ok") {
+              throw new Error("/health answered status=" + String(body.status));
+            }
+            if (!(typeof body.mealCount === "number" && body.mealCount > 0)) {
+              throw new Error("/health reported mealCount=" + String(body.mealCount));
+            }
+            console.log(
+              "/health ok — catalogVersion=" + String(body.catalogVersion) +
+                " mealCount=" + String(body.mealCount),
+            );
+          ' "${health}"

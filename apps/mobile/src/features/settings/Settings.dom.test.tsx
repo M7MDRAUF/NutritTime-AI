@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { getByRole } from '@testing-library/dom';
 import type { Root } from 'react-dom/client';
 import type { CustomMeal } from '@nutritime/contracts';
 import { ThemeProvider, useTheme } from '../../shared/theme/ThemeProvider.js';
@@ -502,16 +503,35 @@ describe('SettingsScreen — every destructive action confirms first', () => {
      */
     const view = await mount(seededDriver());
 
-    for (const trigger of [
-      'settings-clear-favorites',
-      'settings-clear-customMeals',
-      'settings-clear-preferences',
-      'settings-reset-all',
-    ]) {
+    /**
+     * Tuples rather than a lookup, so each expected title is **beside** the trigger it belongs to
+     * and a missing pair is a compile error instead of an `undefined` that `getByRole` would read
+     * as "any name". The four titles are `confirmationFor`'s, transcribed from
+     * `settingsCopy.ts:118,124,130,139` rather than imported — a test that read them from the
+     * module under test would assert the copy against itself (BRIEF 6.1g).
+     */
+    for (const [trigger, title] of [
+      ['settings-clear-favorites', 'Clear your favourites?'],
+      ['settings-clear-customMeals', 'Delete the meals you created?'],
+      ['settings-clear-preferences', 'Reset your preferences?'],
+      ['settings-reset-all', 'Erase everything on this device?'],
+    ] as const) {
       view.press(trigger);
       await view.settle();
 
       expect(view.find('settings-confirm-sheet'), trigger).not.toBeNull();
+      /**
+       * **The call site's title, pinned where only a consumer suite can pin it.**
+       *
+       * `Sheet.dom.test.tsx` proves the MECHANISM — that one element carries both `role="dialog"` and
+       * the accessible name, after react-native-web 0.21.2 was found putting the role and the label on
+       * different elements while a test asserted them separately and passed. What that file cannot
+       * see is a **call site** dropping or rewording its title, because the wiring is here.
+       *
+       * `getByRole(document.body, 'dialog', { name })` is one query on purpose: it fails when the role
+       * and the name part company, which is exactly what the old split assertion could not do.
+       */
+      expect(getByRole(document.body, 'dialog', { name: title }), trigger).toBeTruthy();
       expect(view.read('data-favorites'), trigger).toBe(FAVORITES.join(','));
       expect(view.read('data-custom'), trigger).toBe('house-omelette,lentil-soup');
       expect(view.read('data-diet'), trigger).toBe('vegan');
@@ -806,5 +826,48 @@ describe('SettingsScreen — full reset (T-18-06, T-18-07)', () => {
     expect(view.find('settings-screen')).not.toBeNull();
     // And the survivor really is still there — the message is not the only claim.
     expect(diskContents(base)).toContain(ALLERGY);
+  });
+});
+describe('SettingsScreen - the notice a screen reader has to hear (T-23-05)', () => {
+  /**
+   * `settings-unavailable` is the notice that says the four Clear buttons below it will not reach
+   * the device: an `unavailable` key is never written over (TSD 6.3), so a clear empties the list
+   * on screen and leaves the stored copy intact. It carried no role and no live region, so a user
+   * who cannot see the amber panel pressed Clear and was told it worked.
+   *
+   * The `settings-save-error-*` notices beside it already announced - K2 flagged that as the trap
+   * at this site, and it is why the role is asserted on `settings-unavailable` by testID rather
+   * than by "the alert on this screen".
+   */
+  it('announces that changes will not be kept, on the element that carries the words', async () => {
+    const driver = seededDriver();
+    driver.failOn.add('multiGet');
+    const view = await mount(driver);
+
+    const notice = view.must('settings-unavailable');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    expect(notice.textContent ?? '').toContain('Changes will not be kept');
+    expect(notice.textContent ?? '').toContain('applies until you close the app');
+
+    // Two controls in the same render, both present before the user is and neither an arrival.
+    expect(view.must('settings-disclaimer').getAttribute('role')).not.toBe('alert');
+    expect(view.must('settings-attribution').getAttribute('role')).not.toBe('alert');
+  });
+
+  it('does not re-announce it when something unrelated re-renders the screen', async () => {
+    // Plan 2793's rule applied to speech: `role="alert"` is re-spoken on insertion, so toggling an
+    // unrelated setting must leave the notice as the SAME node.
+    const driver = seededDriver();
+    driver.failOn.add('multiGet');
+    const view = await mount(driver);
+    const before = view.must('settings-unavailable');
+
+    view.press('settings-ai-toggle');
+    await view.settle();
+
+    // The re-render really happened, or the identity assertion proves nothing.
+    expect(view.must('settings-ai-toggle').getAttribute('aria-checked')).toBe('false');
+    expect(view.must('settings-unavailable')).toBe(before);
   });
 });

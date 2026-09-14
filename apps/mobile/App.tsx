@@ -64,14 +64,14 @@ const FONTS = {
 /**
  * Split from `App` only so it can call `useTheme()` — a hook cannot read a provider its own
  * component renders.
+ *
+ * **It takes no `fontsReady`, and that omission is R-44's fix** (T-22-02/T-22-03). See
+ * `PhasedNavigation` below for the measurement; the short version is that this component must
+ * only ever be reached with the boot phase already settled, because `NavigationContainer`
+ * resolves the browser's URL **once**, at its first mount, against whatever routes the stack
+ * below happens to be holding at that instant.
  */
-function NavigationRoot({
-  fontsReady,
-  phase,
-}: {
-  readonly fontsReady: boolean;
-  readonly phase: BootPhase;
-}): ReactNode {
+function NavigationRoot({ phase }: { readonly phase: BootPhase }): ReactNode {
   const theme = useTheme();
   // Memoised because `NavigationContainer` re-renders the whole tree when `theme` changes
   // identity, and a fresh object every render would make that every render.
@@ -80,15 +80,16 @@ function NavigationRoot({
   return (
     <NavigationContainer theme={navigationTheme} linking={linking}>
       {/*
-        **The real boot phase (T-14-06), ANDed with the font gate.**
+        **The real boot phase (T-14-06), and nothing ANDed onto it.**
 
-        `StorageProvider` supplies `onboarding` or `app` from what hydration actually found; the
-        font gate holds it at `hydrating` until the faces resolve. Both have to be satisfied,
-        because `hydrating` is the one phase in which the protected screens are not in the
-        navigator at all — which is what makes FR-001's guarantee structural rather than a
-        redirect over a mounted tree.
+        `StorageProvider` supplies `onboarding` or `app` from what hydration actually found, and
+        that is the only thing that may decide which screens exist. `hydrating` reaches this
+        navigator from its own prop in the dom suite and from nowhere else in the running app:
+        the hydration gate is `DataResetProvider`'s `fallback`, which renders INSTEAD of this
+        whole subtree, so during the `multiGet` there is no navigator at all — strictly stronger
+        than TSD §6.1's "the protected screens are not in the navigator".
       */}
-      <RootNavigator phase={fontsReady ? phase : 'hydrating'} />
+      <RootNavigator phase={phase} />
     </NavigationContainer>
   );
 }
@@ -133,10 +134,45 @@ function HydratingSplash(): ReactNode {
   return <SplashSurface />;
 }
 
+/**
+ * **The font gate sits ABOVE the navigation container, and that is R-44 (T-22-03).**
+ *
+ * It used to sit inside: this component rendered `NavigationRoot` unconditionally and the
+ * container rendered `<RootNavigator phase={fontsReady ? phase : 'hydrating'} />`. So on the web
+ * the container mounted while the root stack was still holding **only `Splash`** — hydration is a
+ * synchronous `localStorage` read and `Font.loadAsync` is a network fetch, which makes the font
+ * gate's win the *normal* cold-start ordering rather than a race that sometimes goes wrong.
+ *
+ * That is fatal for a deep link and for exactly one reason: `NavigationContainer` resolves the
+ * URL **once**. `useLinking`'s `getInitialState` is a `useCallback` with an empty dependency
+ * array, `useThenable` resolves it at the first mount, and the result is handed to
+ * `BaseNavigationContainer` as `initialState` — an *initial* state, consumed once and never
+ * recomputed. `StackRouter` then filters that state through its own `routeNames`, so with only
+ * `Splash` declared the parsed `Tabs` route was discarded as unknown and the fallback pushed. The
+ * URL was rewritten to `/home` a moment later, when the phase advanced and the container printed
+ * the state it had actually kept.
+ *
+ * Returning the hydrating surface here instead holds the **container's mount**, not the phase, so
+ * it mounts once with `phase` already `app` (or `onboarding`) and the URL is resolved against the
+ * real route set. Every provider above stays mounted, so the `multiGet` and the font fetch still
+ * overlap — this delays the navigator, not hydration.
+ *
+ * **Why not gate higher up, in `App`?** `HydratingSplash` calls `useTheme()`, and the *stored*
+ * theme only exists below `ThemedNavigation`. Gating in `App` would show the font-wait splash in
+ * `system` while the user had chosen dark — T-18-04's defect, reintroduced one level up.
+ *
+ * Note what this does NOT move: the hydration gate. `DataResetProvider`'s `fallback` still
+ * replaces this entire subtree while the snapshot is in flight, so a protected screen cannot
+ * render early (TSD §6.1). `fontsReady` is not a boot phase and never was — it is a reason to
+ * hold the first paint, and `'hydrating'` was only ever standing in for it.
+ */
 function PhasedNavigation({ fontsReady }: { readonly fontsReady: boolean }): ReactNode {
   const onboarding = onboardingStore.useValue();
   const phase: BootPhase = onboarding.completed ? 'app' : 'onboarding';
-  return <NavigationRoot fontsReady={fontsReady} phase={phase} />;
+  if (!fontsReady) {
+    return <HydratingSplash />;
+  }
+  return <NavigationRoot phase={phase} />;
 }
 
 /**

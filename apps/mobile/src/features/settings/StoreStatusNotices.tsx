@@ -66,7 +66,16 @@ export function StoreStatusNotices({ statuses }: StoreStatusNoticesProps): React
 
       {/* One notice for all of them, not one each: a single failed `multiGet` puts every key in
           this state at once, and three identical warnings are three times the noise and no more
-          information. The sets are named inside it instead. */}
+          information. The sets are named inside it instead.
+
+          **`announceOnMount`, for the same reason the save-error notices above carry it.** This
+          one says the clear buttons below it will not reach the device: an `unavailable` key is
+          never written over (TSD 6.3), so a clear empties the list on screen and leaves the
+          stored copy intact, and a user who cannot see the amber panel would press Clear and be
+          told it worked. `entryStatus` is read off the boot hydration snapshot, which
+          `StorageProvider` builds once and never updates, so this branch cannot appear or
+          disappear from a state change - it mounts with the Settings tab and `role="alert"` is
+          spoken on that insertion rather than on every render. */}
       {unreadable.length === 0 ? null : (
         <StatusMessage
           testID="settings-unavailable"
@@ -74,6 +83,7 @@ export function StoreStatusNotices({ statuses }: StoreStatusNoticesProps): React
           icon="warning"
           title="Changes will not be kept"
           description={`These could not be read on this device, so nothing is written over them: ${joinSets(unreadable.map(({ id }) => SET_LABELS[id]))}. What you change or clear here applies until you close the app.`}
+          announceOnMount
         />
       )}
     </>

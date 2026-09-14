@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { getPathFromState, getStateFromPath } from '@react-navigation/native';
+import { getActionFromState, getPathFromState, getStateFromPath } from '@react-navigation/native';
 import { LINKING_PREFIX, LINKING_SCHEME, ROUTE_PATHS, linking } from './linking.js';
 import { SCREEN_ROUTE_NAMES, readStringParam } from './routes.js';
 
@@ -40,12 +40,70 @@ describe('the linking scheme', () => {
     expect(LINKING_PREFIX).toBe(`${LINKING_SCHEME}://`);
     expect(linking.prefixes).toEqual([LINKING_PREFIX]);
   });
+
+  /**
+   * **Why `window.location.origin` is NOT in `prefixes`, stated as a measurement (R-44).**
+   *
+   * R-44 records adding it as "the obvious candidate" that "changed nothing", and left the cause
+   * unidentified. It changed nothing because on the web `prefixes` is never consulted at all:
+   * `useLinking`'s web implementation builds `location.pathname + location.search` and hands that
+   * to `getStateFromPath` — a **path**, with the origin already stripped by the browser. A prefix
+   * list exists to strip a scheme off a native `nutritime://explore` URL, and there is no such URL
+   * on the web.
+   *
+   * So the two forms are parsed here side by side: the path the browser actually supplies resolves,
+   * and the absolute URL an origin prefix would have had to handle resolves to nothing. Adding the
+   * origin could therefore only ever have been inert, which is exactly what was observed — and
+   * keeping it out is a decision this test now pins rather than a thing left undone.
+   */
+  it('is not needed on the web, because the browser supplies a path and not a URL', () => {
+    window.history.replaceState({}, '', '/explore?query=chicken');
+    // Precisely the expression `useLinking` (web) evaluates at the container's first mount.
+    const browserPath = window.location.pathname + window.location.search;
+    expect(browserPath).toBe('/explore?query=chicken');
+
+    expect(getStateFromPath(browserPath, config)).toMatchObject({
+      routes: [
+        {
+          name: 'Tabs',
+          state: {
+            routes: [
+              { name: 'HomeTab' },
+              {
+                name: 'ExploreTab',
+                state: { routes: [{ name: 'Explore', params: { query: 'chicken' } }] },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    // The absolute form is what a prefix strips. Nothing on the web ever produces it, and the
+    // parser does not recognise it, so an origin in `prefixes` has nothing to act on.
+    expect(getStateFromPath(`${window.location.origin}${browserPath}`, config)).toBeUndefined();
+    window.history.replaceState({}, '', '/');
+  });
 });
 
 describe('the route paths', () => {
   it('gives every screen a path, and no two the same', () => {
     const paths = SCREEN_ROUTE_NAMES.map((name) => ROUTE_PATHS[name]);
-    expect(paths).toHaveLength(SCREEN_ROUTE_NAMES.length);
+
+    /**
+     * **`toHaveLength(SCREEN_ROUTE_NAMES.length)` used to stand here and could not fail.**
+     * `paths` is a `map` OF `SCREEN_ROUTE_NAMES`, so its length is that array's length by
+     * construction — deleting every entry in `ROUTE_PATHS` would have left this green.
+     *
+     * The claim the test's own name makes is that every screen HAS a path, and
+     * `noUncheckedIndexedAccess` is what makes that a real question: `ROUTE_PATHS[name]` is
+     * `string | undefined`, so a missing key is a silent `undefined` rather than a type error.
+     * Asserting each entry is a non-empty string is the claim; the count never was.
+     */
+    for (const [index, path] of paths.entries()) {
+      expect(path, SCREEN_ROUTE_NAMES[index]).toBeTypeOf('string');
+      expect(path, SCREEN_ROUTE_NAMES[index]).not.toBe('');
+    }
     expect(new Set(paths).size).toBe(paths.length);
   });
 
@@ -78,12 +136,54 @@ describe('parsing a link', () => {
     });
   });
 
-  it('leaves Home underneath another tab, so a deep link is not a dead end', () => {
+  /**
+   * **`Tabs.initialRouteName` puts Home in the PARSE, and the old name of this test claimed more
+   * than that** (T-22-04). It said "so a deep link is not a dead end", which is not what the line
+   * does: a tab router rebuilds all five routes from `routeNames` and takes its history from the
+   * partial state's `history` field, which a parse never supplies — measured identical with and
+   * without this line under all six `backBehavior` values. The back target under a deep-linked tab
+   * came from the router's default `backBehavior`, which `TabNavigator` now sets deliberately.
+   *
+   * What the line does do is the second assertion: `getActionFromState` emits `initial: false` for
+   * the tab-level NAVIGATE **only** when the config names an initial route, and a nested navigator
+   * rebuilds its state from the params only when `initial !== false`. So on `useLinking`'s action
+   * path — going forward to a path it holds no record for — this is what stops an arriving link
+   * from wiping the visited-tab history `backBehavior: 'history'` builds.
+   */
+  it('names an initial tab, so an arriving link does not reset the tab navigator', () => {
     const state = getStateFromPath('saved', config);
-    // `initialRouteName: 'HomeTab'` is what puts two routes in the tab state rather than one.
     expect(state).toMatchObject({
       routes: [{ name: 'Tabs', state: { routes: [{ name: 'HomeTab' }, { name: 'SavedTab' }] } }],
     });
+    if (state === undefined) {
+      return;
+    }
+
+    // `initial: true` is what a config with no `initialRouteName` produces here, and it is the
+    // value that would throw the tab history away, so the assertion is on `false` specifically.
+    expect(getActionFromState(state, config)).toMatchObject({
+      type: 'NAVIGATE',
+      payload: { name: 'Tabs', params: { initial: false, screen: 'SavedTab' } },
+    });
+  });
+
+  /**
+   * **The root config deliberately has NO `initialRouteName`, and this is the assertion that keeps
+   * the decision visible** (T-22-04; the reasoning is in `linking.ts`).
+   *
+   * Adding one would make a cold `/meal-details/:id` parse as `[Tabs, MealDetails]`, and a stack —
+   * unlike the tab navigator above — keeps the routes a parse gives it. It would not change
+   * browser Back, which has one entry for a cold load either way; it would make `canGoBack()` true
+   * and so retire `MealDetailsScreen`'s `origin` fallback and `MealFormScreen`'s Saved-tab
+   * fallback, both of which choose a destination on purpose.
+   */
+  it('puts nothing underneath a cold-loaded modal, and invents no route for a bad path', () => {
+    const state = getStateFromPath('meal-details/dessert-42', config);
+    expect(state?.routes).toHaveLength(1);
+    expect(getStateFromPath('meal-form', config)?.routes).toHaveLength(1);
+    // The control: an `initialRouteName` at the root would not rescue an unknown path either, so
+    // this stays `undefined` in both worlds and pins that no route is conjured for one.
+    expect(getStateFromPath('not-a-screen', config)).toBeUndefined();
   });
 
   it('takes the meal id from the path', () => {

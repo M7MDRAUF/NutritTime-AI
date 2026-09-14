@@ -13,6 +13,24 @@
  * near-white nothing. TSD 7.2 says a broken image changes no decision the app makes; this is what
  * that costs to be true.
  *
+ * **There is no `loading="lazy"` here, and react-native-web 0.21.2 has no element to put one on.**
+ * Read from `node_modules/react-native-web/dist/exports/Image/index.js`, not from the prop name:
+ * the photograph is painted as a CSS `background-image` on a `<div>`; the only `<img>` in the
+ * output is a visually-hidden one whose props are a fixed literal (`alt`, `style`, `draggable`,
+ * `ref`, `src`) with no way to add to them; and the bytes are fetched by `ImageLoader.load`, which
+ * does `new window.Image()` on a node never inserted into the document. `loading` is also absent
+ * from `modules/forwardedProps`, whose whitelist is what `View` picks the root `<div>`'s attributes
+ * from, so a `loading` prop passed to `<Image>` is dropped rather than forwarded. An attribute on
+ * none of those three would defer nothing even if it arrived. What is deferred on this surface is
+ * the ROW: `ExploreScreen`'s `FlatList` mounts only `initialNumToRender` of a page, so an unmounted
+ * card requests no photograph. Home is deliberately not deferred — Plan §11.5 fixes it at three
+ * cards, and deferring what is already on screen is slower, not faster.
+ *
+ * **The placeholder is this component's half of Plan §20's "lazy-loaded with placeholders", and it
+ * is a layout claim.** The box below is reserved before any byte arrives — a fixed aspect ratio
+ * over `card.skeleton` — so a photograph that is still in flight, or absent, never changes the
+ * height of the card or reflows the list under it.
+ *
  * **`unavailable` is content, not control state.** It comes from the catalog's own `available`
  * field (`contracts/core.ts`), and an unavailable meal is still worth opening - its ingredients,
  * its allergen notices and its nutrition are all unchanged. So the card stays pressable and

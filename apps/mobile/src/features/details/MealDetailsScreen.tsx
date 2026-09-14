@@ -216,7 +216,11 @@ export function MealDetailsScreen({ route, navigation }: ScreenProps<'MealDetail
 
       {/* `recovered` is two different outcomes — see `hydratedFavoriteCount`. P14's finding is why
           either is surfaced at all: the heart would simply read "not saved" with nothing saying
-          why. */}
+          why. **And it announces (`announceOnMount`)**, because that heart is the only other
+          signal and its state is carried in a caption a screen reader reaches after this. The
+          value cannot flicker: `entryStatus` is read off the boot hydration snapshot, which
+          `StorageProvider` builds once and never updates. This is a stack screen, so it mounts
+          again on every meal opened - one announcement per visit, never one per render. */}
       {favoritesStatus.entryStatus === 'recovered' ? (
         <StatusMessage
           testID="meal-details-favorites-recovered"
@@ -231,11 +235,14 @@ export function MealDetailsScreen({ route, navigation }: ScreenProps<'MealDetail
                 `More than ${String(MAX_FAVORITES)} favourites were stored, so the newest ${String(MAX_FAVORITES)} were kept and the oldest dropped. The shorter list has already been saved, so the rest cannot be recovered.`
               : COPY.recoveredDescription
           }
+          announceOnMount
         />
       ) : null}
 
       {/* T-16-05, and deliberately carrying NO action: `StatusMessage` renders a button only when
-          both `actionLabel` and `onAction` are given, so omitting them is how "no retry" is said. */}
+          both `actionLabel` and `onAction` are given, so omitting them is how "no retry" is said.
+          Deliberately NOT announced either: `addRefused` holds for every meal a user at the bound
+          opens, so an alert here would interrupt on each one and report nothing that arrived. */}
       {listFull ? (
         <StatusMessage
           testID="meal-details-favorites-full"
@@ -249,7 +256,13 @@ export function MealDetailsScreen({ route, navigation }: ScreenProps<'MealDetail
 
       {/* A write that failed for any other reason, which a retry genuinely may fix. The
           `saveBlocked` conjunct is what keeps this and the surface above mutually exclusive by
-          construction rather than by the accident of `saveBlocked` being unreachable. */}
+          construction rather than by the accident of `saveBlocked` being unreachable.
+
+          **`announceOnMount` earns its place here more than anywhere else on this screen**: this
+          notice arrives from the user's own tap, and nothing else reports the refusal - the heart
+          is already drawn as saved by the time the write is turned down. `retrySave` clears
+          `saveError` before it re-attempts, so a second failure remounts this branch and is
+          announced again, which is the intended behaviour: a refused retry is a new event. */}
       {favoritesStatus.saveError !== null && !favoritesStatus.saveBlocked ? (
         <StatusMessage
           testID="meal-details-favorites-save-error"
@@ -261,6 +274,7 @@ export function MealDetailsScreen({ route, navigation }: ScreenProps<'MealDetail
           description={favoritesStatus.saveError}
           actionLabel={COPY.retry}
           onAction={favoritesStatus.retrySave}
+          announceOnMount
         />
       ) : null}
 

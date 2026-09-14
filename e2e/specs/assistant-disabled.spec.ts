@@ -1,10 +1,10 @@
-import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { enterApp } from '../support/appPhase.js';
+import { expect, test } from '../support/fixtures.js';
 import {
   ASSISTANT_PAINT_MS,
   askQuestion,
   expectNothingPending,
+  expectPending,
   openAssistant,
 } from '../support/assistant.js';
 
@@ -76,6 +76,7 @@ async function setUseAi(page: Page, enabled: boolean): Promise<void> {
 
 test.describe('the assistant with AI switched off', () => {
   test('answers from the device within a bounded time, sends nothing, and leaves nothing spinning', async ({
+    app,
     page,
   }) => {
     /**
@@ -87,6 +88,17 @@ test.describe('the assistant with AI switched off', () => {
      * request that does get through behaves normally and the control below is unaffected.
      */
     const chatRequests: string[] = [];
+    /**
+     * Armed only for the control ask at the end; `null` lets a request straight through.
+     *
+     * **Held, not faked.** The request is delayed and then `continue()`d, so the body the screen
+     * finally renders is the real server's. That is the difference between this and the 503 this
+     * file refuses to fabricate: delaying a real round trip observes a state the app genuinely
+     * has, while inventing a response would assert the client's error table against a body this
+     * spec wrote.
+     */
+    let held: Promise<void> | null = null;
+    let release: () => void = () => undefined;
     await page.route('**/api/v1/chat', async (route) => {
       const method = route.request().method();
       /*
@@ -99,11 +111,19 @@ test.describe('the assistant with AI switched off', () => {
       if (method !== 'OPTIONS') {
         chatRequests.push(method);
       }
+      if (held !== null) {
+        await held;
+      }
       await route.continue();
     });
 
-    // `enterApp` seeds `aiEnabled: true`, which `setUseAi` asserts before it toggles.
-    await enterApp(page);
+    /*
+      `app()` is called AFTER `page.route` above, not before, and the fixture is a function for
+      exactly that reason (`fixtures.ts:60-67`): the chat route has to be installed before the app's
+      first boot or the no-request assertion would be watching a page that had already asked.
+      `appPhase.ts` seeds `aiEnabled: true`, which `setUseAi` asserts before it toggles.
+    */
+    await app();
     await setUseAi(page, false);
     await openAssistant(page);
 
@@ -190,7 +210,26 @@ test.describe('the assistant with AI switched off', () => {
     // what changed and the failure says so here instead of there.
     await expect(page.getByTestId('assistant-turn-1-disabled')).toBeVisible();
 
+    /**
+     * **And the working state is asserted before the settled one**, which is what stops the three
+     * `expectNothingPending` assertions from being unfalsifiable.
+     *
+     * All three of them are absences — no progressbar, `aria-busy="false"`, an enabled button —
+     * and an absence passes just as happily against a locator that has stopped matching anything.
+     * `role="progressbar"` in particular is react-native-web's, not this app's: an upgrade that
+     * renamed it would leave the assertion green forever, and the guard that caught P21's stuck
+     * spinner would be decoration. Holding this one request open is the only point in either spec
+     * where the app is observably mid-flight, so it is where the three locators get to prove they
+     * can read the other value.
+     */
+    held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     await askQuestion(page, QUESTION);
+    await expectPending(page, 2);
+    release();
+    held = null;
+
     await expect(page.getByTestId('assistant-turn-2-answer')).toBeVisible({
       timeout: ASSISTANT_PAINT_MS,
     });

@@ -25,6 +25,7 @@ import { act } from 'react';
 import type { ReactNode } from 'react';
 import type { Root } from 'react-dom/client';
 import { createRoot } from 'react-dom/client';
+import { getByRole } from '@testing-library/dom';
 import { seededCatalog } from '@nutritime/catalog';
 import { mealSchema } from '@nutritime/contracts';
 import type { CustomMeal, Meal } from '@nutritime/contracts';
@@ -296,6 +297,14 @@ interface View {
   pressAnywhere(testID: string): Promise<void>;
   /** Favourite something from elsewhere — which is what the heart on `MealDetails` does. */
   favorite(mealId: string): Promise<void>;
+  /**
+   * Re-render the SAME root with different route params.
+   *
+   * The same root, deliberately: `createRoot(...).render()` a second time RECONCILES rather than
+   * remounting, which is the only way to ask whether a params change preserves a DOM node. A fresh
+   * root would remount everything and every identity assertion would fail for the wrong reason.
+   */
+  rerenderWith(params: unknown): Promise<void>;
   settle(): Promise<void>;
 }
 
@@ -329,7 +338,7 @@ async function renderSaved(options: RenderOptions): Promise<View> {
     return null;
   }
 
-  const tree: ReactNode = (
+  const treeFor = (params: unknown): ReactNode => (
     <ThemeProvider mode="light" deviceScheme={null} fontScale={1}>
       <ApiProvider client={options.client}>
         <StorageProvider runtime={runtime}>
@@ -338,7 +347,7 @@ async function renderSaved(options: RenderOptions): Promise<View> {
               <customMealsStore.Provider>
                 <Capture />
                 <SavedScreen
-                  route={{ key: 'saved-1', name: 'Saved', params: options.params } as never}
+                  route={{ key: 'saved-1', name: 'Saved', params } as never}
                   navigation={{ navigate } as never}
                 />
               </customMealsStore.Provider>
@@ -352,7 +361,7 @@ async function renderSaved(options: RenderOptions): Promise<View> {
   const root = createRoot(host);
   mounted.push({ root, host });
   await act(async () => {
-    root.render(tree);
+    root.render(treeFor(options.params));
   });
 
   const settle = async (): Promise<void> => {
@@ -421,6 +430,12 @@ async function renderSaved(options: RenderOptions): Promise<View> {
     press: async (testID) => {
       await act(async () => {
         must(testID).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await settle();
+    },
+    rerenderWith: async (params) => {
+      await act(async () => {
+        root.render(treeFor(params));
       });
       await settle();
     },
@@ -575,6 +590,52 @@ describe('SavedScreen — two independent sections (T-17-02)', () => {
     });
     expect(view.favoriteIds()).toStrictEqual(meals.map((meal) => meal.id));
   });
+
+  it('has exactly one scroll container, and it is the screen (T-22-08)', async () => {
+    /**
+     * **The other half of "rows are mapped, not virtualised"** (`SavedScreen.tsx:50-53`), and the
+     * half nothing asserted.
+     *
+     * Both sections must be mounted at once for their empty states to be independent, which is why
+     * this screen is one `ScrollView` over mapped rows rather than a list per section. T-22-08
+     * measured what that costs — twenty favourites mount twenty remote photographs — and measured
+     * the obvious fix: putting a `FlatList` inside `FavoritesSection` does drop the render to
+     * `initialNumToRender`, and it also puts a **second** scroll container inside the first. React
+     * Native's own `VirtualizedList` says why that is wrong — "never be nested inside plain
+     * ScrollViews with the same orientation because it can break windowing and other
+     * functionality" — and react-native-web 0.21.2 ships that warning **commented out**
+     * (`vendor/react-native/VirtualizedList/index.js`, above the `__DEV__` block, pending
+     * necolas/react-native-web#2239), so on the web surface it would arrive with no diagnostic at
+     * all. The whole suite stayed green under that mutation; this is the assertion that would not.
+     *
+     * It is deliberately NOT an assertion that every row renders. That would pin the current
+     * eager list in place and forbid the fix. A `SectionList` replacing the `ScrollView` — RN's own
+     * recommended "another VirtualizedList-backed container" — keeps exactly one scroll container
+     * and passes this unchanged.
+     *
+     * The selector is react-native-web's atomic class convention (`r-<property>-<hash>`), which is
+     * what a `ScrollView` actually carries in the DOM; an upgrade that renamed it would fail here
+     * loudly, which is the right way for a claim about a library to rot.
+     */
+    const meals = CATALOG.slice(0, 4);
+    const view = await renderSaved({
+      client: catalogClient(meals).client,
+      favorites: meals.map((meal) => meal.id),
+      custom: recipes(2),
+    });
+
+    const scrollers = [...view.host.querySelectorAll('*')].filter(
+      (node) => node instanceof HTMLElement && /r-overflowY-/.test(node.className),
+    );
+
+    // Identity, not a count: "which element scrolls" is the claim, and a bare `1` would also be
+    // satisfied by the inner list scrolling while the screen did not.
+    expect(scrollers.map((node) => node.getAttribute('data-testid'))).toStrictEqual([
+      'saved-screen',
+    ]);
+    // And both sections are inside it, which is the reason there is only one.
+    expect(view.sectionOrder()).toStrictEqual(['saved-favorites', 'saved-custom']);
+  });
 });
 
 describe('SavedScreen — a favourite that outlived its meal', () => {
@@ -632,6 +693,18 @@ describe('SavedScreen — a favourite that outlived its meal', () => {
     await view.press(`saved-forget-${GONE}`);
     expect(view.orphanIds()).toStrictEqual([GONE]);
     expect(view.findAnywhere('saved-forget-confirm')).not.toBeNull();
+    /**
+     * **The call site's title, pinned where only a consumer suite can pin it.**
+     *
+     * `Sheet.dom.test.tsx` proves the MECHANISM — that one element carries both `role="dialog"` and
+     * the accessible name, after react-native-web 0.21.2 was found putting the role and the label on
+     * different elements while a test asserted them separately and passed. What that file cannot
+     * see is a **call site** dropping or rewording its title, because the wiring is here.
+     *
+     * `getByRole(document.body, 'dialog', { name })` is one query on purpose: it fails when the role
+     * and the name part company, which is exactly what the old split assertion could not do.
+     */
+    expect(getByRole(document.body, 'dialog', { name: 'Remove this favourite?' })).toBeTruthy();
 
     await view.pressAnywhere('saved-forget-confirm');
 
@@ -1141,5 +1214,145 @@ describe('SavedScreen — two authored recipes sharing one id', () => {
       custom: [recipe(shared, 'One'), recipe(shared, 'Two')],
     });
     expect(view.recipeIds()).toHaveLength(2);
+  });
+});
+describe('SavedScreen - the notices a screen reader has to hear (T-23-05)', () => {
+  /**
+   * **A live region nobody announced is a notice drawn to nobody.** Every notice here arrives
+   * mounted together with its own words, so `aria-live` has no change to report by the time the
+   * region exists (`StatusMessage.tsx` records the mechanism); the announcement is `role="alert"`,
+   * which is spoken on INSERTION. These four surfaces carried neither until this task.
+   *
+   * **The role and the words are read off the SAME element**, never off a container. A role on one
+   * node and the sentence on another announces an empty alert - the defect `Sheet`'s dialogs were
+   * found with in this same window - and a `find(...) !== null` assertion cannot see it.
+   *
+   * **Each case is paired with a notice that must NOT be an alert.** A suite where everything is an
+   * alert is satisfied by a component that marks everything, and a component that marks everything
+   * is the interruption Plan 20's focus row ("moved deliberately, never on every blur") rules out.
+   */
+  it('announces which list was reset, on the element that carries the words', async () => {
+    const view = await renderSaved({
+      client: catalogClient([]).client,
+      raw: { [STORAGE_KEYS.favorites]: encodeEnvelope(STORAGE_SCHEMA_VERSION, ['ok', 42], NOW) },
+    });
+
+    const notice = view.must('saved-favorites-recovered');
+    expect(notice.getAttribute('role')).toBe('alert');
+    // Kept alongside the role on purpose: it downgrades the `assertive` that `role="alert"`
+    // implies, which is what keeps a reset from interrupting mid-sentence.
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    // Announced text, read off the element that carries the role.
+    expect(notice.textContent ?? '').toContain('Your favourites were reset');
+    expect(notice.textContent ?? '').toContain('Favourite the meals you want again');
+
+    // The control, present in this very render: an empty list is page content, not an arrival, and
+    // Explore re-renders `EmptyState` on every keystroke.
+    expect(view.must('saved-custom-empty').getAttribute('role')).not.toBe('alert');
+  });
+
+  it('announces the recipe-list reset too, and not the bound refusal beside it', async () => {
+    const reset = await renderSaved({
+      client: catalogClient([]).client,
+      raw: {
+        [STORAGE_KEYS.customMeals]: encodeEnvelope(STORAGE_SCHEMA_VERSION, [{ nope: true }], NOW),
+      },
+    });
+
+    const notice = reset.must('saved-custom-recovered');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.textContent ?? '').toContain('Your own recipes were reset');
+
+    /**
+     * The other half of the pair, and no single rule satisfies both. `saved-custom-full` is drawn
+     * for as long as the user is at the bound, so it is present on every visit to Saved: an alert
+     * there would interrupt without reporting an arrival. Marking every `StatusMessage` fails here;
+     * marking none fails above.
+     */
+    const full = await renderSaved({
+      client: catalogClient([]).client,
+      custom: recipes(MAX_CUSTOM_MEALS),
+    });
+    const bound = full.must('saved-custom-full');
+    expect(bound.getAttribute('role')).not.toBe('alert');
+    // `'off'`, not absent, and that is the library rather than the component: `StatusMessage`
+    // passes `accessibilityLiveRegion="none"` when it is not announcing, and react-native-web
+    // 0.21.2 rewrites `'none'` to `'off'` on its way to `aria-live`
+    // (`dist/modules/createDOMProps/index.js:460-462`). Asserted as measured, because the first
+    // draft of this line expected `null` and reddened - which is the mapping four comments in
+    // this repository claimed does not exist.
+    expect(bound.getAttribute('aria-live')).toBe('off');
+  });
+
+  it('announces both unreadable-key warnings, which are the two that cost data', async () => {
+    /**
+     * `multiGet` refuses, so `hydrateStorage` marks every key `unavailable` and `createStore`
+     * writes over none of them (TSD 6.3) - silently, because `saveError` stays null. A user who
+     * cannot see these two panels writes a recipe, watches it appear, and loses it at the next
+     * launch with nothing having said so. This is the pair the announcement exists for.
+     */
+    const view = await renderSaved({ client: catalogClient([]).client, failDriver: 'multiGet' });
+
+    const favorites = view.must('saved-favorites-unavailable');
+    const custom = view.must('saved-custom-unavailable');
+    expect(favorites.getAttribute('role')).toBe('alert');
+    expect(custom.getAttribute('role')).toBe('alert');
+    expect(favorites.textContent ?? '').toContain('will not be remembered');
+    expect(custom.textContent ?? '').toContain('will not be kept');
+  });
+
+  it('does not re-announce when the `section` param swaps the two sections', async () => {
+    /**
+     * **The sibling of the test below, and the one the suite was missing.**
+     *
+     * `section` chooses which of the two sections renders first, so changing it puts a different
+     * component TYPE at each of two sibling positions. React reconciles siblings by index unless
+     * they are keyed — so without a `key` on each, both sections unmount and remount, and since
+     * P23 both carry `role="alert"` notices. A remount **re-speaks** them: a screen-reader user
+     * who switches section is interrupted to be told again about a recovery they already heard.
+     *
+     * Measured before the keys existed: removing both left this file at **41 passed**, unchanged.
+     * The property was real, the fix was one word per element, and nothing in 41 tests could see
+     * it — so this assertion is the whole of the evidence for it.
+     *
+     * The identity check is on the NODE, not on its text: `toBe` on the same `HTMLElement` is what
+     * distinguishes "still there" from "torn down and rebuilt looking identical", and only the
+     * second one speaks.
+     */
+    const view = await renderSaved({
+      client: catalogClient(CATALOG).client,
+      params: { section: 'favorites' },
+      raw: { [STORAGE_KEYS.favorites]: encodeEnvelope(STORAGE_SCHEMA_VERSION, ['ok', 42], NOW) },
+    });
+    const before = view.must('saved-favorites-recovered');
+    expect(view.sectionOrder()).toStrictEqual(['saved-favorites', 'saved-custom']);
+
+    await view.rerenderWith({ section: 'custom' });
+
+    // The swap really happened, or the identity claim is about nothing — the same trap the test
+    // below names, and the reason `sectionOrder` is asserted on both sides.
+    expect(view.sectionOrder()).toStrictEqual(['saved-custom', 'saved-favorites']);
+    expect(view.must('saved-favorites-recovered')).toBe(before);
+  });
+
+  it('does not re-announce when the section re-renders around it', async () => {
+    /**
+     * Plan 2793 - "moved deliberately, never on every blur" - applied to speech. `role="alert"` is
+     * re-spoken every time the node is inserted, so a notice that remounts on an unrelated change
+     * interrupts the user on each one, which is worse than silence. Favouriting a meal re-renders
+     * the whole section; the notice has to be the SAME DOM node afterwards. A per-render `key`, or
+     * this notice moved inside a subtree that remounts, fails here.
+     */
+    const view = await renderSaved({
+      client: catalogClient(CATALOG).client,
+      raw: { [STORAGE_KEYS.favorites]: encodeEnvelope(STORAGE_SCHEMA_VERSION, ['ok', 42], NOW) },
+    });
+    const before = view.must('saved-favorites-recovered');
+
+    await view.favorite(catalogMeal(0).id);
+
+    // The re-render really happened, or "it did not re-announce" is a claim about nothing.
+    expect(view.favoriteIds()).toContain(catalogMeal(0).id);
+    expect(view.must('saved-favorites-recovered')).toBe(before);
   });
 });

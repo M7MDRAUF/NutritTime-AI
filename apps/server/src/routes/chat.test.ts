@@ -14,7 +14,7 @@ import type { AiLane } from '../aiLane.js';
 import { buildCatalog } from '../catalog.js';
 import type { Catalog } from '../catalog.js';
 import { loadConfig } from '../config.js';
-import { INTERNAL_ERROR_BODY, isApiError } from '../errors.js';
+import { ApiError, INTERNAL_ERROR_BODY, isApiError } from '../errors.js';
 import { chatRouter } from './chat.js';
 
 /**
@@ -353,6 +353,96 @@ describe('step 5 - phrasing, and citations resolved by id', () => {
       source: 'gemma',
     });
     expect(stub.calls()).toBe(1);
+  });
+
+  it('answers 503 for a resolved answer the model left uncited, with no answer text (PRD 7.3)', async () => {
+    /**
+     * **The gap this closes, and why four checks could not.**
+     *
+     * PRD 7.3: "Show the meals the answer drew on as citations." An empty `citedMealIds` passes
+     * every one of TSD 5.7's four checks - check 1 asks whether any cited id is OUTSIDE the
+     * prompt's ids, and an empty list has no id outside anything. It passes **vacuously**, which
+     * is the same shape T-19-09's acceptance called out for figures ("an empty permitted set
+     * forbids every figure; it does not skip the check"). That warning was heeded on the figure
+     * axis and missed on this one.
+     *
+     * The answer text here is the good reply's, **unchanged** - so this test and the one above
+     * differ in exactly one field. A route that ignored `citedMealIds` would fail one of them.
+     *
+     * `AI_FAKE` cannot reach this: its echo carries `resolved.citedMealIds` by construction. Only
+     * a stub - or a real model - produces it, which is why nine phases of `AI_FAKE` evidence were
+     * consistent with the defect. Found at P24 by reading the route, not by running it.
+     */
+    const stub = replyingProvider({ ...goodReply, citedMealIds: [] });
+    const harnessed = harness({ provider: stub.provider });
+    const response = await ask(harnessed, CHEAPEST_QUESTION);
+
+    expect(response.status).toBe(503);
+    expect(response.body).toStrictEqual(new ApiError('ai_unavailable').toBody());
+
+    // No answer text on a 503, the property the whole 503 family is asserted on (TSD 3.5).
+    expect(JSON.stringify(response.body)).not.toContain(CHEAPEST.name);
+    expect(JSON.stringify(response.body)).not.toContain('2.50');
+
+    // The provider WAS asked - this is a discard, not a path that skipped the model - and the
+    // log says `contained`, because that is what happened to the reply.
+    expect(stub.calls()).toBe(1);
+    expect(harnessed.lines.map((line) => JSON.parse(line))).toStrictEqual([
+      expectedAiLine('contained'),
+    ]);
+  });
+
+  it('still answers 503 when the uncited reply ALSO claims it did not answer (PRD 7.3)', async () => {
+    /**
+     * **The test that makes the guard's SHAPE load-bearing, and a probe is why it exists.**
+     *
+     * The guard reads `resolved.namedMeals` - our data, computed before the model was reachable.
+     * Rewriting it to read `reply.answered` instead changed **nothing**: a load-time probe swapped
+     * the condition for `citations.length === 0 && reply.answered` and all 45 tests passed. The
+     * guard's *effect* was pinned; its *shape* was not.
+     *
+     * This is the discriminating case. `{ answered: false, citedMealIds: [] }` is a reply that
+     * cites nothing AND disclaims itself. Keyed on our data it is discarded, because the domain
+     * resolved an answer from real meals and the reply shows none of them. Keyed on the model's
+     * flag it would be a **200 carrying the model's prose with no citations at all** - the model
+     * turning containment off by setting a boolean, which is precisely what `containReply`'s
+     * docstring refuses to allow ("making any check conditional on a boolean the model controls
+     * would hand the model a switch for turning containment off").
+     *
+     * Note this does not contradict "does not let the model decide that the question was
+     * answered" below: there the reply cites a meal, so it is usable and `answered` is ignored in
+     * favour of the domain's verdict. Here nothing is citable, so there is nothing to show.
+     */
+    const stub = replyingProvider({ ...goodReply, answered: false, citedMealIds: [] });
+    const harnessed = harness({ provider: stub.provider });
+    const response = await ask(harnessed, CHEAPEST_QUESTION);
+
+    expect(response.status).toBe(503);
+    expect(JSON.stringify(response.body)).not.toContain(CHEAPEST.name);
+    expect(harnessed.lines.map((line) => JSON.parse(line))).toStrictEqual([
+      expectedAiLine('contained'),
+    ]);
+  });
+
+  it('keeps a 200 when the model cites one of several named meals', async () => {
+    /**
+     * The control for the test above, and it is a **partial** citation on purpose.
+     *
+     * The guard is "no citations at all", not "a citation for every named meal". `rank these by
+     * price` puts all three meals in `namedMeals`; citing one is a model phrasing an ordering
+     * while pointing at a single row, which PRD 7.3 permits - it shows a meal the answer drew on.
+     * Without this control, tightening the guard to require a citation per named meal would look
+     * like an improvement and would 503 a correct reply.
+     */
+    const stub = replyingProvider({
+      answered: true,
+      answer: `${CHEAPEST.name} is first.`,
+      citedMealIds: [CHEAPEST.id],
+    });
+    const response = await ask(harness({ provider: stub.provider }), ORDER_QUESTION);
+
+    expect(response.status).toBe(200);
+    expect(response.body.citations).toEqual([{ mealId: CHEAPEST.id, name: CHEAPEST.name }]);
   });
 
   it('ignores a meal NAMED in the answer text but not cited by id (T-21-03)', async () => {

@@ -1,10 +1,11 @@
-import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { enterApp } from '../support/appPhase.js';
+import { expect, test } from '../support/fixtures.js';
 import {
   ASSISTANT_PAINT_MS,
   askQuestion,
   expectNothingPending,
+  expectRetrievalGap,
+  formatCents,
   openAssistant,
 } from '../support/assistant.js';
 
@@ -24,12 +25,12 @@ import {
  *
  *  1. **It is the RIGHT meal.** The superlative is resolved over `scope.eligible` — the user's
  *     whole eligible set — and not over the five retrieved `scope.context` meals (TSD §4.9's scope
- *     rule). **The two give different answers for the question below, and the gap was measured
- *     rather than assumed**: this question matches no meal lexically, so retrieval falls through to
- *     TSD §4.8's step 7 and `context` is the first five of the catalog, whose cheapest costs $6.50
- *     — while the cheapest of the 60 eligible meals costs $2.50. So asserting *which* meal is cited
- *     **is** the scope-rule control. A spec that only counted citations would pass against a server
- *     that answered "the cheapest meal is X" about a set the user did not ask about — a sentence
+ *     rule). **The two give different answers for the question below, and that gap is DERIVED ON
+ *     EVERY RUN rather than measured once into a comment** — `expectRetrievalGap`. P21 recorded
+ *     $6.50 against $2.50 and was right; a figure in a comment is true on the day it is written,
+ *     and this one is load-bearing for the whole containment design. So asserting *which* meal is
+ *     cited **is** the scope-rule control: a spec that only counted citations would pass against a
+ *     server answering "the cheapest meal is X" about a set the user did not ask about — a sentence
  *     that reads as true and is false.
  *  2. **It is reachable.** `NAVIGATION_ORIGINS` includes `'assistant'` for this screen and nothing
  *     else, so a citation is a link by design. A citation that cannot be followed is a decoration,
@@ -98,20 +99,6 @@ async function readCatalog(page: Page): Promise<readonly CatalogMeal[]> {
   return all;
 }
 
-/**
- * `1010` as `"$10.10"` — `formatMoney`'s output, hand-transcribed.
- *
- * Transcribed rather than imported, and the tsconfig is what makes that a rule rather than a
- * preference: `e2e/tsconfig.json` deliberately resolves no `@nutritime/*` path, because "a spec
- * that imported the domain could assert against the same code it is supposed to be checking from
- * the outside". So the format a user reads is stated here, and a drift in either direction fails.
- */
-function formatCents(amountCents: number): string {
-  const dollars = Math.trunc(amountCents / 100);
-  const cents = amountCents % 100;
-  return `$${String(dollars)}.${String(cents).padStart(2, '0')}`;
-}
-
 interface Superlative {
   /** Every meal tied for the lowest price. All of them are cited; `citedMealIds` is the winners. */
   readonly winners: readonly CatalogMeal[];
@@ -122,7 +109,7 @@ interface Superlative {
 /**
  * The cheapest eligible meal, derived from the catalog under the rules the documents fix.
  *
- * **Eligibility is TSD §4.8 steps 1–3**, and with the profile `enterApp` seeds each of the three
+ * **Eligibility is TSD §4.8 steps 1–3**, and with the profile the `app` fixture seeds each of the
  * collapses to something this function can state: no declared allergy, so step 1 rejects nothing;
  * `diet: 'regular'`, whose accepted-tag list is empty and therefore admits every meal (TSD §4.5),
  * so step 2 rejects nothing; and `available` is the whole of step 3. Step 4 demotes rather than
@@ -177,18 +164,30 @@ async function storedPreferences(page: Page): Promise<Readonly<Record<string, un
 
 test.describe('the assistant answers a superlative, and its citations go somewhere', () => {
   test('the cheapest eligible meal is the answer, is the citation, and the citation opens it', async ({
+    app,
     page,
   }) => {
     const catalog = await readCatalog(page);
     const { winners, runnerUp } = cheapestEligible(catalog);
 
-    await enterApp(page);
+    // **R-21, re-derived on this run.** Everything below is evidence for the containment design
+    // only while the winner is outside the retrieved five; `expectRetrievalGap` asserts that and
+    // the two premises it rests on.
+    const context = await expectRetrievalGap(
+      page,
+      API,
+      SUPERLATIVE,
+      catalog.map((meal) => meal.id),
+      winners.map((meal) => meal.id),
+    );
+
+    await app();
 
     /**
      * **The profile the derivation above assumes, read off the device.**
      *
      * `cheapestEligible` reduces TSD §4.8's three filters to "available" only because this exact
-     * profile makes the other two vacuous. If `enterApp` ever seeds an allergy or a narrower diet,
+     * profile makes the other two vacuous. If `appPhase.ts` ever seeds an allergy or a narrower diet,
      * that reduction becomes wrong and the expected winner becomes a different meal — and this
      * spec would then fail on the answer with no hint that its own arithmetic was the problem.
      * These four lines are what turn that into a failure that says so.
@@ -240,8 +239,21 @@ test.describe('the assistant answers a superlative, and its citations go somewhe
      * would have been discarded rather than shown — and asserting the one it did resolve is what
      * makes "the domain decided and the model only phrased it" observable from outside.
      *
-     * The runner-up's absence is the half that fails if the superlative were resolved over the
-     * five retrieved meals instead of the eligible set.
+     * **The runner-up's absence is NOT the scope-rule control**, and this comment used to say it
+     * was. Measured at P24 by resolving over `scope.context` in the server's module graph: the
+     * reply becomes _"Fruit and Cream Cheese Breakfast Pastries has the lowest price, at $6.50."_,
+     * which never names the runner-up — so that assertion **passed** under the exact mutation it
+     * claimed to catch, and `toContainText(winner.name)` is what reddened. The runner-up's absence
+     * is the control for an answer naming more than it resolved; the control for the wrong SCOPE is
+     * `context.cheapest.name`, asserted after it.
+     *
+     * **Two of these four are fake-dependent** (BRIEF §7.4). The **absences** are contract-backed:
+     * a catalog name outside `namedMeals` is in `forbiddenMealNames`, so check 4 discards such a
+     * reply and the request 503s. The **presences** are not — nothing obliges a model to spell the
+     * name or the figure, and they hold because `AI_FAKE` echoes `resolved.statement` verbatim.
+     * Kept, because under the fake they are the only proof the sentence is the domain's; Plan
+     * §19.6's manual `gemma3:4b` check should expect these two, and only these two, to need
+     * re-reading. Recorded at P24.
      */
     for (const winner of winners) {
       await expect(answer, 'the cheapest eligible meal must be the one named').toContainText(
@@ -257,12 +269,24 @@ test.describe('the assistant answers a superlative, and its citations go somewhe
       answer,
       `${runnerUp.name} is not the cheapest, so an answer that names it is answering about the wrong set`,
     ).not.toContainText(runnerUp.name);
+    await expect(
+      answer,
+      `${context.cheapest.name} is only the cheapest of the five RETRIEVED meals, so an answer naming it was resolved over context instead of eligible`,
+    ).not.toContainText(context.cheapest.name);
 
     /**
      * **The citations are exactly the winners.** Not "at least one", and not "a subset": the route
      * resolves them from `namedMeals` by id, which for a superlative is the tie set, so a sixth
      * citation or a missing one is a real divergence. An id set comparison also catches a citation
      * parsed out of the answer text (T-21-03), which would bring along whatever the prose named.
+     *
+     * **Fake-dependent too, and this is the sharper case.** `citationsFor` filters `namedMeals` by
+     * the reply's `citedMealIds`, and check 1 rejects only ids the prompt did NOT carry — an
+     * **empty** `citedMealIds` passes every check. A real model that cites nothing would yield 200,
+     * `answered: true` and no citation block, reddening this with no defect in the app; `AI_FAKE`
+     * echoes `resolved.citedMealIds`, which is why it is green. Reported at P24 as a finding about
+     * `chat.ts` rather than worked around here: whether a resolved answer may carry no citations is
+     * a question for PRD §7.3 ("Show the meals the answer drew on as citations").
      */
     const citations = page.getByTestId('assistant-turn-1-citations');
     await expect(citations).toBeVisible();

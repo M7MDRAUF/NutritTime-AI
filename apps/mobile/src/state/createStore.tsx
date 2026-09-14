@@ -169,10 +169,15 @@ export function createStore<K extends StorageKeyName, S, A extends { readonly ty
              * It read `error instanceof Error ? error.message : …`, defended by a comment saying
              * the message was "the repository's own, fixed and local by construction". That is
              * true of every `StorageWriteError` — they are built from a fixed table — and it was
-             * not true of every throw that can arrive here: `repository.set` runs
-             * `definition.bound(value)` **outside** its `try`, so a throwing `bound` propagates
+             * not true of every throw that could arrive here: `repository.set` then ran
+             * `definition.bound(value)` **outside** its `try`, so a throwing `bound` propagated
              * its own message straight to this line and onto the screen. A driver or library
              * string can quote the payload, and the payload here is a name and an allergy list.
+             *
+             * `repository.set` has since brought `bound` inside the try (R-60), so that particular
+             * escape hatch is closed at the source. **The gate stays, because it is not the only
+             * one:** anything the DRIVER throws still arrives here, and on the web export that is a
+             * `DOMException` whose message names the origin's quota — measured at P22 (T-22-06).
              *
              * So the type is the gate now, not `instanceof Error`. Anything else gets the fixed
              * local sentence, and the diagnosis stays in `reason`.

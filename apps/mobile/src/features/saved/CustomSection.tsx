@@ -16,6 +16,17 @@
  *  - **`atBound`** — TSD §6.4 makes bounds refusals, and the `customMeals` reducer refuses the 201st
  *    by returning `state` identically, which is silent to the caller. So the create affordance is
  *    replaced by a message with no action at all.
+ *
+ * **Both of those notices announce themselves (`announceOnMount`); the bound refusal below them
+ * does not.** `entryStatus` is read off the boot hydration snapshot, which `StorageProvider` builds
+ * once and never updates, so neither branch can appear or disappear from a state change: each
+ * mounts with the section, and `StatusMessage`'s `role="alert"` is spoken on that insertion rather
+ * than on every render. `saved-custom-full` is left silent on purpose - it is drawn whenever the
+ * section is drawn for a user at the bound, so announcing it would interrupt on every visit to
+ * Saved and report nothing that arrived. One caveat, recorded rather than papered over:
+ * `SavedScreen` renders this section and `FavoritesSection` at two sibling positions whose order
+ * the `section` route param chooses, with no `key`, so a URL that changes `section` remounts both
+ * and re-announces.
  */
 
 import type { ReactNode } from 'react';
@@ -66,6 +77,7 @@ export function CustomSection({
           title="Your own recipes were reset"
           description="The saved list of recipes you wrote could not be read, so it is empty. Anything you had written down will have to be entered again."
           stillAvailable="Your favourite meals are stored separately and are unaffected."
+          announceOnMount
         />
       ) : null}
 
@@ -85,6 +97,7 @@ export function CustomSection({
           title="Your recipes could not be read"
           description="This list is not empty — it could not be loaded, so nothing is shown. A recipe you add now will not be kept after you close the app. Reopen the app before writing anything you want to keep."
           stillAvailable="Your favourite meals, browsing and search are unaffected, and no recipe has been deleted."
+          announceOnMount
         />
       ) : null}
 

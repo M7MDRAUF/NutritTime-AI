@@ -193,9 +193,20 @@ export function FormField({
 
       {error === undefined ? null : (
         <View
-          // `role="alert"` is Plan 14.2's adopted guideline for an error. Both live-region
-          // spellings alongside it: Android reads `accessibilityLiveRegion`, the web export and
-          // this suite read `aria-live`, and react-native-web 0.21 maps neither from the other.
+          /*
+            `role="alert"` is Plan 14.2's adopted guideline for an error, and it is the load-bearing
+            half: an alert's INSERTION is the announcement, which is the event a field error is.
+
+            Both live-region spellings sit alongside it because Android reads
+            `accessibilityLiveRegion` and `aria-live` is a no-op there. **The old note claimed
+            "react-native-web 0.21 maps neither from the other", and that is false** — verified in
+            the shipped source at the pinned 0.21.2,
+            `dist/modules/createDOMProps/index.js:460-462`:
+            `_ariaLive = ariaLive != null ? ariaLive : accessibilityLiveRegion`, with `'none'`
+            rewritten to `'off'`. On the web export the RN spelling alone would have produced the
+            attribute; the explicit `aria-live` just wins the `!=` test. Recorded because the wrong
+            version of this sentence was copied into three files and is why nobody re-read it.
+          */
           accessibilityRole="alert"
           accessibilityLiveRegion="assertive"
           aria-live="assertive"

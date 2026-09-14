@@ -41,6 +41,22 @@ function imageBox(card: HTMLElement): HTMLElement {
   throw new Error('no image box rendered');
 }
 
+/**
+ * The layer react-native-web actually paints the photograph on.
+ *
+ * Not an `<img>`: RNW 0.21.2 renders the picture as a CSS `background-image` on a `<div>` and puts
+ * one visually-hidden `<img>` beside it for the browser's image context menu. Both carry the URL,
+ * so both are asserted below — a rewrite applied to one and not the other would otherwise pass.
+ */
+function paintedLayer(card: HTMLElement): HTMLElement | null {
+  for (const node of imageBox(card).querySelectorAll('*')) {
+    if (node instanceof HTMLElement && node.style.backgroundImage !== '') {
+      return node;
+    }
+  }
+  return null;
+}
+
 /** The band the name sits on: the one element filled with `card.imageScrim`. */
 function scrimBand(card: HTMLElement, scrim: string): HTMLElement {
   for (const node of imageBox(card).querySelectorAll('*')) {
@@ -121,6 +137,46 @@ describe('MealCard', () => {
     // brighter than white, and `card.skeleton` is.
     const card = element(render(cardNode()), 'm');
     expect(imageBox(card).style.backgroundColor).toBe(asRendered(light.card.skeleton));
+  });
+
+  it('asks the browser for the exact URL it was handed, with nothing appended', () => {
+    // T-22-08. The host is not ours: every `imageUrl` in the catalog is a `www.themealdb.com` URL
+    // and TSD §7.1 keeps it as provenance, so this component may not trade a photograph's identity
+    // for its weight. TheMealDB does document size suffixes on these URLs, which makes a "serve a
+    // smaller file to a 320 px screen" edit here an easy and wrong one: it would change what
+    // `provenance.sourceUrl` refers to, and nothing in this suite would have noticed.
+    const card = element(render(cardNode()), 'm');
+
+    const photograph = card.querySelector('img');
+    expect(photograph?.getAttribute('src')).toBe(IMAGE);
+    expect(paintedLayer(card)?.style.backgroundImage).toBe(`url("${IMAGE}")`);
+    // Stated rather than derived from the fixture, so a fixture edited to a different host does
+    // not quietly relax the claim (BRIEF §6.1g).
+    expect(IMAGE.startsWith('https://www.themealdb.com/images/media/meals/')).toBe(true);
+  });
+
+  it('reserves the image box before any byte arrives, and reserves the same one when there is none', () => {
+    // T-22-08 / Plan §20: "images lazy-loaded WITH PLACEHOLDERS". The placeholder is the half of
+    // that row this component owns, and it is a layout claim, not a decoration one: a box that
+    // takes its height from the photograph reflows every card below it as the photographs land,
+    // which on a phone is worse than loading them eagerly. So the box is asserted to be the same
+    // box in both states, and the pair is what makes it discriminating — no single constant
+    // satisfies "a photograph is requested when there is a URL" AND "none is when there is not".
+    const withNone = element(render(cardNode({ imageUrl: null })), 'm');
+    const withOne = element(render(cardNode()), 'm');
+
+    expect(imageBox(withNone).style.aspectRatio).toBe('1 / 1');
+    expect(imageBox(withNone).style.backgroundColor).toBe(asRendered(light.card.skeleton));
+    expect(imageBox(withOne).style.aspectRatio).toBe(imageBox(withNone).style.aspectRatio);
+    expect(imageBox(withOne).style.backgroundColor).toBe(imageBox(withNone).style.backgroundColor);
+
+    // And the no-URL branch issues no request at all, rather than one for the empty string: the
+    // skeleton fill IS the no-image state. This is the branch `MealCardProps.imageUrl` was widened
+    // to `string | null` for, and until T-22-08 nothing executed it.
+    expect(withNone.querySelector('img')).toBeNull();
+    expect(paintedLayer(withNone)).toBeNull();
+    expect(withOne.querySelector('img')).not.toBeNull();
+    expect(paintedLayer(withOne)).not.toBeNull();
   });
 
   it('crops nothing: the image box is the shape of the source', () => {

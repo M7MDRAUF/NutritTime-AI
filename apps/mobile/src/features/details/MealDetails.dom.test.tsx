@@ -8,6 +8,10 @@ import { mealSchema } from '@nutritime/contracts';
 import type { Meal } from '@nutritime/contracts';
 import { conflictingAllergens, effectiveAllergenTags, formatMoney } from '@nutritime/domain';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider.js';
+import { buildComponentTokens, lightColors } from '../../shared/theme/index.js';
+// `asRendered` only — this file has its own render harness. Borrowed rather than re-derived so a
+// token's authored value and a rendered one compare through one parser (see its own docstring).
+import { asRendered } from '../../shared/components/testHarness.js';
 import { ApiProvider } from '../../infrastructure/api/ApiProvider.js';
 import { StorageProvider } from '../../state/StorageProvider.js';
 import { NUTRITION_UNAVAILABLE } from '../../shared/components/index.js';
@@ -676,6 +680,23 @@ describe('MealDetailsScreen — FR-011 fields (T-16-02)', () => {
     expect(trace).not.toContain('Divided by');
   });
 
+  it('reserves the photograph box before the bytes arrive (T-22-08)', async () => {
+    // Plan §20: "images lazy-loaded WITH PLACEHOLDERS". The placeholder half is a LAYOUT claim,
+    // and it is the half that matters most on this screen: the allergen notice and the name sit
+    // above the photograph, and a box that took its height from the image would push the
+    // description and the method down the instant the bytes landed. So the aspect ratio is fixed
+    // and the fill is `card.skeleton`, which is also what keeps TSD §7.2's "a broken image changes
+    // no decision" true here. Nothing asserted either until T-22-08, so a regression that dropped
+    // them would have reflowed the screen with the whole suite green.
+    const view = await render({ meal: PEANUT_MEAL });
+    const box = view.at('meal-details-image');
+
+    expect(box.style.aspectRatio).toBe('1 / 1');
+    expect(box.style.backgroundColor).toBe(
+      asRendered(buildComponentTokens(lightColors).card.skeleton),
+    );
+  });
+
   it('says so rather than showing a broken box when a meal has no photograph', async () => {
     const view = await render({ meal: { ...CLEAN_MEAL, imageUrl: null } });
     expect(view.find('meal-details-image')).toBeNull();
@@ -908,5 +929,71 @@ describe('MealDetailsScreen — dismiss and origin (T-16-07)', () => {
   it('requests the id from the params, read rather than trusted', async () => {
     const view = await render({ meal: CLEAN_MEAL, params: { mealId: CLEAN_MEAL.id } });
     expect(view.requests).toStrictEqual([CLEAN_MEAL.id]);
+  });
+});
+describe('MealDetailsScreen - the notices a screen reader has to hear (T-23-05)', () => {
+  /**
+   * Same claim as the Saved suite's block of this name, and the same shape of evidence: the role
+   * and the announced words are read off ONE element, and every announced surface is paired with a
+   * present-but-silent one so that neither "mark everything" nor "mark nothing" passes.
+   *
+   * `meal-details-allergen-conflict` and `meal-details-allergies-unknown` (`MealDetailsBody.tsx`)
+   * already announced and are asserted above. These two did not.
+   */
+  it('announces the favourites reset on the element that carries the words', async () => {
+    const view = await render({ meal: CLEAN_MEAL, rawFavorites: storedEnvelope(['ok', 42]) });
+
+    const notice = view.at('meal-details-favorites-recovered');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    expect(notice.textContent ?? '').toContain('Your saved favourites were reset');
+
+    // The control, in the same render: the heart's state is a caption read in document order, not
+    // an arrival, and announcing it would speak on every toggle.
+    expect(view.at('meal-details-favorite-state').getAttribute('role')).not.toBe('alert');
+  });
+
+  it('announces a write the device refused, and leaves the bound refusal silent', async () => {
+    /**
+     * **The one notice on this screen that arrives from the user's own tap.** The heart is already
+     * drawn as saved by the time the write is turned down, so nothing else reports the refusal -
+     * which makes this the surface where silence costs a sighted user nothing and a blind user the
+     * whole fact.
+     */
+    const view = await render({ meal: CLEAN_MEAL, failWrites: true });
+    await view.press('meal-details-favorite');
+
+    const error = view.at('meal-details-favorites-save-error');
+    expect(error.getAttribute('role')).toBe('alert');
+    expect(error.getAttribute('aria-live')).toBe('polite');
+    expect(error.textContent ?? '').toContain('could not be saved');
+    // Nothing off the driver reaches the announcement either (PRD 12).
+    expect(error.textContent ?? '').not.toContain('driver refused');
+
+    /**
+     * The other half of the pair. `meal-details-favorites-full` is drawn for every meal a user at
+     * the bound opens, so an alert would interrupt on each one and report nothing that arrived.
+     * `find` is host-scoped in this harness, so a second render in one `it` cannot be read by the
+     * queries above.
+     */
+    const full = await render({ meal: CLEAN_MEAL, favorites: favoriteIds(MAX_FAVORITES) });
+    const bound = full.at('meal-details-favorites-full');
+    expect(bound.getAttribute('role')).not.toBe('alert');
+    // `'off'` rather than absent: `StatusMessage` passes `accessibilityLiveRegion="none"` when it
+    // is silent and react-native-web 0.21.2 rewrites `'none'` to `'off'`. See the Saved suite's
+    // note at the same assertion.
+    expect(bound.getAttribute('aria-live')).toBe('off');
+  });
+
+  it('does not re-announce the reset when something unrelated re-renders the screen', async () => {
+    // A declared allergy has nothing to do with the favourites key. The notice must survive the
+    // re-render as the same node, or a screen reader hears the reset again on every edit.
+    const view = await render({ meal: CLEAN_MEAL, rawFavorites: storedEnvelope(['ok', 42]) });
+    const before = view.at('meal-details-favorites-recovered');
+
+    await view.setAllergies(['peanut']);
+
+    // The re-render really happened: the allergen warning for this meal is a function of it.
+    expect(view.at('meal-details-favorites-recovered')).toBe(before);
   });
 });

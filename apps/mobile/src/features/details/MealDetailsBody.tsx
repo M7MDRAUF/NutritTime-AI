@@ -164,8 +164,12 @@ export function MealDetailsBody({ meal }: MealDetailsBodyProps): ReactNode {
         <Image
           testID="meal-details-image"
           source={{ uri: meal.imageUrl }}
-          // Floored with `card.skeleton` like `MealCard`'s box: TSD §7.2 says a broken image
-          // changes no decision the app makes, and this is what that costs to be true.
+          // Floored with `card.skeleton` like `MealCard`'s box, and given a fixed aspect ratio for
+          // the same reason: TSD §7.2 says a broken image changes no decision the app makes, and
+          // this is what that costs to be true. It is also Plan §20's placeholder — the box is
+          // reserved before the bytes arrive, so the description and the method below do not move
+          // when they land. There is no `loading="lazy"` to pair with it; `MealCard.tsx` records
+          // what react-native-web 0.21.2 actually renders and why no element here could carry one.
           style={{
             alignSelf: 'stretch',
             aspectRatio: 1,

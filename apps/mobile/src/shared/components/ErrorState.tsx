@@ -64,8 +64,21 @@ export function ErrorState({
     <View
       testID={testID}
       accessibilityRole="alert"
-      // Both spellings: `accessibilityLiveRegion` is what Android reads, `aria-live` is what the
-      // web export and this suite read, and react-native-web 0.21 maps neither from the other.
+      /*
+        Both spellings, and the reason is NOT the one recorded here before.
+
+        The old note said "react-native-web 0.21 maps neither from the other". **It does.** Read
+        from the shipped source at the pinned version — `react-native-web` 0.21.2,
+        `dist/modules/createDOMProps/index.js:460-462`, matching `src/…:489-491`:
+        `_ariaLive = ariaLive != null ? ariaLive : accessibilityLiveRegion`, then
+        `domProps['aria-live'] = _ariaLive === 'none' ? 'off' : _ariaLive`. So on the web export
+        `accessibilityLiveRegion` alone would have produced `aria-live="assertive"` by itself.
+
+        Both are set because the two platforms read different props and neither maps to the other
+        on NATIVE: `accessibilityLiveRegion` is the Android API, `aria-live` is a no-op there, and
+        on the web the explicit `aria-live` simply wins the `!=` test above. The deprecation
+        `warnOnce` for the RN spelling is commented out in 0.21.2, so setting both is silent.
+      */
       accessibilityLiveRegion="assertive"
       aria-live="assertive"
       style={{

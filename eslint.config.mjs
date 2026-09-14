@@ -319,6 +319,25 @@ export default tseslint.config(
   // Node globals are declared rather than assumed, and `console.log` is allowed by RESTATING the
   // rule without that one clause. `'off'` would drop `console.debug` and `console.trace` with it,
   // which is the mistake P01 recorded and this file has now avoided four times.
+  // `scripts/dev.mjs` is the same shape as `e2e/serveExport.mjs` below and is here for the same
+  // reason: a hand-run Node tool at the repository root, outside every tsconfig `include`, whose
+  // entire interface is its console output. It exists because `npm run dev`'s `&` is SEQUENTIAL
+  // under Windows `cmd.exe`, so SDD §2.3's documented one-command procedure did not hold on this
+  // project's own platform (measured at P26: 2598 ms, strictly ordered).
+  //
+  // `no-console` is RESTATED minus the allowed methods rather than switched off — the fifth time
+  // this file has done that deliberately, because P01 learned that `'off'` silently drops
+  // `console.debug` and `console.trace` along with the clause you meant to relax.
+  {
+    files: ['scripts/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
+    rules: {
+      'no-console': ['error', { allow: ['log', 'warn', 'error'] }],
+    },
+  },
+
   {
     files: ['e2e/serveExport.mjs'],
     languageOptions: {

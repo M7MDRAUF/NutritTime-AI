@@ -24,7 +24,26 @@ import { INGREDIENT_BINDINGS } from './ingredient-bindings.js';
 const datasetPath = process.env['USDA_DATASET_PATH'];
 const archiveAvailable = datasetPath !== undefined && datasetPath.trim() !== '';
 
-describe.skipIf(!archiveAvailable)('the real USDA archive', () => {
+/**
+ * R-59: a skip that moves the suite total without saying so is a gate nobody can trust.
+ *
+ * On a developer machine the archive is genuinely optional — TSD §7.4 keeps the derivation
+ * reproducible from the committed `nutrition-source.json` — and skipping is correct. Under CI its
+ * absence is a provisioning defect, so these 7 tests RUN and fail, each with
+ * `resolveUsdaDatasetPath`'s own message naming the variable, rather than silently subtracting 7
+ * from a total nobody remembers. Measured at P26: 7 skipped / exit 0 with the gate, 7 failed /
+ * exit 1 without it.
+ *
+ * `CI` is set by every runner including GitHub Actions, and `e2e/playwright.config.ts` already keys
+ * `reuseExistingServer` off the same variable, so this is not a new convention.
+ *
+ * **This is the half `.github/workflows/ci.yml` cannot cover.** A workflow can only make its own
+ * runs loud; this makes `npm run check` honest on any machine that calls itself CI, which is where
+ * TSD §2.4 says the gate lives.
+ */
+const underCi = (process.env['CI'] ?? '') !== '';
+
+describe.skipIf(!archiveAvailable && !underCi)('the real USDA archive', () => {
   // Lazy on purpose. `describe.skipIf` skips the TESTS, not the describe body, so reading the
   // archive here would throw during collection on a machine without it - which is exactly the
   // case the skip exists to handle. Memoised so the 15.7 MB parse still happens once.

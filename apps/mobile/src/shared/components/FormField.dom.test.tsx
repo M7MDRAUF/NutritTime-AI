@@ -141,8 +141,9 @@ describe('FormField', () => {
 
   it('announces the error as an alert, with a mark beside it', () => {
     // Plan 14.2's adopted guideline, and `component.ts` on `field.errorText`: "Paired with an
-    // icon, never colour alone." Both live-region spellings, because react-native-web 0.21 maps
-    // neither from the other.
+    // icon, never colour alone." Both live-region spellings, because the native platforms read
+    // only the RN one — react-native-web 0.21.2 maps it TO `aria-live`, as `FormField.tsx:202`
+    // now records against the shipped source.
     const container = render(
       <FormField testID="f" label="Meal name" value="" onChangeText={noop} error="Enter a name." />,
     );

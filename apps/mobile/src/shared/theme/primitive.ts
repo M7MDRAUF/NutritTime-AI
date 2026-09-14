@@ -190,8 +190,25 @@ export const stroke = {
  * (150-200ms ease)".
  *
  * `instant` exists so the reduced-motion path is a token swap rather than a conditional in every
- * animated component — PRD 10.5 and the generator's checklist both require honouring the OS
- * setting, and a rule that has to be re-implemented per component is a rule that gets missed.
+ * animated component — a rule that has to be re-implemented per component is a rule that gets
+ * missed.
+ *
+ * **The requirement is the generator's pre-delivery checklist**, which `Plan.md` records as
+ * *"Pre-delivery checklist (contrast, focus, **reduced motion**, no emoji icons, responsive
+ * breakpoints) | **Adopted** as a named gate item in every frontend phase"*, and which T-23-07
+ * re-requires by asking for it "run in full".
+ *
+ * **It is NOT PRD §10.5**, which this comment used to cite: §10.5's bullets cover roles and labels,
+ * touch targets and text scaling, and say nothing about motion. T-23-06's own Input column repeats
+ * that wrong citation. Recorded rather than corrected in the document, per the standing rule that a
+ * document is never edited to match code — but a comment may state the authority it actually has,
+ * and citing a section that does not carry the rule is how `PRD §15.5` reached 18 files.
+ *
+ * **Quoted rather than cited by line, deliberately.** This comment carried `Plan.md:748` and
+ * `Plan.md:2516` for one afternoon, during which both rows moved twice as register rows were
+ * inserted above them — two agents reported the numbers off by one, from two different true values.
+ * A line number into a living document is a citation that expires; the quoted text is greppable and
+ * does not.
  */
 export const duration = {
   instant: 0,

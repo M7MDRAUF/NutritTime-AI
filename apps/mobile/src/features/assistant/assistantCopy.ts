@@ -207,6 +207,22 @@ export const ASSISTANT_COPY = {
   },
 
   /** Validation, client-side, before anything is sent (T-21-05). */
+  /**
+   * PRD §10.1's second threshold, at 2 s: "an AI-progress message after 2 s".
+   *
+   * It lived in `AssistantTurnRow.tsx` when it was written and was moved here because it is a
+   * string a user reads, and the denied-claim sweep in this module's test is what stops one of
+   * those making a safety claim (R-70). A user-facing string outside that sweep is the gap R-70
+   * records, reopened one string at a time.
+   *
+   * It says what is happening and claims nothing about the result. `submitting` above names the
+   * retrieval, which is the work up to roughly 200 ms; this one names the model, which is honest
+   * only because a pending turn always means the model was asked — `useAssistant` refuses the
+   * request before `pending` is ever set when the user's AI switch is off. No digit, for the
+   * reason this module gives about all its strings.
+   */
+  aiProgress: 'Still waiting for the model to phrase an answer…',
+
   emptyQuestion: 'Type a question first.',
 } as const;
 

@@ -21,7 +21,7 @@
  * test would still be green.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
@@ -33,6 +33,7 @@ import type { MemoryDriver } from '../infrastructure/storage/__fixtures__/memory
 import { STORAGE_KEYS, STORAGE_SCHEMA_VERSION } from '../infrastructure/storage/definitions.js';
 import type { UiTab } from '../infrastructure/storage/definitions.js';
 import { RootNavigator } from './RootNavigator.js';
+import { linking } from './linking.js';
 import { TAB_ICONS } from './TabNavigator.js';
 import { GLYPH_NAMES } from '../shared/components/Icon.js';
 import { renderToDom } from './testHarness.js';
@@ -55,12 +56,23 @@ function driverWithLastTab(lastTab: UiTab | null): MemoryDriver {
   });
 }
 
-function App({ driver }: { readonly driver: MemoryDriver }): ReactNode {
+/**
+ * `withLinking` is off by default: the persistence claims are about the driver, not the URL. The
+ * history cases at the foot of this file turn it on, and then it is the REAL config, because
+ * `useLinking` reads `window.location` and writes back through `pushState`.
+ */
+function App({
+  driver,
+  withLinking = false,
+}: {
+  readonly driver: MemoryDriver;
+  readonly withLinking?: boolean;
+}): ReactNode {
   return (
     <ThemeProvider mode="light" deviceScheme="light" fontScale={1}>
       <StorageProvider runtime={{ driver, now: CLOCK }}>
         <uiStore.Provider>
-          <NavigationContainer>
+          <NavigationContainer linking={withLinking ? linking : undefined}>
             {/* `app`, because the tab bar exists only in that phase. */}
             <RootNavigator phase="app" />
           </NavigationContainer>
@@ -93,6 +105,35 @@ async function press(element: HTMLElement): Promise<void> {
     await Promise.resolve();
   });
   // A second flush: the dispatch re-renders, and the projection effect that writes runs after.
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+/**
+ * The browser's Back button, awaited on the EVENT rather than on a delay.
+ *
+ * jsdom queues the traversal, and a `setTimeout(0)` was not enough: the first version of these
+ * tests asserted before `popstate` had fired, then the traversal landed after the test finished
+ * and moved the *next* test's address bar. So the wait is the event itself, with a bounded race so
+ * a `popstate` that never arrives fails an assertion instead of hanging the file.
+ */
+async function goBack(): Promise<void> {
+  await act(async () => {
+    const popped = new Promise<void>((resolve) => {
+      window.addEventListener('popstate', () => {
+        resolve();
+      });
+    });
+    const gaveUp = new Promise<void>((resolve) => {
+      setTimeout(resolve, 500);
+    });
+    window.history.back();
+    await Promise.race([popped, gaveUp]);
+  });
+  // `useLinking`'s listener dispatches inside the event; the re-render and the projection effect
+  // that follows it need their own flush.
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -245,6 +286,105 @@ describe('lastTab', () => {
     // no-op" would be satisfied by a navigator that never wrote at all.
     expect(uiWrites(driver)).toBeGreaterThan(afterFirst);
     expect(storedLastTab(driver)).toBe('settings');
+    await view.unmount();
+  });
+});
+
+/** What a user would copy out of the address bar, in the form `useLinking` reads it back. */
+function addressBar(): string {
+  return window.location.pathname + window.location.search;
+}
+
+/**
+ * `backBehavior` seen from the address bar (T-22-04).
+ *
+ * **This belongs beside the persistence claims because it is the same wiring.** `TabNavigator` is
+ * the only component that reads `lastTab` and the only one that owns `backBehavior`, and the
+ * library default made the two interfere: a restored tab put TWO entries in the router's history
+ * against the browser's ONE, so the first tab press SHRANK it, `useLinking` answered a growth of
+ * −1 with `history.go(-1)` against an entry that does not exist, and the address bar stayed on the
+ * restored tab while another tab rendered.
+ */
+describe('the browser history across tabs', () => {
+  // The document's history is shared by every case in this file, so the path is put back between
+  // them and no assertion reads an absolute `history.length` — see the baseline note below.
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('makes an entry per tab visited, and walks Back through them in reverse', async () => {
+    /**
+     * **Four visits, four entries, four Backs — counted, because the defect was that only the
+     * FIRST tab change pushed.** `useLinking` pushes when the router's `state.history` grows and
+     * replaces when it does not, and `backBehavior: 'firstRoute'` — the library default — holds
+     * that history at `[HomeTab, current]` forever: one Back then lands on Home, the right screen
+     * reached by skipping two tabs, and the second leaves the site. A case that pressed one tab
+     * and pressed Back once would have passed against that.
+     *
+     * The length baseline is taken after the FIRST press on purpose: a push from anywhere but the
+     * top of the session history truncates the entries ahead of it, so only later presses are
+     * guaranteed to add exactly one. Every step asserts the URL, and every Back the URL *and* the
+     * mounted screen, because either alone is satisfied by a rewrite that navigated nowhere.
+     */
+    const view = await renderToDom(<App driver={driverWithLastTab(null)} withLinking />);
+    await press(tabButton(view.host, 'Explore'));
+    expect(addressBar()).toBe('/explore');
+    const base = window.history.length;
+
+    // Paths stated, not lowercased from the tab's label: the slug is `ROUTE_PATHS`' word and the
+    // label is `TabNavigator`'s, and deriving one from the other would hide a drift in either.
+    const walk = [
+      ['Assistant', '/assistant'],
+      ['Saved', '/saved'],
+      ['Settings', '/settings'],
+    ] as const;
+    for (const [index, [name, path]] of walk.entries()) {
+      await press(tabButton(view.host, name));
+      expect(addressBar(), `${name} did not reach the address bar`).toBe(path);
+      expect(window.history.length - base, `${name} pushed no entry`).toBe(index + 1);
+    }
+
+    const backwards = [
+      ['Saved', '/saved'],
+      ['Assistant', '/assistant'],
+      ['Explore', '/explore'],
+      ['Home', '/home'],
+    ] as const;
+    for (const [index, [screen, path]] of backwards.entries()) {
+      await goBack();
+      expect(addressBar(), `Back ${String(index + 1)} skipped a visited tab`).toBe(path);
+      expect(view.text()).toContain(`${screen} is not available yet`);
+      // Two Backs in is where the default handed the user to whatever site they came from, so this
+      // is the assertion that the app is still on screen at all.
+      if (index === 1) {
+        expect(view.host.querySelectorAll('[role="tab"]')).toHaveLength(5);
+      }
+    }
+    await view.unmount();
+  });
+
+  it('makes the stored tab an entry rather than overwriting it', async () => {
+    /**
+     * The interference, as a test. Under `'history'` the restored `lastTab` is the BOTTOM of this
+     * visit's history — one router entry against the browser's one — so the first tab press is a
+     * push and Back returns to it.
+     *
+     * Under `'firstRoute'` the initial history is `[HomeTab, SavedTab]` against that same single
+     * entry, so pressing Home SHRINKS it and `useLinking` traverses back and replaces — measured
+     * under the probe: the URL still becomes `/home`, because `createMemoryHistory` clamps the
+     * traversal to its own depth and the `replace` that follows lands on the entry `/saved` was
+     * using. The restored tab is overwritten, not stacked, so the last assertion here is the one
+     * that reddens and the address bar alone would have said everything was fine.
+     */
+    const view = await renderToDom(<App driver={driverWithLastTab('saved')} withLinking />);
+    expect(addressBar()).toBe('/saved');
+
+    await press(tabButton(view.host, 'Home'));
+    expect(addressBar(), 'the tab that was pressed did not reach the address bar').toBe('/home');
+
+    await goBack();
+    expect(addressBar(), 'the restored tab was not an entry to come back to').toBe('/saved');
+    expect(view.text()).toContain('Saved is not available yet');
     await view.unmount();
   });
 });

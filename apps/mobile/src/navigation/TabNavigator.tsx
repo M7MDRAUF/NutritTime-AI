@@ -207,6 +207,61 @@ export function TabNavigator(): ReactNode {
     <Tabs.Navigator
       initialRouteName={initialRouteName}
       /**
+       * **`backBehavior` is a DECISION, not a default, and no document makes it** (T-22-04).
+       *
+       * Plan §20's "Browser back — correct across tabs and the modal" is the whole of the
+       * authority; PRD §10.5 and §12 say nothing about Back. So what "correct" means is settled
+       * here, in the one place it is observable, and the reasoning is written down rather than
+       * left to be re-derived from the prop name.
+       *
+       * **What a user expects.** On the web a tab change rewrites the address bar — `/home` becomes
+       * `/explore` — so it is a navigation, and the browser's Back button means "undo the last
+       * navigation". Back must therefore return to the tab visited *before* this one, once per
+       * visit, in reverse order.
+       *
+       * **`'history'` is the only value that gives that**, because `useLinking` pushes a browser
+       * entry only when the router's `state.history` GROWS (`getHistoryLength`, then `historyDelta
+       * > 0` → `history.push`). Measured against `@react-navigation/routers` 7.6.4's
+       * `SwitchRouter`, for a user who lands on Home and then visits four tabs:
+       *
+       *  - `'firstRoute'` (**the library default, and the defect this replaces**) — history stays
+       *    `[HomeTab, current]`, so its length is 1 → 2 → 2 → 2 → 2. Only the FIRST tab change
+       *    pushes; the next three replace, leaving no entry to go back to and nothing for Forward
+       *    to return to. One Back jumps from Settings to Home past two tabs the user opened, and
+       *    the second Back leaves the site. It also **erases a restored tab**: `lastTab` makes the
+       *    initial history `[HomeTab, SavedTab]` against the browser's one entry, so tapping Home
+       *    SHRINKS it, and `useLinking` answers a negative delta by traversing back and then
+       *    replacing — `createMemoryHistory` clamps the traversal to its own depth, so what
+       *    actually happens is that `/saved` is overwritten by `/home` and the tab the user was
+       *    restored to is not an entry they can return to.
+       *  - `'initialRoute'` — the same two-entry shape, with the bottom being `initialRouteName`
+       *    rather than the leftmost tab. Here that is the *persisted* tab, so Back's destination
+       *    would depend on what the user did on a previous visit.
+       *  - `'order'` — Back walks LEFT ALONG THE TAB BAR rather than back through the visit. Home →
+       *    Settings → Explore gives 2 entries and a Back to Home, skipping the Settings the user
+       *    actually opened; from Settings alone it would offer Saved, a tab never visited.
+       *  - `'fullHistory'` — same as `'history'` except duplicates are kept: three switches between
+       *    Home and Explore leave **4** entries and Back replays the ping-pong, where `'history'`
+       *    leaves **2**, because it de-duplicates. That bounds the tab history at one entry per
+       *    tab, so five Backs always reach the edge of the site and a user who flips tabs idly is
+       *    not made to crawl out.
+       *  - `'none'` — no in-navigator back at all; the first Back leaves the site.
+       *
+       * **The cost, stated because it is real.** With `'history'` a tab reached by a cold deep link
+       * has a history of exactly `[thatTab]`, because `SwitchRouter.getRehydratedState` rebuilds
+       * the history from the partial state's own `history` field and a URL parse supplies none. So
+       * on Android, hardware Back from `nutritime://settings` leaves the app instead of landing on
+       * Home, which the default would have done. On the web nothing is lost: a cold load is one
+       * browser entry whatever the router thinks, so Back was always going to leave the site.
+       *
+       * **And it does not fight the persisted tab.** The restored `lastTab` becomes the BOTTOM of
+       * this visit's history rather than a second entry under it, so the first Back from it leaves
+       * the site, as the first page of a visit should. A URL still wins over the stored tab — React
+       * Navigation builds initial state from the path and applies `initialRouteName` only where the
+       * path is silent — and under `'history'` that URL is also the entry Back returns to.
+       */
+      backBehavior="history"
+      /**
        * One listener for the whole navigator, not five copies. `focus` fires for the tab the user
        * moved to, including on first mount — which is a no-op, because `ui/tabChanged` to the tab
        * already stored returns `state` identically and so queues no write.

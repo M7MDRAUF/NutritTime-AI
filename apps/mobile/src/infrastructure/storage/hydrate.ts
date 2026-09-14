@@ -180,10 +180,12 @@ export async function hydrateStorage(runtime: RepositoryRuntime): Promise<Hydrat
         // An `async` arrow turns a synchronous throw into a rejection, which is what the
         // surrounding `allSettled` was written to handle.
         //
-        // The shipped `asyncStorageDriver` cannot produce a synchronous throw - AsyncStorage
-        // wraps its work in a promise executor - so this was unreachable in the app and entirely
-        // reachable through the `StorageDriver` seam the tests use and P22 will use for
-        // `localStorage`.
+        // The shipped `asyncStorageDriver` cannot produce a synchronous throw - the package
+        // wraps its work in a promise executor on BOTH platforms - so this is unreachable in the
+        // app on a device and, measured at P22 (T-22-06), equally unreachable on the web export:
+        // the web build wires the same `asyncStorageDriver`, over an implementation that wraps
+        // `removeItem` the same way. It stays because it is free and because the `StorageDriver`
+        // seam is public: a driver written by hand is the reachable case.
         .map(async (key) => runtime.driver.removeItem(key)),
     );
   }

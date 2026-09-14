@@ -143,6 +143,12 @@ async function render(options: {
   readonly driver?: MemoryDriver;
   /** `false` puts the screen first in the stack — the deep-link case (V13). */
   readonly canGoBack?: boolean;
+  /**
+   * `route.params` verbatim, for the shapes a URL delivers and `MealFormParams` never saw — a
+   * repeated `?mealId=` key parses to a `string[]` (T-22-05). Takes precedence over `mealId`,
+   * which stays the door every other test in this file walks through.
+   */
+  readonly rawParams?: Readonly<Record<string, string | readonly string[]>>;
 }): Promise<Harness> {
   const driver = options.driver ?? seeded(options.meals ?? [], options.allergies ?? []);
   const host = document.createElement('div');
@@ -160,7 +166,9 @@ async function render(options: {
                 {
                   key: 'form',
                   name: 'MealForm',
-                  params: options.mealId === undefined ? undefined : { mealId: options.mealId },
+                  params:
+                    options.rawParams ??
+                    (options.mealId === undefined ? undefined : { mealId: options.mealId }),
                 } as never
               }
               navigation={
@@ -552,11 +560,20 @@ describe('MealFormScreen — a key that cannot be written (entryStatus unavailab
     return driver;
   }
 
-  it('says so before anything is typed', async () => {
+  it('says so before anything is typed, and does NOT announce it', async () => {
     const view = await render({ driver: unreadable() });
 
-    expect(view.find('meal-form-unavailable')).not.toBeNull();
+    const notice = view.must('meal-form-unavailable');
     expect(view.text()).toContain('cannot be saved right now');
+    /**
+     * **The control for every announcement assertion in this file** (T-23-05). This notice is
+     * drawn with the form, before the user has done anything, so announcing it would interrupt
+     * them on arrival — and `StatusMessage` is opt-in precisely so that the quiet callers stay
+     * quiet. Without this pair, a mutant that gave EVERY `StatusMessage` `role="alert"`
+     * unconditionally would satisfy the save-error test below and nothing would object.
+     */
+    expect(notice.getAttribute('role')).not.toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('off');
   });
 
   it('refuses the save, does not close, and never claims it worked', async () => {
@@ -681,6 +698,109 @@ describe('MealFormScreen — the refusal a screen reader can hear (V7)', () => {
 
     expect(second).not.toBe(first);
   });
+
+  it('announces the write the device refused, on the element that carries the words', async () => {
+    /**
+     * T-23-05's "async results announced", and this is the only genuinely asynchronous one on
+     * this screen: the reducer accepts the record, the screen starts leaving, and the write comes
+     * back refused afterwards. The notice had no `announceOnMount`, so on every platform it was a
+     * plain panel — a user who cannot see it is told their meal is saved and it is not.
+     *
+     * **Recorded honestly: this harness keeps the screen mounted, and the app does not.**
+     * `navigation.goBack` is a counting stub here, so the refusal is asserted on a tree the real
+     * app is navigating away from — the assertion below on `goBacks()` makes that visible rather
+     * than hiding it, and the reachability gap is in the report. What this test pins is the prop:
+     * remove `announceOnMount` from the notice and it reddens.
+     */
+    const driver = seeded([], []);
+    const view = await render({ driver });
+    fillValidDraft(view);
+
+    driver.failOn.add('setItem');
+    press(view.must('meal-form-save'));
+    await view.settle();
+    await view.settle();
+
+    const notice = view.must('meal-form-save-error');
+    expect(notice.getAttribute('role')).toBe('alert');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+    // The words are on the SAME element as the role, which is what a screen reader reads out of
+    // an alert. A role on a wrapper with the sentence in a sibling announces nothing.
+    expect(notice.textContent ?? '').toContain('Your meal is not saved');
+    // No driver string reaches the user (PRD §12), and the retry is offered because this one can
+    // succeed (TSD §6.4 — unlike a bound refusal).
+    expect(notice.textContent ?? '').not.toContain('driver refused');
+    expect(notice.textContent ?? '').toContain('Try again');
+    // The screen was already on its way out when this arrived. See the docblock.
+    expect(view.goBacks()).toBe(1);
+  });
+});
+
+/**
+ * T-23-05's **focus** half — `Plan.md:2515` ("focus preserved on validation failure") and §20's
+ * row, which adds the constraint: "moved deliberately, **never on every blur**".
+ *
+ * **Nothing in `apps/` or `e2e/` read `document.activeElement` before this block.** The property
+ * held by construction — the invalid summary is the only thing remounted, by its `key`, and the
+ * thirteen fields are not keyed at all — so keying the `ScrollView` or the form by `attempts`
+ * instead, or adding a `.focus()` on the summary, would have dumped the focused box on every
+ * refused Save and left the whole suite green. That is exactly the shape §6.2 warns about: a
+ * guarantee nothing would notice the loss of.
+ *
+ * **What these two tests honestly pin, and what they do not.** `press` dispatches a synthetic
+ * `click`, and jsdom does not move focus for one the way a browser's `mousedown` does — so
+ * `document.activeElement` here measures *what the application's own code does to the focused
+ * node*, which is the half that can regress in a refactor. It is not a claim about the browser's
+ * native focus handling; that belongs in a Playwright spec, and no document asks for one.
+ */
+describe('MealFormScreen — where the focus is left (T-23-05)', () => {
+  it('leaves the focus in the box the user was in when Save is refused', async () => {
+    const view = await render({});
+    const name = inputIn(view.must('field-name'));
+
+    act(() => {
+      name.focus();
+    });
+    expect(document.activeElement).toBe(name);
+
+    press(view.must('meal-form-save'));
+
+    // The refusal really happened, or "the focus survived" is a statement about nothing.
+    expect(view.find('meal-form-invalid')).not.toBeNull();
+    expect(document.activeElement).toBe(name);
+    /**
+     * And the node identity, separately. `activeElement` alone is beatable by a mutant that
+     * remounts the field *and* re-focuses the replacement — the user would see the caret jump and
+     * lose their selection, and the first assertion would still pass.
+     */
+    expect(inputIn(view.must('field-name'))).toBe(name);
+  });
+
+  it('does not pull the focus back when a field complains on blur', async () => {
+    /**
+     * §20's second clause, and the reason the row is not satisfied by "move focus to the first
+     * error". Validation here runs **on blur** (S-43), so a form that focused the offending field
+     * when its error appeared would yank the caret out of the box the user had just moved into,
+     * on every single field, for the whole form. The control for the test above: that one proves
+     * the focus is not *lost*, this one proves it is not *taken*.
+     */
+    const view = await render({});
+    const name = inputIn(view.must('field-name'));
+    const price = inputIn(view.must('field-price'));
+
+    act(() => {
+      name.focus();
+    });
+    // Moving on is what fires the blur — the user is already in the next box by the time the
+    // first one complains, which is the whole situation being asserted.
+    act(() => {
+      price.focus();
+    });
+
+    // The complaint really arrived, so the branch that could have stolen the focus was live.
+    expect(fieldText(view, 'field-name')).toContain(M.nameRequired);
+    expect(document.activeElement).toBe(price);
+  });
 });
 
 describe('MealFormScreen — leaving (V13)', () => {
@@ -800,6 +920,18 @@ describe('MealFormScreen — delete behind its confirmation (T-17-06)', () => {
     expect(view.find('meal-form-delete-sheet')).toBeNull();
     press(view.must('meal-form-delete'));
     expect(view.find('meal-form-delete-sheet')).not.toBeNull();
+    /**
+     * **The call site's title, pinned where only a consumer suite can pin it.**
+     *
+     * `Sheet.dom.test.tsx` proves the MECHANISM — that one element carries both `role="dialog"` and
+     * the accessible name, after react-native-web 0.21.2 was found putting the role and the label on
+     * different elements while a test asserted them separately and passed. What that file cannot
+     * see is a **call site** dropping or rewording its title, because the wiring is here.
+     *
+     * `getByRole(document.body, 'dialog', { name })` is one query on purpose: it fails when the role
+     * and the name part company, which is exactly what the old split assertion could not do.
+     */
+    expect(getByRole(document.body, 'dialog', { name: 'Delete this meal?' })).toBeTruthy();
 
     press(view.must('meal-form-delete-confirm'));
     await view.settle();
@@ -906,6 +1038,83 @@ describe('MealFormScreen — the 200 bound (T-17-07, TSD §6.4)', () => {
     const stored = view.stored();
     expect(stored).toHaveLength(STORAGE_BOUNDS.customMeals - 1);
     expect(stored.some((meal) => meal.id === 'meal-3')).toBe(false);
+    expect(view.goBacks()).toBe(1);
+  });
+});
+
+describe('MealFormScreen — a `mealId` that came off a URL (T-22-05)', () => {
+  /**
+   * `MealForm` is deep-linkable and `mealId` is a **query** param — absence has to be
+   * representable, so it cannot sit in the path (`navigation/linking.ts`). A repeated key
+   * therefore parses to a `string[]` where `MealFormParams` says `string`, and of the three raw
+   * reads this phase closed, this is the one that decides **create versus edit**.
+   *
+   * Live only once a URL can reach the navigator at all (R-44, being fixed in parallel), which is
+   * why it is closed now rather than after.
+   */
+  it('behaves as CREATE for a repeated `?mealId=`, never as an edit of a coerced id', async () => {
+    /**
+     * Joined, the id would be `house-omelette,second`: `selectCustomMeal` returns `undefined` for
+     * it, so the screen would render "That meal is not here" — a specific claim that a specific
+     * meal is missing, made from a value nothing checked. Refused, the param is absent, and
+     * absence already means something the user can act on (PRD §8.3).
+     */
+    const view = await render({
+      rawParams: { mealId: ['house-omelette', 'second'] },
+      meals: [customMeal(), customMeal({ id: 'second', name: 'Second meal' })],
+    });
+
+    expect(view.text()).toContain('New meal');
+    expect(view.text()).not.toContain('Edit meal');
+    // Not the not-found screen either, which is what the coerced id would have produced.
+    expect(view.find('meal-form-not-found')).toBeNull();
+    expect(view.text()).not.toContain('That meal is not here');
+    // An empty draft, wearing neither meal's values, and with nothing to delete behind it.
+    expect(inputIn(view.must('field-name')).getAttribute('value') ?? '').toBe('');
+    expect(view.text()).not.toContain('House omelette');
+    expect(view.find('meal-form-delete')).toBeNull();
+    // And both stored records are untouched on the way through.
+    expect(view.stored().map((meal) => meal.id)).toEqual(['house-omelette', 'second']);
+  });
+
+  it('opens the edit form for a single `?mealId=`, read through the same door', async () => {
+    /**
+     * The other half of the pair, and it goes through `rawParams` deliberately: a reader that
+     * refused *every* value would satisfy the test above on its own, and this is the assertion
+     * that fails if it does.
+     */
+    const view = await render({ rawParams: { mealId: 'house-omelette' }, meals: [customMeal()] });
+
+    expect(view.text()).toContain('Edit meal');
+    expect(inputIn(view.must('field-name')).getAttribute('value')).toBe('House omelette');
+    expect(view.find('meal-form-delete')).not.toBeNull();
+    expect(view.find('meal-form-not-found')).toBeNull();
+  });
+
+  it('saves a NEW record from a refused `mealId`, rather than replacing one', async () => {
+    /**
+     * "Behaves as create" asserted as far as the device, not only as far as the title: a create
+     * composes a fresh UUID and **adds**, where an edit replaces in place. A screen that had
+     * admitted the array and fallen through to `composeCustomMealUpdate` would have overwritten
+     * one of the user's records instead, which is the silent-data-loss shape this whole screen is
+     * built against.
+     */
+    const view = await render({
+      rawParams: { mealId: ['house-omelette', 'second'] },
+      meals: [customMeal(), customMeal({ id: 'second', name: 'Second meal' })],
+    });
+    fillValidDraft(view);
+
+    press(view.must('meal-form-save'));
+    await view.settle();
+
+    const stored = view.stored();
+    expect(stored.map((meal) => meal.name)).toEqual([
+      'House omelette',
+      'Second meal',
+      'Overnight oats',
+    ]);
+    expect(stored[2]?.id).toMatch(MEAL_ID_PATTERN);
     expect(view.goBacks()).toBe(1);
   });
 });

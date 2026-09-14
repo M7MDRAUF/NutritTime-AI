@@ -19,9 +19,22 @@
     "noEmit": true,
     "types": ["node"]
   },
-  // `support/**` is listed EXPLICITLY, not left to transitive discovery through the specs
-  // that import it. A new support module no spec imports yet was outside the program
-  // altogether -- ESLint saw the file, `tsc -p e2e` did not -- and P24 (T-24-01) builds
-  // shared fixtures into precisely that directory. Found by the P24 reconnaissance survey.
-  "include": ["specs/**/*.ts", "support/**/*.ts", "playwright.config.ts"]
+  // **Every `.ts` in the package, by EXCLUSION rather than by an allowlist — and the allowlist
+  // failed twice before this.**
+  //
+  // It used to read `["specs/**/*.ts", "support/**/*.ts", "playwright.config.ts"]`. The first
+  // failure is recorded in that version's own comment: a new `support/**` module no spec imported
+  // yet was outside the program altogether — ESLint saw the file, `tsc -p e2e` did not. The
+  // directory was then named explicitly, which fixed that one case and left the mechanism intact.
+  //
+  // The second failure was P25 adding `e2e/perf/**`: fifteen files, linted but **not typechecked
+  // by `npm run check`**, and it hid a real type error until the agent found it by hand. Naming
+  // `perf/**` too would fix that one case and leave the mechanism intact again.
+  //
+  // So the list is gone. A directory cannot be forgotten if nothing has to remember it — the same
+  // reasoning that replaced the hand-listed denied-claim sweep in `assistantCopy.test.ts` with a
+  // walk. `exclude` names only what must never be typechecked: installed packages and the two
+  // generated output directories Playwright writes and wipes.
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "test-results", "playwright-report"]
 }

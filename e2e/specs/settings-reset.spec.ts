@@ -501,8 +501,27 @@ test.describe('every destructive action, cancelled', () => {
     await expect(page.getByTestId('dietary-setup-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(page.getByTestId('chip-allergy-peanut')).toHaveAttribute('aria-checked', 'true');
 
-    // It survives the next launch too, which is what "still on the disk" has to mean.
+    /**
+     * It survives the next launch too, which is what "still on the disk" has to mean.
+     *
+     * **This block asserted the tab bar here until P24, and it passed only because R-44 was
+     * unfixed.** The reload happens while the user is on the PUSHED `DietarySetup` screen, which
+     * has no tab bar — and a cold load used to rewrite the URL to `/home`, so the tabs appeared and
+     * the assertion held. R-44 is closed (`explore.spec.ts` carries the live proof), so a relaunch
+     * now restores the screen the user was actually on, and the old line began failing in all four
+     * projects. **The spec had encoded the defect as its expectation**, which is the same shape as
+     * a docstring that argues for a hole someone has since closed.
+     *
+     * Restoring the pushed screen is the stronger claim anyway: it lets the one safety-relevant
+     * field be read back **after a real relaunch**, which is what this test is ultimately about.
+     */
     await page.reload();
+    await expect(page.getByTestId('dietary-setup-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByTestId('chip-allergy-peanut')).toHaveAttribute('aria-checked', 'true');
+
+    // Then in through the front door, which is a fresh entry rather than a restore, and on to the
+    // full data assertion the rest of this test shares.
+    await page.goto('/');
     await expect(page.getByRole('tab', { name: 'Home' })).toBeVisible({ timeout: FIRST_PAINT_MS });
     await openSettings(page);
     await expectSeededDataPresent(page, favourites);

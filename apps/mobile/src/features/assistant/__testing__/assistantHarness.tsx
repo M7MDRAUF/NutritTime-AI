@@ -127,6 +127,15 @@ export interface Harness {
   press(target: HTMLElement): Promise<void>;
   ask(): Promise<void>;
   /**
+   * Move the fake clock on and let React commit whatever the timers set.
+   *
+   * Only meaningful under `vi.useFakeTimers()`, which is the caller's to switch on and off.
+   * PRD §10.1's two waiting thresholds are 200 ms and 2 s, and a suite that awaited microtasks
+   * alone could not tell a timer that fires from one that never does — which is precisely how
+   * Home's thresholds went unpinned until P22 (`Home.dom.test.tsx:682-687`).
+   */
+  advance(ms: number): Promise<void>;
+  /**
    * Flip the user's own AI switch through the **real** reducer, after mount.
    *
    * A dispatch rather than a seeded storage envelope, and after mount rather than before, because
@@ -216,6 +225,11 @@ export async function renderAssistant(
     },
     press,
     ask: () => press(must('assistant-ask')),
+    advance: async (ms) => {
+      await act(async () => {
+        vi.advanceTimersByTime(ms);
+      });
+    },
     setAiEnabled: async (next) => {
       await act(async () => {
         dispatch?.(preferencesActions.changeAiEnabled(next));

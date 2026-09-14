@@ -60,6 +60,30 @@ const CLOCK = () => '2026-09-13T12:00:00.000Z';
 const AT_LUNCH = (): Date => new Date(2026, 8, 13, 12, 30, 0);
 
 /**
+ * The text a screen reader would be handed for one region.
+ *
+ * `Icon` renders a vendor glyph inside a `Text`, so a decorative mark contributes characters to
+ * `textContent` that are no part of any announcement. Stripping the `aria-hidden` subtrees is what
+ * makes an assertion about the *announcement* rather than about every character in the subtree.
+ *
+ * Throws on `null` rather than taking a non-null assertion at the call site: `expect(x).not.toBe
+ * Null()` does not narrow, and the alternative is the `as` this codebase exists to avoid.
+ */
+function announcedTextOf(region: HTMLElement | null): string {
+  if (region === null) {
+    throw new Error('no region to read an announcement from');
+  }
+  const clone = region.cloneNode(true);
+  if (!(clone instanceof HTMLElement)) {
+    throw new Error('cloneNode did not return an element');
+  }
+  for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) {
+    hidden.remove();
+  }
+  return clone.textContent ?? '';
+}
+
+/**
  * A client that answers through the real domain.
  *
  * This is the whole point: the request the screen builds goes into `recommend()`, and the hard
@@ -336,6 +360,74 @@ describe('the quarantined-preferences warning', () => {
     const view = await render(domainClient().client);
 
     expect(view.find('home-preferences-recovered')).toBeNull();
+  });
+
+  it('ANNOUNCES it, because a user who cannot see the panel is the one at risk', async () => {
+    /**
+     * **T-23-05's "async results announced", on the surface where the result is a data loss.**
+     *
+     * The test above proves the notice is drawn. It was drawn to nobody: `StatusMessage` set
+     * `aria-live` and no role, and a live region that is inserted TOGETHER with its own words
+     * announces nothing — the region has to exist before the contents change for a screen reader
+     * to speak them, and this branch mounts at hydration with its sentences already inside it. So
+     * to a blind user with a peanut allergy whose declarations had just been quarantined, the app
+     * looked exactly like an app that was working.
+     *
+     * Asserted as what a screen reader receives rather than as a prop that was passed: the
+     * rendered `role`, and the announced text read off **that same element**, which is the defect
+     * three `Sheet` dialogs were found with — a role on one node and its name on another.
+     */
+    const driver = memoryDriver({
+      [STORAGE_KEYS.preferences]: JSON.stringify({
+        schemaVersion: 1,
+        updatedAt: '2026-09-13T12:00:00.000Z',
+        value: { schemaVersion: 1, diet: 'not-a-real-diet' },
+      }),
+    });
+
+    const view = await render(domainClient().client, AT_LUNCH, 0, undefined, driver);
+    const notice = view.find('home-preferences-recovered');
+    expect(notice).not.toBeNull();
+
+    // A live region that is actually announced on arrival, and polite rather than an interruption.
+    expect(notice?.getAttribute('role')).toBe('alert');
+    expect(notice?.getAttribute('aria-live')).toBe('polite');
+
+    /**
+     * And it has something to say. **Both sentences, off the alert node itself** — the reset AND
+     * the consequence, because "your preferences were reset" is not the safety claim; "your
+     * allergy list is empty" is. An alert with a role and no words is silent in exactly the way
+     * this test exists to catch, so the copy is asserted here and not merely somewhere on screen.
+     */
+    const spoken = announcedTextOf(notice);
+    expect(spoken).toContain('Your preferences were reset');
+    expect(spoken).toContain('your allergy list is empty');
+    expect(spoken).toContain('Set it again before relying on these suggestions');
+
+    /**
+     * **And it announces ONCE.** A re-focus re-renders this screen and re-requests; an alert that
+     * were rebuilt each time would be re-spoken each time, which is noise a user turns off. The
+     * same DOM node across the bump is how "not remounted" is observable from here.
+     */
+    await view.refocus(1);
+    expect(view.find('home-preferences-recovered')).toBe(notice);
+  });
+
+  it('does not announce the notices that were on screen all along', async () => {
+    /**
+     * The control that no single constant satisfies with the test above: a `StatusMessage` that
+     * alerted unconditionally would announce the FR-007 disclaimer too — which is present before
+     * the user is, is read in normal document order, and is not dismissible. Turning it into an
+     * alert would make the one panel every user meets the one every screen reader interrupts for.
+     */
+    const view = await render(domainClient().client);
+    const disclaimer = view.find('home-disclaimer');
+
+    expect(disclaimer).not.toBeNull();
+    expect(disclaimer?.getAttribute('role')).not.toBe('alert');
+    // `react-native-web` 0.21.2 maps `accessibilityLiveRegion: 'none'` to `aria-live="off"`, so
+    // "not a live region" is an attribute with a value here rather than an absent one.
+    expect(disclaimer?.getAttribute('aria-live')).toBe('off');
   });
 });
 

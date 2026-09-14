@@ -27,9 +27,14 @@
  * nothing it says — here or in `assistantCopy.ts` — claims a meal is allergen-free or makes any
  * health or medical claim, and the suite runs every string through a transcription of TSD §5.7's
  * denied phrases, because containment guards the model and not us.
+ *
+ * **PRD §10.1's two waiting thresholds are enforced here** — see `useRequestProgress`. Before them
+ * this screen showed one static sentence for as long as the request took, which against §10.1's own
+ * assistant row ("~11 s, hard timeout 30 s") and the cold-model paragraph above it meant up to half
+ * a minute with no escalation at all.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
 import { AccessibleButton, AppText, EmptyState, FormField } from '../../shared/components/index.js';
@@ -37,6 +42,13 @@ import { useApiClient } from '../../infrastructure/api/ApiProvider.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
 import type { ScreenProps } from '../../navigation/registry.js';
 import { preferencesStore } from '../../state/preferences/index.js';
+// **The thresholds are IMPORTED, not retyped.** PRD §10.1 states them once and this repository
+// already holds them once, beside Home's request. A second pair of literals here is the shape this
+// project has been bitten by before — three copies of one failure-to-outcome mapping, two of them
+// already diverged — so the coupling to a sibling feature is deliberately preferred to a fourth
+// copy. The right home is a module neither feature owns; that edit is filed rather than taken,
+// because `features/home/**` is not this agent's to restructure.
+import { AI_PROGRESS_AFTER_MS, LOADING_AFTER_MS } from '../home/useRecommendations.js';
 import { AssistantTurnRow } from './AssistantTurnRow.js';
 import {
   ASSISTANT_COPY,
@@ -53,6 +65,59 @@ function validationMessage(validation: AssistantValidation): string {
   return validation === 'empty'
     ? ASSISTANT_COPY.emptyQuestion
     : questionTooLongMessage(ASSISTANT_MAX_QUESTION);
+}
+
+export interface RequestProgress {
+  /** True once the request has been in flight past PRD §10.1's first threshold. */
+  readonly showLoading: boolean;
+  /** True once it has been in flight past the second. */
+  readonly showAiProgress: boolean;
+}
+
+/**
+ * PRD §10.1: "The UI shows a loading state after 200 ms and an AI-progress message after 2 s."
+ *
+ * **Derived from `pending` rather than armed inside `useAssistant.send`**, and that is the decision
+ * rather than the shortcut. `pending` is the same flag the transcript row and the Ask button read,
+ * so the escalation cannot drift out of step with the state it describes, and it inherits that
+ * flag's termination for free: `send`'s `finally` clears `pending` on every path — answer, refusal,
+ * failure, abort — so there is no exit through which a message could be left on screen. A pair of
+ * timers owned by the request would have to repeat that bookkeeping and could disagree with it.
+ *
+ * **The AI-progress message needs no `aiEnabled` branch here, unlike Home's.** `useAssistant` gates
+ * the user's own switch *before* setting `pending`, so a pending turn on this screen always means a
+ * request went to the model — which is what makes the second sentence true when it is shown. The
+ * suite pins that rather than trusting it: with AI off there is no request, no pending state and no
+ * escalation at any elapsed time.
+ *
+ * Effects, not `setTimeout` in a handler, so React clears both timers on unmount; a user who
+ * leaves the tab mid-question does not get a state update after the screen is gone.
+ */
+function useRequestProgress(pending: boolean): RequestProgress {
+  const [showLoading, setShowLoading] = useState(false);
+  const [showAiProgress, setShowAiProgress] = useState(false);
+
+  useEffect(() => {
+    if (!pending) {
+      // Reset rather than leave: a second question must start from nothing, or its first 200 ms
+      // would inherit the previous answer's escalation.
+      setShowLoading(false);
+      setShowAiProgress(false);
+      return;
+    }
+    const loadingTimer = setTimeout(() => {
+      setShowLoading(true);
+    }, LOADING_AFTER_MS);
+    const aiTimer = setTimeout(() => {
+      setShowAiProgress(true);
+    }, AI_PROGRESS_AFTER_MS);
+    return () => {
+      clearTimeout(loadingTimer);
+      clearTimeout(aiTimer);
+    };
+  }, [pending]);
+
+  return { showLoading, showAiProgress };
 }
 
 export function AssistantScreen({ route, navigation }: ScreenProps<'Assistant'>): ReactNode {
@@ -75,6 +140,8 @@ export function AssistantScreen({ route, navigation }: ScreenProps<'Assistant'>)
       ? {}
       : { initialQuestion: route.params.seedQuestion }),
   });
+
+  const { showLoading, showAiProgress } = useRequestProgress(pending);
 
   const openMeal = useCallback(
     (mealId: string) => {
@@ -125,6 +192,13 @@ export function AssistantScreen({ route, navigation }: ScreenProps<'Assistant'>)
         // `loading` makes the button inert and announces `busy`, which is the right pair while a
         // question is in flight: one AI call runs at a time server-side (TSD §5.5), so a second
         // press could only ever come back `ai_busy`.
+        //
+        // **`pending`, not `showLoading`, and deliberately.** PRD §10.1's 200 ms is about *feedback*
+        // — below it a message is flicker rather than information — and it is carried by the
+        // transcript row below. Inertness is *correctness* and has to hold from the first
+        // millisecond, because the press that must not happen twice is the one a user makes
+        // immediately. The visible half of this button's busy state is `AccessibleButton`'s, and it
+        // honours the OS reduce-motion setting there (T-23-06).
         loading={pending}
         onPress={ask}
       />
@@ -153,7 +227,14 @@ export function AssistantScreen({ route, navigation }: ScreenProps<'Assistant'>)
           />
         ) : (
           turns.map((turn) => (
-            <AssistantTurnRow key={turn.id} turn={turn} onOpenMeal={openMeal} onRetry={retry} />
+            <AssistantTurnRow
+              key={turn.id}
+              turn={turn}
+              showLoading={showLoading}
+              showAiProgress={showAiProgress}
+              onOpenMeal={openMeal}
+              onRetry={retry}
+            />
           ))
         )}
       </View>

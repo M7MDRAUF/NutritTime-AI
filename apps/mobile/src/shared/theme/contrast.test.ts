@@ -33,11 +33,13 @@ import { typeScale } from './primitive.js';
  */
 
 const AA_NORMAL_TEXT = 4.5;
-const AA_LARGE_TEXT = 3;
 const AA_NON_TEXT = 3;
 
 /** Below this a boundary is invisible rather than merely low-contrast. */
 const VISIBLE_MINIMUM = 1.05;
+
+/** No upper bound: an exemption whose premise is not "this pairing is weak" has no ceiling. */
+const UNBOUNDED = Number.POSITIVE_INFINITY;
 
 /** `#RRGGBB` or `#RRGGBBAA`, to 8-bit channels. Returns alpha as 0..1; 1 when absent. */
 function parseHex(value: string): { r: number; g: number; b: number; a: number } {
@@ -276,25 +278,6 @@ const inversePairings: readonly Pairing[] = inverseTextTones.map(([toneName, for
   minimum: AA_NORMAL_TEXT,
 }));
 
-/**
- * The status tones must NOT be usable on the inverse surface, which is the point of the split.
- *
- * Asserted as a failure rather than left implicit: if a future edit ever made `status.*` readable
- * on `surface.inverse` - by moving `surface.inverse` towards the canvas, say - then `statusOnInverse`
- * would be redundant and someone should be told, rather than the two quietly converging.
- */
-const statusOnInverseIsNecessary: readonly Pairing[] = [
-  ['status.info', (c: SemanticTokens) => c.status.info],
-  ['status.success', (c: SemanticTokens) => c.status.success],
-  ['status.warning', (c: SemanticTokens) => c.status.warning],
-  ['status.danger', (c: SemanticTokens) => c.status.danger],
-].map(([toneName, foreground]) => ({
-  name: `${String(toneName)} on surface.inverse`,
-  foreground: foreground as (c: SemanticTokens) => string,
-  background: (c: SemanticTokens) => c.surface.inverse,
-  minimum: AA_NON_TEXT,
-}));
-
 const allPairings: readonly Pairing[] = [
   ...surfaceTextPairings,
   ...filledPairings,
@@ -362,78 +345,6 @@ describe.each(SCHEMES)('%s scheme meets WCAG AA', (scheme) => {
       `${pairing.name}: ${foreground} on ${background} = ${ratio.toFixed(2)}:1, needs ${pairing.minimum}:1`,
     ).toBeGreaterThanOrEqual(pairing.minimum);
   });
-});
-
-describe.each(SCHEMES)('%s scheme: text over a remote meal photograph', (scheme) => {
-  const colors = colorsByScheme[scheme];
-
-  // `MealCard` takes an `imageUrl` (TSD 6.7) and a remote photograph is arbitrary, so the only
-  // honest assertion is against the worst case. The brightest possible photo is pure white, and a
-  // scrim that holds AA there holds it for every darker image.
-  it('holds AA with the scrim composited over a pure-white image', () => {
-    const worstCase = compositeOver(colors.scrim.image, '#FFFFFF');
-    const ratio = contrastRatio(colors.content.onImage, worstCase);
-    expect(
-      ratio,
-      `scrim.image over white = ${worstCase}; content.onImage on it = ${ratio.toFixed(2)}:1`,
-    ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
-  });
-
-  // `content.onImage` exists because this assertion first ran against `content.inverse` and failed
-  // at 2.62:1 in dark — the dark scheme's inverse tone is *dark*, since its inverse surface is
-  // light, and dark text over a darkened photograph is unreadable. The token was wrong, not the
-  // threshold.
-  it('uses a light foreground over an image in both schemes', () => {
-    expect(relativeLuminance(colors.content.onImage)).toBeGreaterThan(0.5);
-  });
-});
-
-describe.each(SCHEMES)('%s scheme: the backdrop actually dims the app behind a sheet', (scheme) => {
-  const colors = colorsByScheme[scheme];
-
-  // No text sits on a backdrop, so a text threshold would be the wrong question. What a backdrop
-  // has to do is separate the sheet from the app beneath it, and the least-dimmable app is a white
-  // one. 3:1 is borrowed from 1.4.11 as the boundary-visibility figure.
-  it.each(['backdrop', 'sheet'] as const)('scrim.%s dims a white app by at least 3:1', (which) => {
-    const dimmed = compositeOver(colors.scrim[which], '#FFFFFF');
-    const ratio = contrastRatio(dimmed, '#FFFFFF');
-    expect(ratio, `scrim.${which} over white = ${dimmed}`).toBeGreaterThanOrEqual(AA_LARGE_TEXT);
-  });
-});
-
-describe.each(SCHEMES)('%s scheme: recorded exemptions', (scheme) => {
-  const colors = colorsByScheme[scheme];
-
-  // WCAG 1.4.11 reaches information "required to identify user interface components". A rule
-  // between two list rows identifies nothing, so `border.subtle` is exempt — but it still has to
-  // be visible, and asserting that is what stops it drifting to the surface colour.
-  it('border.subtle is visible but is exempt from 1.4.11, being decorative', () => {
-    const ratio = contrastRatio(colors.border.subtle, colors.surface.canvas);
-    expect(ratio).toBeGreaterThan(VISIBLE_MINIMUM);
-    expect(ratio).toBeLessThan(AA_NON_TEXT);
-  });
-
-  // WCAG 1.4.3 exempts "text or images of text that are part of an inactive user interface
-  // component". Measured and bounded rather than omitted: a disabled label that fell to 1.2:1
-  // would be invisible, which is a usability failure even where it is not a conformance one.
-  it('content.disabled is exempt from 1.4.3, being an inactive control', () => {
-    const ratio = contrastRatio(colors.content.disabled, colors.surface.disabled);
-    expect(ratio).toBeGreaterThan(VISIBLE_MINIMUM);
-  });
-
-  // A status tint is not what tells the user the status: TSD 6.7 makes `icon` a required prop on
-  // `StatusMessage`, and PRD 10.5 forbids colour as the sole carrier. So the tint is decoration
-  // over the canvas, and the 3:1 obligation lands on `status.*`, asserted above.
-  it.each(['info', 'success', 'warning', 'danger'] as const)(
-    'statusSurface.%s is decoration; the icon and text carry the status',
-    (tone) => {
-      const ratio = contrastRatio(colors.statusSurface[tone], colors.surface.canvas);
-      expect(ratio).toBeGreaterThan(1);
-      expect(contrastRatio(colors.status[tone], colors.surface.canvas)).toBeGreaterThanOrEqual(
-        AA_NON_TEXT,
-      );
-    },
-  );
 });
 
 /**
@@ -525,25 +436,131 @@ describe('coverage of the token maps', () => {
     'statusSurface.danger',
   ] as const;
 
-  /** Roles with no pairing in this table at all, each for a stated reason. */
-  const COLOUR_ROLES_WITHOUT_A_PAIRING = new Set([
-    // Asserted through the exemptions above rather than the AA table.
-    'content.disabled',
-    'surface.disabled',
-    'border.subtle',
-    'scrim.backdrop',
-    'scrim.image',
-    // Asserted against the composited scrim above, not against a token background: the thing
-    // underneath it is a remote photograph, which this theme does not choose.
-    'content.onImage',
-    // A separator inside an already-AA sheet, and a press layer whose own contrast is meaningless
-    // because it composites over whatever it is pressed against.
-    'scrim.sheet',
-    'effect.shadowColor',
-    'effect.skeleton',
-    'effect.ripple',
-    'effect.highlight',
-  ]);
+  /**
+   * **Roles no `<foreground> on <background>` row can name — and what each one measures instead.**
+   *
+   * This was a bare `Set` of eleven names called `COLOUR_ROLES_WITHOUT_A_PAIRING`, and an audit of
+   * P23 found it **required no measurement at all**: adding a role to it satisfied every assertion
+   * in this file, so the one list whose job was to account for the unmeasured roles was itself the
+   * cheapest way to make a role unmeasured. Two of them — `effect.ripple` and `effect.highlight` —
+   * had in fact never been measured anywhere, and `effect.shadowColor` was asserted by nothing in
+   * the repository.
+   *
+   * So a `measure` is now **required by the type**. A name cannot be added here without saying what
+   * is measured in the pairing's place, and the bound is two-sided wherever the exemption's premise
+   * is that the pairing is WEAK: above the ceiling the exemption is unnecessary and the row should
+   * be deleted rather than left to cover something it no longer describes. That is the same
+   * argument `statusOnInverseIsNecessary` above makes about its own reason for existing.
+   */
+  interface ExemptRole {
+    readonly role: string;
+    /** Why no row in the table above can name it. */
+    readonly because: string;
+    /** What is measured in the pairing's place. A role with nothing to measure is a defect. */
+    readonly measure: (c: SemanticTokens) => number;
+    readonly floor: number;
+    readonly ceiling: number;
+  }
+
+  /** The worst of the four surfaces, because a screen chooses which one a component lands on. */
+  const worstSurface = (value: string, c: SemanticTokens): number =>
+    Math.min(...TEXT_SURFACES.map(([, read]) => contrastRatio(value, read(c))));
+
+  /** How much a translucent layer changes the least dimmable thing there is. */
+  const dimsWhite = (scrim: string): number =>
+    contrastRatio(compositeOver(scrim, '#FFFFFF'), '#FFFFFF');
+
+  /** A press layer composites over whatever it is pressed against, so measure it against each. */
+  const pressLayer = (layer: string, c: SemanticTokens): number =>
+    Math.min(
+      ...TEXT_SURFACES.map(([, read]) => {
+        const surface = read(c);
+        return contrastRatio(compositeOver(layer, surface), surface);
+      }),
+    );
+
+  const MEASURED_WITHOUT_A_TOKEN_PAIRING: readonly ExemptRole[] = [
+    {
+      role: 'content.disabled',
+      because: 'WCAG 1.4.3 exempts the text of an inactive user interface component',
+      measure: (c) => contrastRatio(c.content.disabled, c.surface.disabled),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NORMAL_TEXT,
+    },
+    {
+      role: 'surface.disabled',
+      because: 'it is only ever the ground under `content.disabled`, which 1.4.3 exempts',
+      measure: (c) => contrastRatio(c.content.disabled, c.surface.disabled),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NORMAL_TEXT,
+    },
+    {
+      role: 'border.subtle',
+      because: '1.4.11 reaches what identifies a control, and a rule between rows identifies none',
+      measure: (c) => worstSurface(c.border.subtle, c),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NON_TEXT,
+    },
+    {
+      role: 'scrim.backdrop',
+      because: 'no text sits on it; its job is to separate a sheet from the app beneath',
+      measure: (c) => dimsWhite(c.scrim.backdrop),
+      floor: AA_NON_TEXT,
+      ceiling: UNBOUNDED,
+    },
+    {
+      role: 'scrim.sheet',
+      because: 'a separator inside an already-AA sheet, over whatever the sheet is showing',
+      measure: (c) => dimsWhite(c.scrim.sheet),
+      floor: AA_NON_TEXT,
+      ceiling: UNBOUNDED,
+    },
+    {
+      role: 'scrim.image',
+      because: 'what is under it is a remote photograph, which this theme does not choose',
+      measure: (c) => contrastRatio(c.content.onImage, compositeOver(c.scrim.image, '#FFFFFF')),
+      floor: AA_NORMAL_TEXT,
+      ceiling: UNBOUNDED,
+    },
+    {
+      role: 'content.onImage',
+      because: 'its background is that same photograph, reached only through the composited scrim',
+      measure: (c) => contrastRatio(c.content.onImage, compositeOver(c.scrim.image, '#FFFFFF')),
+      floor: AA_NORMAL_TEXT,
+      ceiling: UNBOUNDED,
+    },
+    {
+      role: 'effect.shadowColor',
+      because: 'a shadow is cast by a surface rather than drawn on one',
+      // Only that it is distinguishable from the darkest surface it can be cast on. That it is
+      // DARKER — a shadow that lightens is a glow — is asserted at the component layer, where
+      // `card`, `sheet` and `toast` are the three groups that actually cast one.
+      measure: (c) => worstSurface(c.effect.shadowColor, c),
+      floor: VISIBLE_MINIMUM,
+      ceiling: UNBOUNDED,
+    },
+    {
+      role: 'effect.skeleton',
+      because: 'it replaces content rather than sitting on it, and PRD 12 makes it a loading state',
+      measure: (c) => contrastRatio(c.effect.skeleton, c.surface.raised),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NON_TEXT,
+    },
+    {
+      role: 'effect.ripple',
+      because: "Android's press layer composites over whatever it is pressed against",
+      measure: (c) => pressLayer(c.effect.ripple, c),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NON_TEXT,
+    },
+    {
+      role: 'effect.highlight',
+      because: "iOS's press overlay composites over whatever it is pressed against",
+      measure: (c) => pressLayer(c.effect.highlight, c),
+      floor: VISIBLE_MINIMUM,
+      ceiling: AA_NON_TEXT,
+    },
+  ];
 
   function colourRoles(tokens: SemanticTokens): string[] {
     const roles: string[] = [];
@@ -573,7 +590,7 @@ describe('coverage of the token maps', () => {
     ...TEXT_FOREGROUND_ROLES,
     ...PAIRED_FOREGROUND_ROLES,
     ...BACKGROUND_ROLES,
-    ...COLOUR_ROLES_WITHOUT_A_PAIRING,
+    ...MEASURED_WITHOUT_A_TOKEN_PAIRING.map((exempt) => exempt.role),
   ];
 
   it.each(SCHEMES)('%s: every colour role declares the direction it is drawn in', (scheme) => {
@@ -625,6 +642,75 @@ describe('coverage of the token maps', () => {
     expect(SCHEMES).toEqual(['light', 'dark']);
     expect(allPairings.length).toBeGreaterThan(50);
   });
+
+  it.each(SCHEMES)('%s: every exempt role measures something in the pairing’s place', (scheme) => {
+    const colors = colorsByScheme[scheme];
+    for (const exempt of MEASURED_WITHOUT_A_TOKEN_PAIRING) {
+      const measured = exempt.measure(colors);
+      expect(
+        measured,
+        `${exempt.role} (${exempt.because}) measures ${measured.toFixed(4)}, needs at least ${String(exempt.floor)}`,
+      ).toBeGreaterThanOrEqual(exempt.floor);
+      if (exempt.ceiling !== UNBOUNDED) {
+        expect(
+          measured,
+          `${exempt.role} measures ${measured.toFixed(4)} - at or above ${String(exempt.ceiling)} the exemption is unnecessary and this row should be deleted rather than left to cover a pairing it no longer describes`,
+        ).toBeLessThan(exempt.ceiling);
+      }
+    }
+  });
+
+  it('exempts exactly the roles no pairing names, in either direction', () => {
+    // The exemption list is now DERIVED from the table rather than trusted beside it: a role that
+    // no pairing names on either side must appear here, and a role that a pairing does name must
+    // not. A new token added without a row fails; an exemption left behind after a row was added
+    // for it fails too, which is the "quietly converging" failure this file already guards against
+    // for `statusOnInverse`.
+    const paired = new Set([...measuredAsForeground, ...measuredAsBackground]);
+    const unpaired = colourRoles(lightColors)
+      .filter((role) => !paired.has(role))
+      .sort();
+    expect(unpaired).toEqual(MEASURED_WITHOUT_A_TOKEN_PAIRING.map((e) => e.role).sort());
+  });
+
+  it('classifies no role in a direction its own group contradicts', () => {
+    // The four lists above are declarations, and an audit of P23 found them checked against nothing
+    // but each other — so a label repointed at `accent.brand` would have passed every assertion in
+    // this file. `SemanticTokens` authors `surface`, `statusSurface` and `scrim` as grounds and
+    // `content`, `border` and `statusOnInverse` as marks, so a role declared against its own
+    // group's direction is a mistake the interface's own structure can see.
+    //
+    // It does NOT reach `accent`, `status` or `effect`, whose roles are legitimately used both ways
+    // — `accent.brand` is a fill and `accent.protein` is a text tone. That is why the real closure
+    // is at the component layer: `component-contrast.test.ts` checks the direction
+    // `buildComponentTokens` paints each role in, against the member name that paints it.
+    const groundGroups = new Set(['surface', 'statusSurface', 'scrim']);
+    const markGroups = new Set(['content', 'border', 'statusOnInverse']);
+    const groupOf = (role: string): string => role.split('.')[0] ?? '';
+    expect(
+      [...TEXT_FOREGROUND_ROLES, ...PAIRED_FOREGROUND_ROLES].filter((role) =>
+        groundGroups.has(groupOf(role)),
+      ),
+      'roles declared as a foreground whose group is authored as a ground',
+    ).toEqual([]);
+    expect(
+      BACKGROUND_ROLES.filter((role) => markGroups.has(groupOf(role))),
+      'roles declared as a background whose group is authored as a mark',
+    ).toEqual([]);
+  });
+
+  it('states how much of the classification is still declared, with the count', () => {
+    // The residue, counted rather than implied. Deriving these four lists from the pairing table
+    // they exist to guard would be circular - BRIEF 6.1g's bad case, an expectation computed from
+    // the subject - so they stay hand-written and the count is what makes that visible to a reader.
+    // 52 entries for 51 roles: `status.danger` is declared twice because it is used twice, as the
+    // danger text tone and as the destructive fill.
+    expect(TEXT_FOREGROUND_ROLES.length + PAIRED_FOREGROUND_ROLES.length).toBe(24);
+    expect(BACKGROUND_ROLES.length).toBe(17);
+    expect(MEASURED_WITHOUT_A_TOKEN_PAIRING.length).toBe(11);
+    expect(classified.length).toBe(52);
+    expect(colourRoles(lightColors).length).toBe(51);
+  });
 });
 
 describe('the type scale does not create a large-text loophole', () => {
@@ -641,30 +727,17 @@ describe('the type scale does not create a large-text loophole', () => {
   });
 });
 
-describe('the canvas status tones are unusable on surface.inverse', () => {
-  // The reason `statusOnInverse` exists, asserted rather than assumed. Every one of these was
-  // between 1.49:1 and 2.76:1 when `toast.tone*` pointed at them, and all eight failed 1.4.11.
-  it.each(SCHEMES)('in %s', (scheme) => {
-    const colors = colorsByScheme[scheme];
-    for (const pairing of statusOnInverseIsNecessary) {
-      const ratio = contrastRatio(pairing.foreground(colors), pairing.background(colors));
-      expect(
-        ratio,
-        `${pairing.name} measures ${ratio.toFixed(2)}:1 - if this now PASSES 3:1, statusOnInverse is redundant and should be removed rather than left to diverge`,
-      ).toBeLessThan(AA_NON_TEXT);
-    }
-  });
-});
-
 /**
- * **The component tokens, on the surfaces THEY define. This is the block whose absence let a
- * defect ship.**
+ * **The component tokens are measured in `component-contrast.test.ts`, not here.**
  *
- * Every pairing above is semantic-on-semantic. The `toast.tone*` failure lived in `component.ts`:
- * the four tokens pointed at `status.*`, which is verified to AA on four surfaces and is
- * unreadable on the fifth - `toast.background` - which no row covered because no SEMANTIC token
- * names it. A semantic-level suite cannot see that class of defect at all: both halves are
- * individually correct and the composition is not.
+ * Every pairing above is semantic-on-semantic, and a whole class of defect is invisible to that:
+ * the `toast.tone*` failure lived in `component.ts`, whose four tokens pointed at `status.*` —
+ * verified to AA on four surfaces and unreadable on the fifth, `toast.background`, which no row
+ * here covered because no SEMANTIC token names it. Both halves were individually correct and the
+ * composition was not.
  *
- * So this asserts what `buildComponentTokens` actually produced, which is what a component reads.
+ * This docblock introduced that block until P12 moved it to its own file and left the comment
+ * behind pointing at nothing. Kept as a pointer rather than deleted, because the sentence it
+ * carries — a semantic-level suite cannot see a composition defect — is the reason the other file
+ * exists.
  */

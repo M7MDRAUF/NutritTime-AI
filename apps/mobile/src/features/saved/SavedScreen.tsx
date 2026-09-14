@@ -151,8 +151,21 @@ export function SavedScreen({ route, navigation }: ScreenProps<'Saved'>): ReactN
 
   const section = readUnionParam(route.params, 'section', SAVED_SECTIONS) ?? 'favorites';
 
+  /**
+   * **`key` on both sections, because the two render POSITIONS swap and React reconciles by index.**
+   *
+   * `section` decides which of the two comes first, so changing it puts a different component type
+   * at each position. Without a stable key React unmounts and remounts **both** — and since P23
+   * both carry live-region notices, a remount **re-speaks** them. Measured at P23: a `section`
+   * change re-announced both reset notices, which is a screen reader interrupting the user to
+   * repeat something they already heard because they navigated.
+   *
+   * The keys are on the ELEMENTS rather than on the positions on purpose: a key at the position
+   * would still be index-based and would reconcile a `FavoritesSection` into a `CustomSection`.
+   */
   const favoritesSection = (
     <FavoritesSection
+      key="favorites"
       feed={feed}
       entryStatus={favoritesStatus.entryStatus}
       allergies={allergies}
@@ -163,6 +176,7 @@ export function SavedScreen({ route, navigation }: ScreenProps<'Saved'>): ReactN
   );
   const customSection = (
     <CustomSection
+      key="custom"
       meals={selectCustomMeals(customMeals)}
       atBound={selectAtCustomMealsBound(customMeals)}
       entryStatus={customStatus.entryStatus}

@@ -20,6 +20,19 @@
  * a 404 — the record is gone, so the row offers to forget it. `unresolved` is any other per-id
  * failure, which says nothing about whether the record still exists, so it offers a retry and never
  * a removal. A whole-section `unreachable`/`failed` is only reached when nothing resolved at all.
+ *
+ * **Only the two `entryStatus` notices announce themselves (`announceOnMount`); the three feed
+ * notices do not, and that is a judgement rather than an omission.** `entryStatus` is read off the
+ * boot hydration snapshot, which `StorageProvider` builds once and never updates, so neither of
+ * those branches can appear or disappear from a state change: each mounts with the section, and
+ * `StatusMessage`'s `role="alert"` is spoken on that insertion rather than on every render.
+ * `missing` and `unresolved` are re-derived from the feed instead, so they unmount and remount on
+ * every `onRetry` - announcing them would re-read "3 favourites could not be found" after a retry
+ * that changed nothing about them, and a region that speaks on an unrelated change is the
+ * interruption Plan 20's focus row exists to prevent. One caveat, recorded rather than papered
+ * over: `SavedScreen` renders this section and `CustomSection` at two sibling positions whose
+ * order the `section` route param chooses, with no `key`, so a URL that changes `section` remounts
+ * both and re-announces.
  */
 
 import { useCallback, useState } from 'react';
@@ -107,6 +120,7 @@ export function FavoritesSection({
           title="Your favourites were reset"
           description="The saved list of favourite meals could not be read, so it is empty. Favourite the meals you want again."
           stillAvailable="Your own recipes are stored separately and are unaffected."
+          announceOnMount
         />
       ) : null}
 
@@ -124,6 +138,7 @@ export function FavoritesSection({
           title="Your favourites could not be read"
           description="This list is not empty — it could not be loaded, so nothing is shown. Favouriting a meal right now will not be remembered after you close the app."
           stillAvailable="Browsing, searching and opening meals all still work, and nothing you saved has been deleted."
+          announceOnMount
         />
       ) : null}
 

@@ -32,5 +32,9 @@
   // and while it did, `App.tsx`, `index.ts` and `packages/catalog/seed.ts` were invisible to the
   // gate. `baseUrl` is gone for a different reason: TypeScript 6.0 deprecates it (`TS5101`), and
   // `paths` resolves relative to this file without it.
-  "include": ["src/**/*.ts", "src/**/*.tsx", "index.ts", "App.tsx"]
+  // `App.dom.test.tsx` is named for the same reason `App.tsx` is: it sits outside `src/`, so
+  // without it a type error in the composition root's only test would never reach
+  // `tsc --noEmit -p apps/mobile`. The test was written at P22 and typechecked clean only
+  // through a generated throwaway project until this line existed.
+  "include": ["src/**/*.ts", "src/**/*.tsx", "index.ts", "App.tsx", "App.dom.test.tsx"]
 }

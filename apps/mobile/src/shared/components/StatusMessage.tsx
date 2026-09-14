@@ -102,7 +102,16 @@ export interface StatusMessageProps {
   readonly stillAvailable?: string;
   readonly actionLabel?: string;
   readonly onAction?: () => void;
-  /** Announce the message when it appears, for a state that arrives after the screen has. */
+  /**
+   * Announce the message when it appears, for a state that arrives after the screen has.
+   *
+   * **It is the ARRIVAL that announces, not a re-render.** The notice gets `role="alert"` for as
+   * long as this flag is set, and a screen reader speaks an alert when the node is INSERTED - so
+   * a caller that renders the message conditionally announces once, and a caller that wants a
+   * second announcement for a second attempt remounts it with a `key` (`MealFormScreen` does
+   * exactly that for its invalid-form summary). A message that re-announced on every render is
+   * noise a user switches off, which is worse than silence.
+   */
   readonly announceOnMount?: boolean;
   readonly testID?: string;
 }
@@ -123,8 +132,10 @@ export function StatusMessage({
   const toneColor = colors.status[tone];
 
   useEffect(() => {
-    // iOS has no live region: `accessibilityLiveRegion` is Android-only and `aria-live` is what
-    // the web export reads, so VoiceOver would be the one platform told nothing. This is the
+    // iOS has no live region: `accessibilityLiveRegion` is an **Android** API on native — on the
+    // web export react-native-web 0.21.2 maps it TO `aria-live`, as the block below records
+    // against the shipped source, so "Android-only" was true of the native platforms and false as
+    // written. Either way VoiceOver is the one platform told nothing. This is the
     // documented iOS API for the same job, and it is gated to iOS so the web export does not
     // announce the message twice - react-native-web implements `announceForAccessibility` by
     // creating a live region of its own, which would stack with the one below.
@@ -136,9 +147,30 @@ export function StatusMessage({
   return (
     <View
       testID={testID}
-      // Both spellings, deliberately: `accessibilityLiveRegion` is what Android reads and
-      // react-native-web 0.21 maps none of it, while `aria-live` is what the web export and this
-      // suite read. Setting one leaves either the platform or the test blind.
+      /*
+        **`aria-live` alone did not announce this, and that is the defect.** A live region has to
+        be in the tree BEFORE its contents change for a screen reader to speak them; every notice
+        here is mounted together with its own words, so the change the region exists to report has
+        already happened by the time the region exists. `role="alert"` is the one role whose
+        INSERTION is the announcement, which is the event these callers actually have. Home's
+        quarantine notice is the case that made it matter: it appears at hydration, says the
+        user's allergy list is now empty, and a region announced by nobody said nothing.
+
+        `aria-live="polite"` is kept alongside it and is not redundant - it DOWNGRADES the
+        `assertive` that `role="alert"` implies. Plan 14.2 adopted the alert role for errors, and
+        `OfflineState` records the matching reason for staying polite: a change of mode the user
+        should be told about is not the interruption a failure is. So the arrival is announced and
+        it waits its turn.
+
+        Verified against `react-native-web` **0.21.2** (`src/modules/createDOMProps/index.js`)
+        rather than assumed: `accessibilityLiveRegion` IS mapped to `aria-live` there, with
+        `'none'` rewritten to `'off'`, and `accessibilityRole` maps through `propsToAriaRole`,
+        which passes `'alert'` through unchanged because it is absent from both the web-role map
+        and `roleComponents`. `View` picks all four props and renders one `div`, so the role and
+        the words land on the SAME element - the split that `Sheet`'s dialogs were found with
+        cannot happen from here, and `StatusMessage.dom.test.tsx` asserts it on the element.
+      */
+      accessibilityRole={announceOnMount ? 'alert' : undefined}
       accessibilityLiveRegion={announceOnMount ? 'polite' : 'none'}
       aria-live={announceOnMount ? 'polite' : undefined}
       style={{

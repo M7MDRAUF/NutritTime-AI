@@ -29,8 +29,8 @@ describe('OfflineState', () => {
 
   it('is a polite live region and not an alert', () => {
     // Losing the server is a change of mode the user should be told about; it is not the
-    // interruption an error is. Both spellings, because react-native-web 0.21 maps neither from
-    // the other.
+    // interruption an error is. Both spellings, because the native platforms read only the RN
+    // one — react-native-web 0.21.2 maps it TO `aria-live` (`'none'` → `'off'`), not a no-op.
     const state = element(render(<OfflineState testID="o" />), 'o');
 
     expect(state.getAttribute('aria-live')).toBe('polite');

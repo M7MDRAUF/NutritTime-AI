@@ -18,9 +18,10 @@ describe('ErrorState', () => {
 
   it('announces itself as an alert', () => {
     // Plan 14.2 adopted `role="alert"` for errors specifically, and this is the only one of the
-    // five state components that carries it. Both spellings are asserted because
-    // react-native-web 0.21 maps neither from the other: if the aria alias were dropped the web
-    // export would announce nothing, and this is the test that would still be green.
+    // five state components that carries it. Both spellings are asserted because the native
+    // platforms read only `accessibilityLiveRegion`. react-native-web 0.21.2 DOES map it to
+    // `aria-live` (`dist/modules/createDOMProps/index.js:460-462`), so dropping the aria alias
+    // would not silence the web export — see `ErrorState.tsx`, which was corrected first.
     const state = element(render(<ErrorState testID="x" />), 'x');
 
     expect(state.getAttribute('role')).toBe('alert');

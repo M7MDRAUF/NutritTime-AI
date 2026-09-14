@@ -49,12 +49,19 @@ import { AssistantScreen } from './assistant/AssistantScreen.js';
  * **`Splash` used to be left out on a justification that was wrong, and users saw it.** This
  * docstring previously claimed the route was "unreachable until the phase has already advanced",
  * because the surface shown during hydration is `StorageProvider`'s `fallback`. That is true of
- * hydration and misses the **second** gate: `App.tsx` renders
- * `phase={fontsReady ? phase : 'hydrating'}`, so once hydration resolves and the fonts have not,
- * the navigator really does render the `hydrating` phase — and `screenFor('Splash')` fell through
+ * hydration and missed the **second** gate: `App.tsx` then rendered
+ * `phase={fontsReady ? phase : 'hydrating'}`, so once hydration resolved and the fonts had not,
+ * the navigator really did render the `hydrating` phase — and `screenFor('Splash')` fell through
  * to `PlaceholderScreen`. On web the fonts are a network fetch while hydration is a `localStorage`
- * read, which makes that **the normal cold-start ordering**, not an edge case: the first thing a
+ * read, which made that **the normal cold-start ordering**, not an edge case: the first thing a
  * user saw was "Splash is not available yet".
+ *
+ * **`App.tsx` no longer computes that expression** (P22, R-44): `PhasedNavigation` returns
+ * `HydratingSplash` directly while the fonts are unresolved, and `NavigationRoot` does not take
+ * `fontsReady` at all — because a font gate is a reason to wait, not a phase to render. So the
+ * route is no longer reachable by *that* path. **It stays registered anyway**, and the paragraph
+ * above is why: the justification for leaving it out was wrong once, on reasoning that sounded
+ * airtight, and `linking.ts:128` still declares `/splash` deep-linkable.
  *
  * `RootNavigator.dom.test.tsx` asserted that placeholder, so the suite documented the state rather
  * than catching it — a test can only be evidence about what someone thought to claim.
