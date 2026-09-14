@@ -167,3 +167,23 @@ export interface Citation {
   readonly mealId: string;
   readonly name: string;
 }
+
+/**
+ * What the model is allowed to return on the chat lane (TSD 3.3, 5.5).
+ *
+ * Named here because TSD 5.7's `containReply(reply: ChatModelReply, ...)` signature needs a type
+ * and the document declares only the schema. Nothing in this shape can hold a fabricated fact:
+ * `citedMealIds` are ids the prompt already carried, and `answer` is prose that containment reads
+ * before a user ever sees it.
+ */
+export interface ChatModelReply {
+  readonly answered: boolean;
+  readonly answer: string;
+  readonly citedMealIds: readonly string[];
+}
+
+/** What the model is allowed to return on the explanation lane (TSD 3.3). */
+export interface ExplanationReply {
+  readonly mealId: string;
+  readonly reason: string;
+}

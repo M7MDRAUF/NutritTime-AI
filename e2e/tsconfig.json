@@ -19,5 +19,9 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["specs/**/*.ts", "playwright.config.ts"]
+  // `support/**` is listed EXPLICITLY, not left to transitive discovery through the specs
+  // that import it. A new support module no spec imports yet was outside the program
+  // altogether -- ESLint saw the file, `tsc -p e2e` did not -- and P24 (T-24-01) builds
+  // shared fixtures into precisely that directory. Found by the P24 reconnaissance survey.
+  "include": ["specs/**/*.ts", "support/**/*.ts", "playwright.config.ts"]
 }

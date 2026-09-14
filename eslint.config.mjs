@@ -208,6 +208,44 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': ['error', { patterns: appEscape('mobile') }] },
   },
 
+  // Rule 5 - `process.env` is read in `config.ts` and nowhere else.
+  //
+  // **This closes T-19-06, whose acceptance was "constants, not env-configurable" and whose
+  // evidence column says "Source review".** The review passed and the values are pinned by a
+  // `toStrictEqual` in `config.test.ts` - and neither caught the mutation an auditor found:
+  // `numCtx: Number(process.env['NUM_CTX'] ?? 4096)` ships GREEN, because with the variable
+  // unset it still yields 4096. A value assertion cannot see a value that is merely
+  // *overridable*, so the guard has to be on the access rather than on the number.
+  //
+  // It also makes structural a property the whole server already leaned on by convention
+  // (`config.ts`'s own docstring: "read in this file and nowhere else"). A second reader means
+  // two places can disagree about what the server is configured to do, and the disagreement
+  // shows up as behaviour no test reproduces because the test set only one of them.
+  //
+  // Tests are exempt: `boot.integration.test.ts` must spread an ambient environment into a child
+  // process to be a realistic boot, and `grammar.integration.test.ts` reads `RUN_MODEL_TESTS` to
+  // decide whether to run at all. Both are registered readers with their reasons in the files.
+  //
+  // A SEPARATE block, and only `no-restricted-properties` in it, because ESLint flat config
+  // REPLACES rather than merges a rule across overlapping globs - this project has been bitten
+  // three times. Setting a different rule name here leaves rule 4's `no-restricted-imports`
+  // intact for the same glob, and `--print-config` is the only evidence that counts for that.
+  {
+    files: ['apps/server/src/**/*.ts'],
+    ignores: ['apps/server/src/config.ts', 'apps/server/src/**/*.test.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'process',
+          property: 'env',
+          message:
+            'Read the environment only in apps/server/src/config.ts. Every other module takes the parsed ServerConfig as a parameter (TSD 5.2).',
+        },
+      ],
+    },
+  },
+
   // Expo's Metro and Babel configs MUST be CommonJS: Metro loads `metro.config.js` with
   // `require` and Babel does the same for its own. They are build configuration, not app code,
   // and nothing in the bundle imports them - so `require`, `module` and `__dirname` are

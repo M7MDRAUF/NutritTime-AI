@@ -12,6 +12,7 @@ import {
   NUTRITION_GOALS,
   SCORE_REASON_KINDS,
   THEME_MODES,
+  chatModelReplySchema,
   explanationReplySchema,
   ingredientSchema,
   kebabIdSchema,
@@ -25,7 +26,9 @@ import {
 } from './index.js';
 import type {
   ApiErrorBody,
+  ChatModelReply,
   ChatResponse,
+  ExplanationReply,
   HealthResponse,
   Meal,
   MealListResponse,
@@ -86,6 +89,27 @@ describe('schema and interface stay bound', () => {
     const to = (v: Inferred): UserPreferences => v;
     expect(typeof reader.safeParse).toBe('function');
     expect(typeof to).toBe('function');
+  });
+
+  it('the two model-reply schemas stay bound to their interfaces', () => {
+    // The trust boundary this pair describes is the only one in the system whose other side is a
+    // language model, so a field added to one and not the other is the divergence that matters
+    // most: containment reads the interface and the wire is parsed by the schema.
+    const chat: ValueSchema<ChatModelReply> = chatModelReplySchema;
+    const explanation: ValueSchema<ExplanationReply> = explanationReplySchema;
+    const toChat = (v: z.infer<typeof chatModelReplySchema>): ChatModelReply => v;
+    const toExplanation = (v: z.infer<typeof explanationReplySchema>): ExplanationReply => v;
+    expect(typeof chat.safeParse).toBe('function');
+    expect(typeof explanation.safeParse).toBe('function');
+    expect(typeof toChat).toBe('function');
+    expect(typeof toExplanation).toBe('function');
+
+    // Key sets, which is what catches a field added to the schema and not to the interface --
+    // the direction assignment cannot see, because Zod infers mutable arrays.
+    expect(Object.keys(chatModelReplySchema.shape).sort()).toEqual(
+      ['answered', 'answer', 'citedMealIds'].sort(),
+    );
+    expect(Object.keys(explanationReplySchema.shape).sort()).toEqual(['mealId', 'reason'].sort());
   });
 
   it('exposes the wire contracts through the barrel', () => {

@@ -27,11 +27,19 @@ export interface RequestLogFields {
   readonly errorCode?: string;
 }
 
-export type AiLane = 'chat' | 'explanation';
+/**
+ * Which lane an AI log line describes (TSD 5.8's `lane` field).
+ *
+ * **`AiLaneName`, not `AiLane`.** `aiLane.ts` exports `AiLane` for TSD 5.5's single-flight
+ * interface, and two different things under one name in one package is how a route ends up
+ * importing the union where it meant the lane. This one is the lane's NAME; the other one runs
+ * the call. Renamed before P20 and P21 needed both in the same file and reached for an alias.
+ */
+export type AiLaneName = 'chat' | 'explanation';
 export type AiOutcome = 'ok' | 'timeout' | 'schema' | 'contained' | 'unreachable';
 
 export interface AiLogFields {
-  readonly lane: AiLane;
+  readonly lane: AiLaneName;
   readonly durationMs: number;
   readonly outcome: AiOutcome;
 }
