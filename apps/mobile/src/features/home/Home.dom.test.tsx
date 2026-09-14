@@ -974,3 +974,170 @@ describe('HomeScreen', () => {
     expect(view.find('home-period')?.textContent).toBe('Something small');
   });
 });
+
+/** The two values `explanationSource` can take (`packages/contracts` core, `Recommendation`). */
+type ExplanationSource = Recommendation['explanationSource'];
+
+/**
+ * Distinct per card AND per source, so an assertion can bind one card to one sentence.
+ *
+ * The meal id is in the sentence because "the screen contains this string" is satisfied by the
+ * string being anywhere — including on the wrong card, which is the defect a mixed render exists
+ * to catch.
+ */
+function explanationFor(source: ExplanationSource, mealId: string): string {
+  return `${source === 'gemma' ? 'A model' : 'A template'} wrote this for ${mealId}.`;
+}
+
+/**
+ * The real-domain response with the two fields the AI lane owns substituted, per card.
+ *
+ * **`'gemma'` has never reached this screen.** P10's explanation lane always answered
+ * `'fallback'`, so no response in production, in a fixture or in a test has ever carried the other
+ * value — and the marker has only ever been exercised in the direction that shows it. P20's server
+ * work sends `'gemma'` for the first time.
+ *
+ * Wraps `domainClient` rather than replacing it, so the cards are still whatever the real
+ * `recommend()` chose from the real catalog and only `explanation` and `explanationSource` are
+ * mine. A missing entry becomes `'fallback'`, which is the direction that FAILS the assertions
+ * below rather than satisfying them: every one of them is about the marker being absent or counted,
+ * so a short fixture goes red instead of passing quietly.
+ */
+function sourcedClient(sources: readonly ExplanationSource[]): ApiClient {
+  const real = domainClient();
+  return {
+    ...real.client,
+    recommend: async (request, signal) => {
+      const response = await real.client.recommend(request, signal);
+      return {
+        ...response,
+        recommendations: response.recommendations.map((recommendation, index) => {
+          const source = sources[index] ?? 'fallback';
+          return {
+            ...recommendation,
+            explanation: explanationFor(source, recommendation.meal.id),
+            explanationSource: source,
+          };
+        }),
+      };
+    },
+  };
+}
+
+/**
+ * Every marker in one render, as meal ids in card order.
+ *
+ * Scoped to this render's `host` and not to `document`: this file never unmounts a tree, so a
+ * document-wide count would add up every render in the file. Counted rather than existence-checked
+ * because "a marker is present" is true of a screen that marks all three.
+ */
+function markedMealIds(view: Harness): string[] {
+  return [...view.host.querySelectorAll('[data-testid^="explanation-source-"]')].map((node) =>
+    (node.getAttribute('data-testid') ?? '').replace('explanation-source-', ''),
+  );
+}
+
+/** The marker inside its OWN card, so a legend somewhere else on the screen does not count. */
+function markerInCard(view: Harness, mealId: string): HTMLElement | null {
+  const row = view.find(`recommendation-${mealId}`);
+  const found = row?.querySelector(`[data-testid="explanation-source-${mealId}"]`);
+  return found instanceof HTMLElement ? found : null;
+}
+
+/**
+ * T-20-04 — PRD FR-009, "client rendering: fallback is visibly marked".
+ *
+ * **A badge on every card is not a distinction, and half of this claim had never been tested.**
+ * The T-15-04 test above proves a fallback IS marked; nothing proved a model-written explanation
+ * is NOT, because `'gemma'` did not exist anywhere in the app until P20. So a screen that marked
+ * every card — `HomeScreen.tsx`'s own docstring says that would "put a badge on every card and
+ * tell the user nothing" — passed the whole of the acceptance.
+ *
+ * The three tests here are built so **no single constant satisfies them**: all-gemma demands zero
+ * markers, all-fallback demands three, and the mixed render demands exactly the fallback ones, in
+ * their own cards. A screen that marks everything fails the first, a screen that marks nothing
+ * fails the second, and a screen whose marker is keyed off the wrong recommendation fails the
+ * third while passing both others.
+ */
+describe('the explanation-source marker (T-20-04)', () => {
+  it('does NOT mark a model-written explanation, and still renders it', async () => {
+    /**
+     * The missing half. `'gemma'` means a model wrote this sentence, which is the ordinary case
+     * FR-009 describes — so it carries no marker, and the absence is what makes the marker on the
+     * other card mean something.
+     *
+     * The explanation itself is still asserted on every card: not marking a sentence must not
+     * become not showing it.
+     */
+    const view = await render(sourcedClient(['gemma', 'gemma', 'gemma']));
+    const ids = view.mealIds();
+    expect(ids, 'three cards, or the absences below are absences of nothing').toHaveLength(3);
+
+    for (const id of ids) {
+      const row = view.find(`recommendation-${id}`);
+      expect(row, id).not.toBeNull();
+      expect(row?.textContent ?? '', id).toContain(explanationFor('gemma', id));
+      expect(markerInCard(view, id), id).toBeNull();
+    }
+
+    expect(markedMealIds(view), 'nothing model-written may be marked').toStrictEqual([]);
+    expect(view.text()).not.toContain('Written by the app');
+  });
+
+  it('marks all three when all three are the fallback — the half that pairs with it', async () => {
+    /**
+     * The same claim as T-15-04's test above, restated here as the other end of the pair so the
+     * two sit in one describe and one mutation cannot satisfy both. Counted, not merely found: the
+     * test above reads the first card only.
+     *
+     * **PRD §10.5 — "colour is never the only carrier of status".** The marker is a sentence, so
+     * the exact words are asserted rather than a class, a tone or an icon: in react-native-web
+     * this `AppText` renders its text content, which is also its accessible name, and that is the
+     * whole of the distinction a user (or a screen reader) gets.
+     */
+    const view = await render(sourcedClient(['fallback', 'fallback', 'fallback']));
+    const ids = view.mealIds();
+    expect(ids).toHaveLength(3);
+    expect(markedMealIds(view)).toStrictEqual(ids);
+
+    for (const id of ids) {
+      expect(markerInCard(view, id)?.textContent, id).toBe('Written by the app');
+    }
+  });
+
+  it('marks exactly the fallback card in a mixed response, in its own card', async () => {
+    /**
+     * **The render a real user meets once P20's lane is live**, and the one that catches a marker
+     * keyed off the wrong recommendation: with `'gemma'` first and last, a marker driven by
+     * `recommendations[0]` — or by the last card, or by any one of them — is either on all three
+     * cards or on none, and both are wrong here.
+     *
+     * Each card is also checked against ITS OWN sentence, so a marker that lands on the right
+     * count but the wrong card fails too.
+     */
+    const sources: readonly ExplanationSource[] = ['gemma', 'fallback', 'gemma'];
+    const view = await render(sourcedClient(sources));
+    const ids = view.mealIds();
+    expect(ids).toHaveLength(sources.length);
+
+    const expected = ids.filter((_id, index) => sources[index] === 'fallback');
+    // The fixture must actually mix, or this is one of the two tests above wearing a new name.
+    expect(expected, 'exactly one fallback card in the fixture').toHaveLength(1);
+    expect(markedMealIds(view)).toStrictEqual(expected);
+
+    for (const [index, id] of ids.entries()) {
+      const source = sources[index] ?? 'fallback';
+      const row = view.find(`recommendation-${id}`);
+      expect(row, id).not.toBeNull();
+      expect(row?.textContent ?? '', id).toContain(explanationFor(source, id));
+
+      const marker = markerInCard(view, id);
+      if (source === 'fallback') {
+        expect(marker, id).not.toBeNull();
+        expect(marker?.textContent, id).toBe('Written by the app');
+      } else {
+        expect(marker, id).toBeNull();
+      }
+    }
+  });
+});

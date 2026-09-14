@@ -1,24 +1,90 @@
 import { describe, expect, it } from 'vitest';
+import express from 'express';
+import type { Express } from 'express';
 import request from 'supertest';
 import { seededCatalog } from '@nutritime/catalog';
 import type { Meal, ScoreReasonKind } from '@nutritime/contracts';
 import { effectiveAllergenTags, isDietCompatible } from '@nutritime/domain';
-import { createApp } from '../app.js';
+import type { AiProvider } from '../ai/provider.js';
+import { createAiLane } from '../aiLane.js';
+import { JSON_BODY_LIMIT, createErrorHandler } from '../app.js';
 import { buildCatalog } from '../catalog.js';
+import type { Catalog } from '../catalog.js';
 import { loadConfig } from '../config.js';
-import { fallbackExplanation } from './recommendations.js';
+import type { ServerConfig } from '../config.js';
+import { fallbackExplanation, recommendationsRouter } from './recommendations.js';
 
 /**
- * Plan C-04, test list in full.
+ * Plan C-04's test list: the safety path, the response contract, validation, and the deterministic
+ * explanation builder. **Nothing in this file consults a model.**
  *
  * The first suite is the one this endpoint exists to get right. Everything else here is a
  * contract detail; an allergen-conflicting meal reaching a response is the failure the whole
  * product is built to prevent, so it is tested through the HTTP boundary and not only in the
  * domain where `recommend` already has its own suite.
+ *
+ * **P20's explanation-lane suites are in `recommendations.explanation.integration.test.ts`.** This
+ * file reached 1136 lines against a §17.1 exception granted at 459, which is the ground
+ * `contrast.test.ts` was split on rather than re-approved ("42% past a cap it was already exempt
+ * from, which is how an exception becomes a blanket"). The seam is the model: the gate, the
+ * containment verdicts, the shared budget, the stopped-Ollama case, `AI_FAKE` and the AI log line
+ * all need a provider, a lane, a clock and a sink, and none of them belongs beside PRD §13's
+ * safety evidence. Two things stayed deliberately: **the allergen hard rejection keeps its
+ * synthetic catalog and the allergy-free control in the same file**, because a control separated
+ * from the claim it controls is how the first version of the peanut test came to be unfailable;
+ * and no test here mocks or spies on anything.
+ *
+ * **`mount` rather than `createApp`, and every assertion is unchanged by it.** The router's deps
+ * are an object carrying a lane, a provider, a sink and a clock (CONTRACTS AMENDMENT 5 and 7), and
+ * `app.ts` is the only place that constructs them - so a test needing a specific provider cannot
+ * get one through `createApp`, which takes none. `mount` installs the REAL router, the REAL body
+ * parser at the REAL limit and the REAL error handler, which is everything the assertions below
+ * touch; the CORS layer and the request log line are asserted in `boot.integration.test.ts` and
+ * `logging.test.ts`, where they belong.
  */
 
 const catalog = buildCatalog(seededCatalog);
-const app = createApp({ config: loadConfig({}), catalog, sink: () => undefined });
+
+interface Mounted {
+  readonly catalog: Catalog;
+  readonly config: ServerConfig;
+  readonly provider: AiProvider;
+}
+
+function mount(options: Mounted): Express {
+  const sink = (): void => undefined;
+  const now = (): Date => new Date();
+  const app = express();
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  app.use(
+    '/api/v1/recommendations',
+    recommendationsRouter({
+      catalog: options.catalog,
+      config: options.config,
+      lane: createAiLane(),
+      provider: options.provider,
+      sink,
+      now,
+    }),
+  );
+  app.use(createErrorHandler({ sink, now }));
+  return app;
+}
+
+/**
+ * The provider for every test that is not about the model.
+ *
+ * It **rejects rather than resolving**, so no test in this file can reach a network or a real
+ * Ollama by accident: the suite's verdicts must not depend on whether the developer running it
+ * happens to have a model loaded. The gate means it is never called at all for an
+ * `aiEnabled: false` request, which is what keeps the pre-P20 suites byte-identical in
+ * behaviour - and if the gate ever opened by mistake, this rejects and the explanation degrades
+ * to the template rather than silently contacting localhost.
+ */
+const offlineProvider: AiProvider = () =>
+  Promise.reject(new Error('no model is configured for this test'));
+
+const app = mount({ catalog, config: loadConfig({}), provider: offlineProvider });
 
 interface Body {
   readonly mealPeriod: string;
@@ -123,10 +189,10 @@ describe('the allergen hard rejection, through HTTP', () => {
       variant('untagged-prawn-dish', 'Untagged Prawn Dish', 'King Prawns'),
       variant('plain-lentil-dish', 'Plain Lentil Dish', 'Red Lentils'),
     ]);
-    const inferenceApp = createApp({
-      config: loadConfig({}),
+    const inferenceApp = mount({
       catalog: inferenceCatalog,
-      sink: () => undefined,
+      config: loadConfig({}),
+      provider: offlineProvider,
     });
 
     const ask = (allergies: readonly string[]) =>
@@ -263,14 +329,17 @@ describe('the response shape', () => {
     );
   });
 
-  it('marks every explanation as fallback in this phase', async () => {
-    // No model exists until P19, so `gemma` would be a lie about where the prose came from.
-    for (const aiEnabled of [true, false]) {
-      const response = await post(body({ aiEnabled }));
-      for (const entry of response.body.recommendations) {
-        expect(entry.explanationSource).toBe('fallback');
-        expect(entry.explanation.length).toBeGreaterThan(0);
-      }
+  it('marks every explanation as fallback when the request asks for no AI', async () => {
+    // Plan C-04's test row, and now only half of what it used to assert: the `aiEnabled: true`
+    // arm belonged to a phase where `explanationSource` was a constant, and pinning `fallback`
+    // on both arms would forbid exactly the behaviour T-20-04 adds. The four-combination gate
+    // suite below replaces it, with a provider spy - which is a stronger claim than this one
+    // ever made, because "no model call happened" is the property the user cares about and this
+    // test could not see it.
+    const response = await post(body({ aiEnabled: false }));
+    for (const entry of response.body.recommendations) {
+      expect(entry.explanationSource).toBe('fallback');
+      expect(entry.explanation.length).toBeGreaterThan(0);
     }
   });
 
@@ -337,27 +406,6 @@ describe('validation', () => {
     expect(JSON.stringify(response.body)).not.toContain('peanuts');
   });
 });
-
-describe('this endpoint has no 503', () => {
-  it('still answers 200 with Ollama unreachable', async () => {
-    // Plan C-04: an explanation that cannot reach the model degrades to `fallback` and the
-    // request still succeeds. A recommendation is useful without prose.
-    const isolated = createApp({
-      config: loadConfig({ OLLAMA_BASE_URL: 'http://127.0.0.1:1' }),
-      catalog,
-      sink: () => undefined,
-    });
-    const response = await request(isolated)
-      .post('/api/v1/recommendations')
-      .set('Content-Type', 'application/json')
-      .send(JSON.stringify(body({ aiEnabled: true })));
-    expect(response.status).toBe(200);
-    for (const entry of response.body.recommendations) {
-      expect(entry.explanationSource).toBe('fallback');
-    }
-  });
-});
-
 describe('fallbackExplanation', () => {
   const scored = (points: readonly number[]) => ({
     meal: catalog.meals[0]!,

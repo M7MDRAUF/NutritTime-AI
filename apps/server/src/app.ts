@@ -21,6 +21,10 @@ import type { ServerConfig } from './config.js';
 import { ApiError, INTERNAL_ERROR_BODY, isApiError } from './errors.js';
 import { consoleSink, errorLogLine, framesOf, requestLogLine } from './logging.js';
 import type { LogSink } from './logging.js';
+import { createAiLane } from './aiLane.js';
+import { createAiProvider } from './ai/provider.js';
+import type { FetchLike } from './ai/ollamaClient.js';
+import { chatRouter } from './routes/chat.js';
 import { mealsRouter } from './routes/meals.js';
 import { recommendationsRouter } from './routes/recommendations.js';
 
@@ -102,6 +106,17 @@ export interface AppOptions {
   readonly catalog: Catalog;
   readonly sink?: LogSink;
   readonly now?: () => Date;
+  /**
+   * Injected so an integration test can drive the REAL provider, client and lane without a
+   * network - which is what makes such a test evidence rather than a mock (TSD 5.5's argument
+   * for `AI_FAKE`, applied one layer lower).
+   *
+   * **The lane and the provider are deliberately NOT injectable.** `createApp` builds exactly one
+   * of each, below, and that is the only reason "one AI call at a time, process-wide" holds. An
+   * option to pass a second lane in would make the single-flight guarantee a convention rather
+   * than a property of the code.
+   */
+  readonly fetchImpl?: FetchLike;
 }
 
 export interface ErrorHandlerOptions {
@@ -258,11 +273,31 @@ export function createApp(options: AppOptions): Express {
   //
   // Mounted as routers so each contract lives in its own module, and so the 404 handler below
   // still owns every path neither of them claims.
+  // **Exactly ONE lane and ONE provider, shared by both AI routes.**
+  //
+  // TSD 5.5 says "one AI call at a time, process-wide". `createAiLane()` is per-instance, so
+  // dependency injection cannot express "process-wide" on its own - what it CAN express is that
+  // every consumer shares one object, and `index.ts` creates exactly one app. That is the whole
+  // of the guarantee, and it is a divergence in KIND from the document's wording rather than in
+  // effect (recorded at P19).
+  //
+  // The property to protect is that the chat lane and the explanation lane **contend with each
+  // other**: a second concurrent AI call gets `ai_busy` whichever route it arrived on. A test
+  // proving two CHAT requests contend would pass with a lane per router, which is exactly the
+  // bug - so the test fires a chat request and a recommendation-with-explanation together.
+  const lane = createAiLane();
+  const provider = createAiProvider(config, options.fetchImpl);
+
   app.use('/api/v1/meals', mountedAt('/api/v1/meals'), mealsRouter(catalog));
   app.use(
     '/api/v1/recommendations',
     mountedAt('/api/v1/recommendations'),
-    recommendationsRouter(catalog, config),
+    recommendationsRouter({ catalog, config, lane, provider, sink, now }),
+  );
+  app.use(
+    '/api/v1/chat',
+    mountedAt('/api/v1/chat'),
+    chatRouter({ catalog, config, lane, provider, sink, now }),
   );
 
   app.get('/health', (_request: Request, response: Response) => {

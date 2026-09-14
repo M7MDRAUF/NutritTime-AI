@@ -6,5 +6,20 @@
     "declaration": false,
     "sourceMap": true
   },
-  "exclude": ["**/*.test.ts", "**/*.integration.test.ts"]
+  // `__fixtures__/**` excluded alongside the test files, and the reason is not tidiness.
+  //
+  // **The production build was emitting test-only code, and one file carried a devDependency into
+  // it.** `routes/__fixtures__/chatHarness.ts` imports `supertest`, which is in `devDependencies`,
+  // so `dist/routes/__fixtures__/chatHarness.js` shipped an import that resolves to nothing in a
+  // production install. `ai/__fixtures__/replies.ts` was emitted too - harmless in itself, but it
+  // is nine adversarial model replies with no business in a deployed artefact.
+  //
+  // Safe because **no non-test module imports a fixture**: `bootBadCatalog.ts` is referenced only
+  // as the filename string `'bootBadCatalog.ts'` at `boot.integration.test.ts:28` and spawned from
+  // SOURCE through `tsx`, so excluding it from the build cannot break it. Verified by grep before
+  // the change, not assumed from the naming convention.
+  //
+  // Found by the agent that created the harness, which reported it rather than shipping it. P26
+  // would have been the next chance to notice, and a deploy the one after that.
+  "exclude": ["**/*.test.ts", "**/*.integration.test.ts", "**/__fixtures__/**"]
 }

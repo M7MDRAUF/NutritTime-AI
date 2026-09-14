@@ -182,6 +182,27 @@ describe('decodeRecommendationResponse', () => {
     expect(decodeRecommendationResponse(body)).toEqual(body);
   });
 
+  /**
+   * **`'gemma'` had never appeared anywhere in this app** — not in production, not in a fixture,
+   * not in a test. P10 always answered `'fallback'`, and this suite covered that arm plus a
+   * rejection of `'gpt'`. So `decodeRecommendation`'s guard was pinned in one direction only:
+   * narrowing it to `if (source !== 'fallback') return null` left BOTH existing cases green while
+   * nulling every model-explained response.
+   *
+   * What the user would have seen is the part worth recording: `decodeRecommendationResponse`
+   * returning `null` makes the screen show "Suggestions could not be loaded." for a **200 carrying
+   * three good recommendations** — and only from the moment P20's model started answering, which is
+   * the worst possible time to discover it. Found by the agent closing T-20-04, one wave before the
+   * server began sending the value.
+   */
+  it('accepts the model-written source, which is the arm P20 makes reachable', () => {
+    const body = {
+      mealPeriod: 'lunch',
+      recommendations: [{ ...recommendation, explanationSource: 'gemma' }],
+    };
+    expect(decodeRecommendationResponse(body)).toEqual(body);
+  });
+
   it('accepts an empty recommendation list', () => {
     expect(decodeRecommendationResponse({ mealPeriod: 'snack', recommendations: [] })).toEqual({
       mealPeriod: 'snack',
