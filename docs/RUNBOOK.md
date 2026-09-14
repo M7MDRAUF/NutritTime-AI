@@ -223,8 +223,11 @@ npm run build:server    # tsc -p apps/server/tsconfig.build.json  ->  apps/serve
 npm run build:web       # expo export --platform web --output-dir dist  ->  apps/mobile/dist
 ```
 
-**`build:server` compiles but does not currently produce a runnable artefact.** This is risk
-**R-69** in Plan §23 (Risk Register) and it is open:
+**`build:server` produces a runnable artefact. R-69 is CLOSED** — this section said the
+opposite until the P28 audit found it stale, because it was written earlier in the same window as
+the fix and never updated.
+
+For nine phases `build:server` exited 0 and the artefact had never run:
 
 ```
 Error [ERR_MODULE_NOT_FOUND]: Cannot find module '<repo>/packages/contracts/src/core.js'
@@ -232,10 +235,27 @@ imported from '<repo>/packages/contracts/src/index.ts'
 ```
 
 `packages/contracts`, `packages/domain` and `packages/catalog` each declare `main: src/index.ts`
-and no script emits any of them, so the emitted `@nutritime/*` specifiers resolve to uncompiled
-TypeScript. `build:server` exiting 0 therefore proves compilation and nothing about runnability.
-Until R-69 is fixed, **run the server through `npm run dev:server`**, which goes through `tsx` and
-needs no build. The web export is unaffected — Metro bundles the packages from source.
+and nothing emitted them, so the emitted `@nutritime/*` specifiers resolved to uncompiled
+TypeScript. `build:server` exiting 0 proved compilation and nothing about runnability.
+
+`build:server` is now three steps: `build:packages` emits the three workspace packages, `tsc`
+compiles the server, and `apps/server/scripts/stagePackages.mjs` copies each package's `dist` into
+`apps/server/dist/node_modules/@nutritime/*`. That directory is the first place Node looks from
+`dist/*.js` and the only resolution scope no other tool looks in, so **no `main`, `types`, `module`
+or `exports` field changed** and the seven `tsc` projects, Vitest, Metro, `tsx watch` and the `tsx`
+subprocess in `boot.integration.test.ts` all keep reading source.
+
+Verified end to end, with Ollama stopped:
+
+```bash
+npm run build:server
+node apps/server/dist/index.js
+curl -s http://127.0.0.1:4000/health
+# {"status":"ok","catalogVersion":"1.0.0","mealCount":60}
+```
+
+`npm run dev:server` remains the right command for development — it needs no build — but it is no
+longer the only way to run the server.
 
 ---
 
@@ -292,8 +312,8 @@ Two steps in it are known to behave in ways worth knowing before you ever connec
   by design — see §6 and R-59. The escape is an explicit edit to `USDA_ARCHIVE_POLICY` in the
   workflow itself, so an archive-less run is a reviewable line in version control rather than a
   silent seven-test shortfall.
-- the **`/health` step fails** until R-69 is fixed, for the reason in §7. It is written correct and
-  left red rather than written to pass.
+- the **`/health` step now passes.** It was written correct and left red while R-69 was open,
+  rather than written to pass; R-69 is closed and §7 records the shape of the fix.
 
 ---
 
@@ -310,7 +330,7 @@ Two steps in it are known to behave in ways worth knowing before you ever connec
 | Every E2E spec shows "Working offline"                       | The web origin is not one the API's CORS allowlist trusts. Serve on 19006; do not widen the allowlist.           |
 | E2E run dies with `No web export at …`                       | `npm run build:web` has not been run since the last clean. See §6.                                               |
 | `npm run dev` starts the API and nothing else, on Windows    | `cmd.exe` treats `&` as sequential. Use two terminals. See §5.                                                   |
-| `node apps/server/dist/index.js` cannot find `./core.js`     | R-69. Use `npm run dev:server`. See §7.                                                                          |
+| `node apps/server/dist/index.js` cannot find `./core.js`     | R-69, **closed**. Re-run `npm run build:server` — step 3 stages the packages. See §7.                            |
 | `npm run check` reports a total you do not recognise         | Compare the **skipped** count against §6's table before anything else.                                           |
 
 ---
@@ -319,8 +339,12 @@ Two steps in it are known to behave in ways worth knowing before you ever connec
 
 1. **No CI run exists and none can**, for the reason in §9. The workflow is validated structurally
    and by local execution of each step, which is weaker evidence than a run and is recorded as such.
-2. **The server artefact does not boot** (R-69, §7). Development and the E2E suite are unaffected
-   because both run from source.
+2. **The server artefact was not executable on a clean clone until the P28 audit** — not because
+   the build was wrong (R-69 is closed, §7) but because `.gitignore`'s bare `build/` matched the
+   directory the staging script lived in, so step 3 of `build:server` was never committed while
+   `git status` stayed clean and the local build kept working. The script now lives in
+   `apps/server/scripts/` and is tracked. **The lesson is the check that was missing: a pre-commit
+   sweep that looks only for files wrongly INCLUDED will not notice one wrongly EXCLUDED.**
 3. **Nothing here has been executed on Linux.** The commands are POSIX-portable and
    `.gitattributes` normalises line endings to LF so `format:check` survives a clone on any
    platform, but the CI job would be this repository's first Linux run of the suite.

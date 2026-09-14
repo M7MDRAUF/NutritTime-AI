@@ -329,7 +329,7 @@ export default tseslint.config(
   // this file has done that deliberately, because P01 learned that `'off'` silently drops
   // `console.debug` and `console.trace` along with the clause you meant to relax.
   {
-    files: ['scripts/*.mjs'],
+    files: ['**/scripts/*.mjs'],
     languageOptions: {
       globals: { process: 'readonly', console: 'readonly' },
     },

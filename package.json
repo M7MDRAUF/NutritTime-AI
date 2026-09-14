@@ -22,7 +22,7 @@
     "test": "vitest run",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "build:packages": "npm --workspace @nutritime/contracts run build && npm --workspace @nutritime/domain run build && npm --workspace @nutritime/catalog run build",
-    "build:server": "npm run build:packages && tsc -p apps/server/tsconfig.build.json && node apps/server/build/stagePackages.mjs",
+    "build:server": "npm run build:packages && tsc -p apps/server/tsconfig.build.json && node apps/server/scripts/stagePackages.mjs",
     "build:web": "npm --workspace apps/mobile run build",
     "test:e2e": "npm --prefix e2e test"
   },

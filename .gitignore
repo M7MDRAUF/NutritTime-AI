@@ -1,6 +1,11 @@
 # dependencies
 node_modules/
 
+# Build OUTPUT. `build/` is greedy: it matches a `build` directory at ANY depth, which is how
+# `apps/server/build/stagePackages.mjs` -- step 3 of `npm run build:server` -- went uncommitted
+# while `git status` stayed clean and the local build kept working. Build TOOLING therefore
+# lives in a `scripts/` directory (`scripts/dev.mjs`, `apps/server/scripts/stagePackages.mjs`),
+# never under `build/`. Found by the P28 architecture audit, after the commit.
 # build output
 dist/
 build/
