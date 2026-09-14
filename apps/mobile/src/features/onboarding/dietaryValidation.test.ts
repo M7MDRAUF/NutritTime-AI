@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { parseClockTime } from '@nutritime/domain';
 import {
   ALLERGY_CHOICES,
+  MAX_DISLIKES,
   VALIDATION_MESSAGES,
   isDietarySetupValid,
   validateAllergies,
+  validateDislikes,
   validateMealTime,
   validateMealTimes,
 } from './dietaryValidation.js';
@@ -128,5 +130,58 @@ describe('validateAllergies', () => {
   it('accepts an empty list', () => {
     // No allergies is the default and the common case (S-20). It must not read as incomplete.
     expect(validateAllergies([])).toBeUndefined();
+  });
+});
+
+/**
+ * The rule that **could not fire for a whole phase**, and therefore had no test either.
+ *
+ * The screen passed it `preferences.dislikedIngredients` — the list the reducer had already capped
+ * at `MAX_DISLIKES` — so `cleaned.size > MAX_DISLIKES` was false by construction, the message was
+ * unreachable copy, and a 31st ingredient was discarded in silence while the field erased the
+ * characters the user had just typed. It is fed the draft text now, and these are the cases that
+ * text produces.
+ */
+describe('validateDislikes', () => {
+  const listOf = (count: number): readonly string[] =>
+    Array.from({ length: count }, (_, index) => `ingredient-${String(index)}`);
+
+  it('says nothing at the bound, and speaks at one past it', () => {
+    // Both directions on the same boundary: an off-by-one in either would fail one of these.
+    expect(validateDislikes(listOf(MAX_DISLIKES))).toBeUndefined();
+    expect(validateDislikes(listOf(MAX_DISLIKES + 1))).toBe(VALIDATION_MESSAGES.dislikesTooMany);
+  });
+
+  it('blocks submission when it fires, so Save cannot quietly drop the overflow', () => {
+    expect(isDietarySetupValid({ dislikes: validateDislikes(listOf(MAX_DISLIKES + 1)) })).toBe(
+      false,
+    );
+    expect(isDietarySetupValid({ dislikes: validateDislikes(listOf(MAX_DISLIKES)) })).toBe(true);
+  });
+
+  it('counts ingredients, not commas', () => {
+    // `'a,,b'` is two ingredients. Telling the user they have three would be counting punctuation,
+    // and the count has to match what the reducer stores or the message contradicts the field.
+    const withBlanks = [...listOf(MAX_DISLIKES), '', '   '];
+    expect(withBlanks).toHaveLength(MAX_DISLIKES + 2);
+    expect(validateDislikes(withBlanks)).toBeUndefined();
+  });
+
+  it('counts a repeated ingredient once, as the store does', () => {
+    // The reducer de-duplicates before capping, so 31 entries with one repeat store as 30 and must
+    // not be reported as an overflow.
+    const repeated = [...listOf(MAX_DISLIKES), 'ingredient-0'];
+    expect(validateDislikes(repeated)).toBeUndefined();
+    // And trimming happens before the comparison, so ` ingredient-0 ` is the same entry.
+    expect(validateDislikes([...listOf(MAX_DISLIKES), ' ingredient-0 '])).toBeUndefined();
+  });
+
+  it('names the bound in the message, because "too many" is not actionable', () => {
+    expect(VALIDATION_MESSAGES.dislikesTooMany).toContain(String(MAX_DISLIKES));
+  });
+
+  it('accepts an empty list', () => {
+    expect(validateDislikes([])).toBeUndefined();
+    expect(validateDislikes([''])).toBeUndefined();
   });
 });

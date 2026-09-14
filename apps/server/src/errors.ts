@@ -5,7 +5,10 @@
  * strings chosen here. An upstream error string is written for whoever operates the upstream
  * service, and it can carry a hostname, a stack frame, a model name, or a fragment of the
  * request that caused it - none of which belongs in a reply to a user, and some of which would
- * breach §15.5's rule that a prompt is never logged.
+ * breach PRD 10.3's rule that a prompt is never logged.
+ *
+ * The rule is PRD 10.3 and the table restating it is Plan 15.5. "PRD §15.5" is cited widely in
+ * this phase and does not exist - PRD section 15 has no subsections.
  */
 
 import { API_ERROR_RETRYABLE, API_ERROR_STATUS } from '@nutritime/contracts';

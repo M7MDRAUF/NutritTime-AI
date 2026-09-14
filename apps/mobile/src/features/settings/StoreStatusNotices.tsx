@@ -17,7 +17,7 @@
  *     lie in the interface. `saveBlocked` is the difference and the store already computes it.
  *  2. **`description` is the store's own message, never an exception's.** `createStore` narrows to
  *     `StorageWriteError` before reading `.message` precisely because a driver or library string can
- *     quote the payload, and the payload here is a name and an allergy list (PRD §15.5).
+ *     quote the payload, and the payload here is a name and an allergy list (PRD §12).
  *
  * **This is the THIRD copy of this mapping in the app** — `DietarySetupScreen` and
  * `MealFormScreen` each hand-roll their own — and the duplication is what lets two screens disagree

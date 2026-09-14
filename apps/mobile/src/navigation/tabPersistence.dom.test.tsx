@@ -33,6 +33,8 @@ import type { MemoryDriver } from '../infrastructure/storage/__fixtures__/memory
 import { STORAGE_KEYS, STORAGE_SCHEMA_VERSION } from '../infrastructure/storage/definitions.js';
 import type { UiTab } from '../infrastructure/storage/definitions.js';
 import { RootNavigator } from './RootNavigator.js';
+import { TAB_ICONS } from './TabNavigator.js';
+import { GLYPH_NAMES } from '../shared/components/Icon.js';
 import { renderToDom } from './testHarness.js';
 
 vi.mock('react-native-safe-area-context', async () => {
@@ -117,6 +119,42 @@ function storedLastTab(driver: MemoryDriver): unknown {
 function uiWrites(driver: MemoryDriver): number {
   return driver.calls.filter((one) => one === `setItem:${STORAGE_KEYS.ui}`).length;
 }
+
+describe('the selected tab is legible without colour', () => {
+  it('pairs every tab with a DIFFERENT glyph for its selected state', () => {
+    /**
+     * **PRD §10.5, and this exists because fixing one accessibility defect created another.**
+     *
+     * The bar marked its selection by tint alone. That tint was `accent.brand`, which failed AA
+     * against the bar at 3.77:1. Moving it to `content.link` fixed the contrast — and left the
+     * active and inactive tones **1.01:1 apart**, because `content.tertiary` is itself a dark
+     * 7.58:1. The two states became near-identical in lightness, separated only by hue, which a
+     * deuteranope reads as much the same colour. WCAG measures against the ground rather than
+     * between states, so it stayed conformant while ceasing to be usable.
+     *
+     * So the selected tab changes shape. Asserted against the **shipped font**, not against the two
+     * names looking unlike each other: `homeFilled` and `home` are only a real distinction if
+     * MaterialCommunityIcons gives them different codepoints, and a typo that mapped both to the
+     * same glyph would otherwise read as a fix while changing nothing on screen.
+     */
+    const glyphs = GLYPH_NAMES;
+    for (const [tab, pair] of Object.entries(TAB_ICONS)) {
+      const active = glyphs[pair.active];
+      const inactive = glyphs[pair.inactive];
+      expect(active, `${tab}: no glyph for ${pair.active}`).toBeDefined();
+      expect(inactive, `${tab}: no glyph for ${pair.inactive}`).toBeDefined();
+      expect(active, `${tab} renders the same glyph selected and unselected`).not.toBe(inactive);
+    }
+  });
+
+  it('covers every tab, so a new one cannot ship colour-only', () => {
+    // Keyed on `UiTab`, so adding a tab without a glyph pair is a compile error; this is the
+    // runtime half, and it fails if the table is emptied rather than extended.
+    expect(Object.keys(TAB_ICONS).sort()).toEqual(
+      ['assistant', 'explore', 'home', 'saved', 'settings'].sort(),
+    );
+  });
+});
 
 describe('lastTab', () => {
   it('records the LOGICAL id of the tab the user moved to, not the route name', async () => {

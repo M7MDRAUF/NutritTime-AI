@@ -52,6 +52,16 @@ export interface FieldErrors {
  */
 export const MAX_DISLIKES = 30;
 
+/**
+ * `userPreferencesSchema`'s bound on `name` (`.max(60)`), restated for the same reason.
+ *
+ * It is the field's `maxLength` on the form AND the reducer's cap, so the two cannot drift: a name
+ * past 60 characters is a value the schema rejects, and a rejected profile is quarantined whole —
+ * the user's **allergy list** goes with their name. The form cannot produce one; `preferences/
+ * replaced` could, which is the path a restored backup takes.
+ */
+export const MAX_NAME_LENGTH = 60;
+
 /** One message per failure mode, written for the person reading it rather than for the developer. */
 export const VALIDATION_MESSAGES = {
   /** Names the format AND gives an example: a format alone leaves the user guessing at padding. */
@@ -137,10 +147,17 @@ export function validateAllergies(values: readonly string[]): string | undefined
 }
 
 /**
- * The dislike list, against the bound the schema will apply.
+ * The dislike list **as the user typed it**, against the bound the schema will apply.
  *
  * Counted after cleaning, because that is what the reducer stores: `'a,,b'` is two ingredients, and
  * telling the user they have three would be counting their commas.
+ *
+ * **It must be fed the draft text, never `preferences.dislikedIngredients`.** Every write path into
+ * the store caps the list at `MAX_DISLIKES` first — `dislikedIngredientsChanged`, `replaced` and
+ * hydration all do — so the stored list can never exceed the bound and this predicate could never
+ * be true. The screen passed the stored list for a phase; the rule was therefore unreachable and a
+ * 31st ingredient was dropped in silence. The reducer's cap is the belt and stays; this is the half
+ * that tells the user, and it can only do that if it sees what they actually entered.
  */
 export function validateDislikes(values: readonly string[]): string | undefined {
   const cleaned = new Set(values.map((one) => one.trim()).filter((one) => one !== ''));

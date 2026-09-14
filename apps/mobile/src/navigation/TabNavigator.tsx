@@ -97,9 +97,40 @@ function SavedTabStack(): ReactNode {
  * **No `accessibilityLabel`.** The tab already has a visible `title` that a screen reader
  * announces along with `accessibilityState.selected`; labelling the icon too would say it twice.
  */
-function tabIcon(name: IconName) {
-  return function TabBarIcon({ color, size }: { color: string; size: number }): ReactNode {
-    return <Icon name={name} color={color} size={size} />;
+export const TAB_ICONS = {
+  home: { inactive: 'home', active: 'homeFilled' },
+  explore: { inactive: 'explore', active: 'exploreFilled' },
+  assistant: { inactive: 'assistant', active: 'assistantFilled' },
+  saved: { inactive: 'saved', active: 'savedFilled' },
+  settings: { inactive: 'settings', active: 'settingsFilled' },
+} as const satisfies Record<UiTab, { readonly inactive: IconName; readonly active: IconName }>;
+
+/**
+ * **The selected tab changes SHAPE, not only tint, and that is a correction rather than a flourish.**
+ *
+ * The bar distinguished its selection by colour alone. That colour was `accent.brand`, which failed
+ * AA against the bar at 3.77:1; moving it to `content.link` fixed the contrast and left the active
+ * and inactive tones **1.01:1 apart** — near-identical in lightness, separated only by hue, because
+ * `content.tertiary` is itself a dark 7.58:1. WCAG measures against the ground rather than between
+ * states, so that was still conformant; **PRD §10.5 is the rule it broke**, since colour became the
+ * only *visible* signal and `accessibilityState.selected` reaches assistive tech alone.
+ *
+ * `focused` comes from React Navigation, so the two glyphs are chosen where the bar already knows
+ * the state, and `TAB_ICONS` is exported so a test can assert the pairs resolve to genuinely
+ * different codepoints in the shipped font rather than trusting two names that merely look unlike.
+ */
+function tabIcon(tab: UiTab) {
+  return function TabBarIcon({
+    focused,
+    color,
+    size,
+  }: {
+    focused: boolean;
+    color: string;
+    size: number;
+  }): ReactNode {
+    const pair = TAB_ICONS[tab];
+    return <Icon name={focused ? pair.active : pair.inactive} color={color} size={size} />;
   };
 }
 
@@ -193,7 +224,17 @@ export function TabNavigator(): ReactNode {
         // Colour is the *secondary* signal for the selected tab. React Navigation puts
         // `accessibilityState={{ selected }}` on each tab button, which is what a screen reader
         // announces and what satisfies the "never colour alone" half of PRD §10.5.
-        tabBarActiveTintColor: colors.accent.brand,
+        //
+        // **Secondary does not mean exempt.** Each `Tabs.Screen` below supplies a `title` and no
+        // `tabBarLabel`, so this tint paints the tab's LABEL TEXT, not only its glyph, and SC 1.4.3
+        // has no selected-state exemption. It was `accent.brand`, a FILL colour authored to sit
+        // *under* `content.onBrand`: light's `#059669` on `tabBarStyle.backgroundColor`
+        // (`surface.raised`, `#FFFFFF`) is **3.77:1**, the exact ratio DECISIONS.md §3.1 rejects
+        // white-on-green for, with the two roles swapped. `content.link` is **7.68:1** light and
+        // **10.72:1** dark (`#6EE7B7` on `#12231E`) on that same fill, and is already measured on
+        // all four surfaces in both schemes. `component-contrast.test.ts` reads this slot and the
+        // fill below back out of this file and re-measures the pair.
+        tabBarActiveTintColor: colors.content.link,
         tabBarInactiveTintColor: colors.content.tertiary,
         tabBarStyle: {
           backgroundColor: colors.surface.raised,

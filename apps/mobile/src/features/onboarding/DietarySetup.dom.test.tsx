@@ -292,6 +292,133 @@ describe('DietarySetupScreen', () => {
     expect(view.text()).not.toContain(VALIDATION_MESSAGES.clockFormat);
   });
 
+  it('tells the user when their 31st ingredient will not fit, instead of dropping it in silence', async () => {
+    /**
+     * **The rule that could not fire.** `validateDislikes` was run over the STORED list, which the
+     * reducer has already capped at `MAX_DISLIKES` — so its predicate was false by construction,
+     * `VALIDATION_MESSAGES.dislikesTooMany` was copy with no path to a screen, and a user pasting a
+     * long list had everything past the 30th discarded while the controlled field erased the
+     * characters they had just typed. PRD §12's "say what happened" was unmet for this field.
+     *
+     * The rule reads the draft now. Both halves are asserted here: the user is told, AND the
+     * reducer's cap — the guard that makes an unstorable value impossible — still holds.
+     */
+    const view = await render(memoryDriver({}));
+    const field = inputIn(view.must('field-dislikes'));
+    const typed = Array.from({ length: 31 }, (_, index) => `a${String(index)}`).join(',');
+
+    act(() => {
+      fireEvent.change(field, { target: { value: typed } });
+    });
+    // Mid-keystroke, nothing is said — the same dignity rule the meal times follow.
+    expect(view.text()).not.toContain(VALIDATION_MESSAGES.dislikesTooMany);
+
+    blurField(field);
+    expect(view.must('field-dislikes').textContent ?? '').toContain(
+      VALIDATION_MESSAGES.dislikesTooMany,
+    );
+    // And the field still holds what they typed, rather than the truncated list read back at them.
+    expect(inputIn(view.must('field-dislikes')).getAttribute('value')).toBe(typed);
+
+    await view.settle();
+
+    /**
+     * The belt, unchanged: the store took 30 and no more, so nothing unstorable was ever queued.
+     * Read from the DRIVER, because the claim is about what would be on disk at the next launch —
+     * a 31st entry there is what quarantined the whole key and erased the allergy list.
+     */
+    const written: unknown = JSON.parse(view.driver.store.get(STORAGE_KEYS.preferences) ?? '{}');
+    const stored = written as { value: { dislikedIngredients: readonly string[] } };
+    expect(stored.value.dislikedIngredients).toHaveLength(30);
+
+    /**
+     * And Save does not complete onboarding while the message stands. Without this the user is
+     * told and then walked past it, which is the same silent loss with an extra step.
+     */
+    press(view.must('dietary-setup-save'));
+    await view.settle();
+    const onboarding: unknown = JSON.parse(view.driver.store.get(STORAGE_KEYS.onboarding) ?? '{}');
+    expect(onboarding).toMatchObject({ value: { completed: false } });
+  });
+
+  it('shows nothing for a list that fits — the control for the rule above', async () => {
+    // Without this, a rule that reported on every list would pass the test above, and the form
+    // would be unusable for the ordinary case of three or four disliked ingredients.
+    const view = await render(memoryDriver({}));
+    const field = inputIn(view.must('field-dislikes'));
+
+    act(() => {
+      fireEvent.change(field, { target: { value: 'okra, cilantro, olive' } });
+    });
+    blurField(field);
+
+    expect(view.text()).not.toContain(VALIDATION_MESSAGES.dislikesTooMany);
+    await view.settle();
+    expect(JSON.parse(view.driver.store.get(STORAGE_KEYS.preferences) ?? '{}')).toMatchObject({
+      value: { dislikedIngredients: ['okra', 'cilantro', 'olive'] },
+    });
+  });
+
+  it('tells the user their profile was reset, because their allergy list is now empty', async () => {
+    /**
+     * **`dietary-setup-recovered` was referenced by no test anywhere in the repository** — the
+     * destructive half of the pair, deletable in silence. Its twin on Home was found the same way
+     * and fixed this week; this is the same repair on this screen.
+     *
+     * `recovered` on the preferences key means the stored profile failed `userPreferencesSchema`,
+     * was quarantined, and rebuilt from `DEFAULT_PREFERENCES` — so `allergies` is `[]`, every meal
+     * passes the filter, and the app looks completely normal. That is P14's CRITICAL, and this
+     * notice is the only thing standing between it and a user who believes their declared allergy
+     * is still in force.
+     *
+     * Reached the way the app reaches it: a well-formed envelope holding an invalid value, so the
+     * read path quarantines it rather than a test asserting a status directly.
+     */
+    const view = await render(
+      memoryDriver({
+        [STORAGE_KEYS.preferences]: encodeEnvelope(
+          1,
+          { schemaVersion: 1, diet: 'not-a-real-diet', allergies: ['peanut'] },
+          CLOCK(),
+        ),
+      }),
+    );
+
+    expect(view.find('dietary-setup-recovered')).not.toBeNull();
+    expect(view.text()).toContain('including an empty allergy list');
+
+    // The user-visible consequence the notice is about: the allergy they had declared is no longer
+    // selected. Asserted through the rendered chip, not through the store.
+    expect(view.must('chip-allergy-peanut').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('shows no reset notice when the stored profile read cleanly — the control', async () => {
+    // Without this, a screen that rendered the warning unconditionally would pass the test above.
+    const view = await render(
+      memoryDriver({
+        [STORAGE_KEYS.preferences]: encodeEnvelope(
+          1,
+          {
+            schemaVersion: 1,
+            diet: 'regular',
+            allergies: ['peanut'],
+            goal: 'balanced',
+            budget: 'medium',
+            dislikedIngredients: [],
+            mealTimes: { breakfast: '08:00', lunch: '12:30', dinner: '19:00' },
+            aiEnabled: true,
+            themeMode: 'system',
+          },
+          CLOCK(),
+        ),
+      }),
+    );
+
+    expect(view.find('dietary-setup-recovered')).toBeNull();
+    // And the profile really did survive, which is what makes the absence meaningful.
+    expect(view.must('chip-allergy-peanut').getAttribute('aria-checked')).toBe('true');
+  });
+
   it('warns, rather than pretending, when the key could not be read', async () => {
     /**
      * `unavailable` means the store will not write over the key (TSD §6.3) — which is the right

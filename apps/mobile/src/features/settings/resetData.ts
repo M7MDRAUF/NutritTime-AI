@@ -182,7 +182,7 @@ async function clearOne<K extends StorageKeyName>(
   } catch {
     // The `StorageWriteError` is deliberately not inspected and not logged. Its own message is
     // fixed and local, but the caller's message is built from the NAMES of the sets that
-    // survived — never from an exception's text, which PRD §15.5 keeps away from a user and a log
+    // survived — never from an exception's text, which PRD §12 keeps away from a user and TSD §5.8 out of a log
     // line alike, because a driver string can quote the payload.
     return false;
   }
@@ -323,7 +323,7 @@ function joinLabels(labels: readonly string[]): string {
 /**
  * The user-facing account of a reset, or `null` when everything went.
  *
- * **Fixed local copy, assembled only from set labels** (PRD §15.5). PRD §12's three parts are all
+ * **Fixed local copy, assembled only from set labels** (PRD §12). PRD §12's three parts are all
  * present — what happened, what still works, what to do next — because a user who asked for their
  * data to be destroyed needs to know precisely what was not.
  */

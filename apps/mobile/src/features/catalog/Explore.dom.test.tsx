@@ -93,18 +93,28 @@ function renderExplore(
     readonly query?: string;
     readonly period?: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   },
+  /**
+   * `null` withholds the prop so the screen falls back to `SEARCH_DEBOUNCE_MS`.
+   *
+   * **The comment that used to sit here said "the 300 ms figure itself is asserted separately,
+   * against the constant", and no such assertion existed anywhere in the repository** — an audit
+   * grep for `SEARCH_DEBOUNCE_MS` found the declaration and its own default-parameter use and
+   * nothing else, so `300 → 3000` failed nothing while this file told the reader otherwise. It is
+   * asserted now, by "does the screen's own default wait exactly that long", below.
+   */
+  debounceMs: number | null = 0,
 ): Rendered {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const navigate = vi.fn();
 
-  // `debounceMs: 0` so the effect's timer fires on the next tick rather than after 300 ms of real
-  // time. The 300 ms figure itself is asserted separately, against the constant.
+  // `debounceMs: 0` in every test but the one above, so the effect's timer fires on the next tick
+  // rather than after 300 ms of real time.
   const tree: ReactNode = (
     <ThemeProvider mode="light" deviceScheme={null} fontScale={1}>
       <ApiProvider client={client}>
         <ExploreScreen
-          debounceMs={0}
+          {...(debounceMs === null ? {} : { debounceMs })}
           route={{ key: 'Explore-1', name: 'Explore', params } as never}
           navigation={{ navigate } as never}
         />
@@ -351,7 +361,15 @@ describe('ExploreScreen', () => {
   });
 
   it('never shows a server-supplied string', async () => {
-    // TSD §3.5 and PRD §15.5. The client keeps the wire body on `.wire` and never in `.message`;
+    // TSD §3.5, PRD §12 ("stack traces and raw provider errors never reach the user") and PRD
+    // §10.3 ("logs never contain prompts, questions, allergy lists, or names").
+    //
+    // **Not "PRD §15.5", which this line used to cite and which does not exist**: PRD §15 is
+    // "Dependencies and Assumptions" and has no subsections at all. The table everyone was
+    // reaching for is **Plan §15.5**, which restates PRD §10.3 — `apps/server/src/errors.ts:10`
+    // records the same mis-citation and names it as widespread.
+    //
+    // The client keeps the wire body on `.wire` and never in `.message`;
     // this proves the screen does not reach for it either.
     const stub = deferredClient();
     const view = renderExplore(stub.client);
@@ -443,5 +461,128 @@ describe('ExploreScreen', () => {
       node.getAttribute('data-testid'),
     );
     expect(rendered).toStrictEqual(reversed.map((meal) => `meal-${meal.id}`));
+  });
+
+  it('keeps each meal on its OWN row element when the list is reordered (T-13-04)', async () => {
+    /**
+     * **T-13-04's stable key, asserted through its consequence — the only thing about it a test
+     * can see.**
+     *
+     * A React key is not in the DOM, and the `meal-<id>` ids every other test in this file matches
+     * come from `MealCard`'s `testID` prop, not from `keyExtractor`. So an audit found that
+     * `keyExtractor = (_meal, index) => String(index)` — the exact defect `ExploreScreen`'s own
+     * docstring warns about — left all 26 catalog tests and the whole e2e suite green.
+     *
+     * What an index key really does is observable: React reconciles by key, so with a positional
+     * key the element that held position 3 is REUSED for whatever meal now sits at position 3.
+     * With the meal's id as the key, React moves the existing element instead, and the DOM node
+     * for a given meal is the same object before and after. Node identity is the assertion.
+     *
+     * Reversed rather than shuffled: a reversal of four has no fixed point, so every id must move,
+     * and there is no arrangement in which a positional key could accidentally agree.
+     */
+    const meals = CATALOG.slice(0, 4);
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, page(meals));
+
+    const before = new Map(meals.map((meal) => [meal.id, view.must(`meal-${meal.id}`)]));
+
+    // A search re-requests without unmounting the list: `useMealSearch` leaves the previous
+    // `loaded` state in place while the next request is in flight, so the rows below are the same
+    // rows, re-ordered — which is the only condition under which node identity means anything.
+    act(() => {
+      fireEvent.change(searchInput(view.host), { target: { value: 'anything' } });
+    });
+    await tick();
+    await stub.settle(stub.calls.length - 1, page([...meals].reverse()));
+
+    // The reorder really happened, or the identity check below would hold trivially.
+    expect(
+      [...view.host.querySelectorAll('[data-testid^="meal-"]')].map((node) =>
+        node.getAttribute('data-testid'),
+      ),
+    ).toStrictEqual([...meals].reverse().map((meal) => `meal-${meal.id}`));
+
+    for (const meal of meals) {
+      expect(view.must(`meal-${meal.id}`), `${meal.id} must keep its own element`).toBe(
+        before.get(meal.id),
+      );
+    }
+  });
+
+  it('builds only INITIAL_ROWS rows before the first paint, not the whole page (T-13-04)', async () => {
+    /**
+     * The render budget, and **this is the one place a DOM row count is the thing being measured
+     * rather than a proxy for a result-set size** — R-45 forbids the latter, and names this
+     * distinction. The response below carries twenty meals and says so in `total`; the assertion
+     * is that the screen built eight.
+     *
+     * Eight is `INITIAL_ROWS`, chosen because a card is tall and twenty is more than any phone
+     * shows. `initialNumToRender={state.meals.length}` — the mutation that removes the bound —
+     * renders twenty here and fails.
+     */
+    const meals = CATALOG.slice(0, 20);
+    expect(
+      meals,
+      'the catalog must hold more than one window for this to mean anything',
+    ).toHaveLength(20);
+
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, page(meals));
+
+    expect(view.host.querySelectorAll('[data-testid^="meal-"]')).toHaveLength(8);
+    // And the list still announces the real size, so the bound is a rendering budget and not a
+    // silently truncated result.
+    expect(view.must('explore-list').getAttribute('aria-label')).toBe('20 meals');
+  });
+
+  it("waits the screen's own default before searching, and that default is 300 ms", async () => {
+    /**
+     * **SDD §11: "Search debounces at ~300 ms."**
+     *
+     * Every other test in this file injects `debounceMs={0}`, so until now `SEARCH_DEBOUNCE_MS`
+     * could have been 3 000 and nothing would have said so — the e2e search spec polls with a 20 s
+     * timeout and would not have noticed either. This one withholds the prop, so the screen falls
+     * back to its own constant, and drives a fake clock to the two sides of the figure the
+     * document gives.
+     *
+     * The numbers below are SDD's, written out rather than imported: importing the constant and
+     * advancing by it would compare the constant to itself and pass at any value.
+     */
+    vi.useFakeTimers();
+    try {
+      const stub = deferredClient();
+      const view = renderExplore(stub.client, undefined, null);
+      // The empty search is not debounced at all — `delay` is 0 until there is text — so the
+      // initial load goes out on the next tick.
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      await stub.settle(0, page(CATALOG.slice(0, 2)));
+      const beforeTyping = stub.calls.length;
+
+      act(() => {
+        fireEvent.change(searchInput(view.host), { target: { value: 'rice' } });
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(stub.calls.length, 'nothing may go out before the debounce elapses').toBe(
+        beforeTyping,
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(stub.calls.length).toBe(beforeTyping + 1);
+      expect(stub.calls[stub.calls.length - 1]?.query).toBe('rice');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

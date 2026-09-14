@@ -39,6 +39,7 @@ import { preferencesActions, preferencesStore } from '../../state/preferences/in
 import { onboardingActions, onboardingStore } from '../../state/onboarding/index.js';
 import {
   ALLERGY_CHOICES,
+  MAX_NAME_LENGTH,
   isDietarySetupValid,
   validateAllergies,
   validateDislikes,
@@ -100,6 +101,24 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
     dinner: drafts.dinner ?? preferences.mealTimes.dinner,
   };
 
+  /**
+   * The dislikes text, held here for the same reason the meal times are — and it is the same defect.
+   *
+   * **The store caps the list at `MAX_DISLIKES`**, so a field bound to `preferences
+   * .dislikedIngredients` showed the user 30 entries after they had entered 31, erased the comma
+   * they had just typed on every keystroke (`['a', '']` cleans to `['a']`, so `', '` vanished
+   * mid-word), and — because the rule was then run over the **stored** list — could never report
+   * anything: the predicate it tests had already been made false by the cap. Ten ingredients
+   * disappeared with no message, on a form whose subject is telling the user what it did with their
+   * input (PRD §12: what happened, what still works, what to do next).
+   *
+   * So the draft takes the keystroke, the rule reads the draft, and the store keeps its cap.
+   * `undefined` means "no draft, show what is stored", which is what lets an external change — a
+   * reset at P18 — reach the field instead of it being frozen at whatever was last typed.
+   */
+  const [dislikesDraft, setDislikesDraft] = useState<string | undefined>(undefined);
+  const dislikesText = dislikesDraft ?? preferences.dislikedIngredients.join(', ');
+
   const markTouched = useCallback((field: string) => {
     setTouched((current) => (current.has(field) ? current : new Set([...current, field])));
   }, []);
@@ -107,17 +126,19 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
   const allErrors = useMemo(
     () => ({
       // The DRAFT, not the stored value: the stored value is valid by construction now, so
-      // validating it would never report anything and the user would never be told.
+      // validating it would never report anything and the user would never be told. That holds for
+      // the dislikes list exactly as it holds for the meal times — the reducer's cap is what makes
+      // the stored list unreportable, so the rule has to see the text the user entered.
       ...validateMealTimes(draftTimes),
       allergies: validateAllergies(preferences.allergies),
-      dislikes: validateDislikes(preferences.dislikedIngredients),
+      dislikes: validateDislikes(dislikesText.split(',')),
     }),
     [
       draftTimes.breakfast,
       draftTimes.lunch,
       draftTimes.dinner,
       preferences.allergies,
-      preferences.dislikedIngredients,
+      dislikesText,
     ],
   );
 
@@ -213,7 +234,9 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
           markTouched('name');
         }}
         hint="Optional. Used only to greet you."
-        maxLength={60}
+        // The schema's own bound, shared with the reducer's cap so the field and the store cannot
+        // disagree about what a storable name is.
+        maxLength={MAX_NAME_LENGTH}
         autoCapitalize="words"
       />
 
@@ -317,8 +340,12 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
       <FormField
         testID="field-dislikes"
         label="Ingredients you would rather avoid"
-        value={preferences.dislikedIngredients.join(', ')}
+        value={dislikesText}
         onChangeText={(value) => {
+          // The draft takes the keystroke so the user keeps their own characters (and their
+          // commas); the store takes the cleaned, capped list. When those two disagree — a 31st
+          // ingredient — `validateDislikes` reads the draft and says so.
+          setDislikesDraft(value);
           dispatch(preferencesActions.changeDislikedIngredients(value.split(',')));
         }}
         onBlur={() => {

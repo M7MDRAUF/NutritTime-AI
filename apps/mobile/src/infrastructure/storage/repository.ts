@@ -308,10 +308,28 @@ export function createRepository<T>(
      * The value is NOT re-validated against the schema. TSD 6.4 declares exactly two write
      * failures, and a value that fails its own schema is a typed-caller bug, not a storage
      * condition — inventing a third reason here would put a programming error in front of a user.
+     *
+     * **`bound` runs INSIDE a `try`, so every throw out of `set` is a `StorageWriteError`** whose
+     * message comes from the fixed table above. It is supplied by the DEFINITION, exactly like
+     * `schema`, which the read path already wraps for this reason (see `classifyEntry`). Run bare
+     * it was the last escape hatch: a throwing `bound` sent its OWN message to `createStore`,
+     * which renders `saveError` on four screens, and a function that just choked on the value can
+     * quote the value — the user's own favourites, custom meals or preferences (PRD 10.3, 12).
+     * The refusal stays a separate thing: `bound(value) !== value` is a value that does not fit,
+     * a throwing `bound` is a definition that does not work, and with only two failures to give,
+     * the latter is `write-failed` — honest, though the retry the UI offers for it cannot succeed.
      */
     async set(value: T): Promise<void> {
-      if (definition.bound !== undefined && definition.bound(value) !== value) {
-        throw new StorageWriteError(definition.key, 'bound-exceeded');
+      if (definition.bound !== undefined) {
+        let bounded: T;
+        try {
+          bounded = definition.bound(value);
+        } catch {
+          throw new StorageWriteError(definition.key, 'write-failed');
+        }
+        if (bounded !== value) {
+          throw new StorageWriteError(definition.key, 'bound-exceeded');
+        }
       }
       let payload: string;
       try {

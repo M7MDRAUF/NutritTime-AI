@@ -10,13 +10,50 @@ import type { Page } from '@playwright/test';
  * `Home.dom.test.tsx`. What none of those can show is the three of them agreeing: a request the
  * client builds, a filter the server applies, and a list the browser paints.
  *
- * The peanut meal is found from the page rather than hard-coded, so the spec cannot be quietly
- * invalidated by a catalog change.
+ * The peanut meals are read from the SERVER rather than hard-coded, so the spec cannot be quietly
+ * invalidated by a catalog change and fails loudly if the catalog stops having any. What that on
+ * its own does not buy is **reachability** — that one of them would have been recommended at all —
+ * and reachability is what makes "it is gone" a claim rather than a coincidence. See the profile
+ * above the peanut test for the two settings that buy it and for the vacuity they repair.
  */
 
 const FIRST_PAINT_MS = 20_000;
 
-async function onboardWith(page: Page, allergens: readonly string[]): Promise<void> {
+/**
+ * A local wall-clock instant inside the DEFAULT lunch window (`mealTimes.lunch` is `12:30`, and the
+ * domain's window runs from 90 minutes before the anchor to 120 after).
+ *
+ * **Why the clock and not the meal times.** The period is derived on the device from the wall clock
+ * and the user's own anchors, so a spec that needs a particular period has to own one of the two.
+ * Moving the anchors through the form was tried first and is not available: `dietaryValidation`
+ * requires breakfast < lunch < dinner, so an anchor triple built around "now" is rejected outright
+ * whenever "now" is close to either end of the day — this suite would have been red between 00:00
+ * and 00:01 and again at 23:59. Fixing the clock instead leaves every preference at its documented
+ * default, and `setFixedTime` keeps timers running, so nothing else about the app changes.
+ *
+ * The date is arbitrary and the time is not: `home-period` is asserted to read `Lunch` immediately
+ * afterwards, so a timezone or a changed default that moved the app out of the lunch window fails
+ * loudly here rather than silently restoring the vacuity this test exists to repair.
+ */
+const INSIDE_THE_LUNCH_WINDOW = new Date(2026, 0, 15, 12, 30, 0);
+
+interface OnboardingProfile {
+  /** Narrowed through the form's own chips, because the budget band changes the ranking. */
+  readonly budget?: 'low' | 'medium' | 'high';
+  /** Freeze the device clock at {@link INSIDE_THE_LUNCH_WINDOW} before the app first boots. */
+  readonly atLunchtime?: boolean;
+}
+
+async function onboardWith(
+  page: Page,
+  allergens: readonly string[],
+  profile: OnboardingProfile = {},
+): Promise<void> {
+  if (profile.atLunchtime === true) {
+    // Before the first `goto`: the period is computed on mount, so a clock set afterwards would be
+    // read only by a later re-render and this would depend on the order of two unrelated things.
+    await page.clock.setFixedTime(INSIDE_THE_LUNCH_WINDOW);
+  }
   // Load, clear, reload — never `addInitScript`, which would re-clear on the reload later in this
   // file and make a persistence assertion delete its own evidence.
   await page.goto('/');
@@ -28,6 +65,9 @@ async function onboardWith(page: Page, allergens: readonly string[]): Promise<vo
   await expect(page.getByTestId('dietary-setup-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
   for (const allergen of allergens) {
     await page.getByTestId(`chip-allergy-${allergen}`).click();
+  }
+  if (profile.budget !== undefined) {
+    await page.getByTestId(`chip-budget-${profile.budget}`).click();
   }
   await page.getByTestId('dietary-setup-save').click();
   await expect(page.getByRole('tab', { name: 'Home' })).toBeVisible({ timeout: FIRST_PAINT_MS });
@@ -52,23 +92,48 @@ test.describe('the allergy exclusion, end to end', () => {
     expect((await recommendedIds(page)).length).toBeGreaterThan(0);
   });
 
-  test('no peanut-tagged meal reaches Home for a declared peanut allergy', async ({ page }) => {
+  /**
+   * **The profile that makes the exclusion observable, and why it is not the default one.**
+   *
+   * The first version of this test onboarded with the DEFAULT budget and whatever period the clock
+   * happened to fall in, and was therefore vacuous in exactly the way `Home.dom.test.tsx`'s first
+   * peanut test was: re-derived against the real catalog through the real `recommend()`, the top
+   * three are **byte-identical with and without a peanut allergy at every period on the medium
+   * band**, because `pad-see-ew` ranks 4th of 60 at lunch and `rocky-road-fudge` 6th at snack.
+   * Deleting the server's allergen rejection outright would have left it green.
+   *
+   * Two things have to be true for "it is gone" to mean anything, and neither is true by default:
+   *
+   *  1. **The low budget**, which lifts `pad-see-ew` (73) into the top three at lunch.
+   *  2. **The lunch period**, which is the only period where a peanut meal makes the cut on that
+   *     band — and the period is derived on the device, so a spec that does not own it is a spec
+   *     whose meaning changes with the time of day it runs at.
+   *
+   * The budget goes through the chips a user actually taps; the period comes from a fixed device
+   * clock, for the reason recorded on INSIDE_THE_LUNCH_WINDOW. Neither is trusted: the control
+   * below asserts the period on screen and then asserts that a peanut meal really is among the
+   * three, so if a catalog change ever pushes it back out, the CONTROL fails loudly instead of the
+   * claim going quietly vacuous again.
+   */
+  const PEANUT_REACHABLE: OnboardingProfile = { budget: 'low', atLunchtime: true };
+
+  test('a peanut meal Home does recommend is gone once the allergy is declared', async ({
+    page,
+  }) => {
     /**
      * Read from the SERVER rather than from a fixture: the catalog's peanut meals are whatever the
      * seeded data says they are, so this spec cannot be invalidated by the catalog changing under
      * it, and it fails loudly if the catalog stops having any.
      */
-    const response = await page.request.get(
-      'http://127.0.0.1:4000/api/v1/meals?pageSize=50&page=1',
-    );
-    expect(response.ok()).toBe(true);
-    const firstPage = (await response.json()) as {
-      readonly meals: readonly { readonly id: string; readonly allergenTags: readonly string[] }[];
-      readonly total: number;
-    };
-    const second = await page.request.get('http://127.0.0.1:4000/api/v1/meals?pageSize=50&page=2');
-    const secondPage = (await second.json()) as { readonly meals: typeof firstPage.meals };
-    const all = [...firstPage.meals, ...secondPage.meals];
+    const all: { readonly id: string; readonly allergenTags: readonly string[] }[] = [];
+    for (const pageNumber of [1, 2]) {
+      const response = await page.request.get(
+        `http://127.0.0.1:4000/api/v1/meals?pageSize=50&page=${String(pageNumber)}`,
+      );
+      expect(response.ok()).toBe(true);
+      const body = (await response.json()) as { readonly meals: typeof all };
+      all.push(...body.meals);
+    }
 
     const peanutIds = all.filter((meal) => meal.allergenTags.includes('peanut')).map((m) => m.id);
     expect(
@@ -76,12 +141,42 @@ test.describe('the allergy exclusion, end to end', () => {
       'the catalog must contain a peanut meal for this to mean anything',
     ).toBeGreaterThan(0);
 
-    await onboardWith(page, ['peanut']);
+    /**
+     * **The control, and it is the half without which the rest asserts nothing.** A meal that was
+     * never going to be in the three is "excluded" by a server with no filter at all.
+     */
+    await onboardWith(page, [], PEANUT_REACHABLE);
+    await expect(page.getByTestId('home-recommendations')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(
+      page.getByTestId('home-period'),
+      'the fixed clock must land inside the default lunch window, or the ranking this test relies on is not the one being measured',
+    ).toContainText('Lunch');
+
+    const without = await recommendedIds(page);
+    const reachable = without.filter((id) => peanutIds.includes(id));
+    expect(
+      reachable,
+      `a peanut meal must be IN the three for its removal to be observable — Home offered ${without.join(', ')} and the catalog's peanut meals are ${peanutIds.join(', ')}`,
+    ).not.toHaveLength(0);
+
+    /**
+     * The same profile, one field different. Everything that could move the ranking — budget,
+     * goal, diet, the meal times, the period they produce — is held still, so the only explanation
+     * for a meal leaving the list is the allergy.
+     */
+    await onboardWith(page, ['peanut'], PEANUT_REACHABLE);
     await expect(
       page.getByTestId('home-recommendations').or(page.getByTestId('home-empty')),
     ).toBeVisible({ timeout: FIRST_PAINT_MS });
+    await expect(page.getByTestId('home-period')).toContainText('Lunch');
 
     const shown = await recommendedIds(page);
+    for (const id of reachable) {
+      expect(
+        shown,
+        `${id} was recommended to this exact profile without the allergy, so its absence now is the rule working`,
+      ).not.toContain(id);
+    }
     for (const id of peanutIds) {
       expect(shown, `${id} must not be recommended`).not.toContain(id);
     }

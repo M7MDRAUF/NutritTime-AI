@@ -110,8 +110,13 @@ const PRIMITIVE_PRIVATE = {
 };
 
 export default tseslint.config(
-  // e2e/ is a separate workspace with its own toolchain (TSD 8.1); it is linted by its own
-  // config at P24, not by this one.
+  // **`e2e/` is linted here, and it was excluded on a promise nothing kept.** This block used to
+  // ignore `e2e/**` "because it is linted by its own config at P24" — that config does not exist,
+  // `npm run typecheck` omitted the project too, and so `npm run check` (TSD 2.4's "single gate")
+  // checked **none** of the specs that assert what a user actually sees. Found by a cross-phase
+  // audit. The exclusion cost nothing to remove: this config is not type-aware, so e2e needs no
+  // tsconfig wiring, and `typecheck` now carries `-p e2e` alongside the six workspace projects.
+  //
   // Nested globs, not top-level ones. `dist/**` matches only a `dist` at the repository root,
   // so `apps/server/dist` - which `npm run build:server` writes - was being linted as source
   // and reported `process is not defined` in compiled output. Latent since P01; it could not
@@ -123,7 +128,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.expo/**',
       '**/web-build/**',
-      'e2e/**',
+      'e2e/playwright-report/**',
+      'e2e/test-results/**',
     ],
   },
 
@@ -247,7 +253,15 @@ export default tseslint.config(
   {
     files: ['apps/mobile/src/infrastructure/storage/asyncStorageDriver.ts'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: appEscape('server') }],
+      // Rule 5 exemption - restated WITHOUT the AsyncStorage path, so Rule 4 survives here.
+      //
+      // **`PRIMITIVE_PRIVATE` is restated too, and its absence was the flat-config trap for the
+      // THIRD time in this project.** An overlapping glob REPLACES `no-restricted-imports` rather
+      // than merging it, so listing only `appEscape('server')` here silently dropped the
+      // primitive-privacy pattern for this file — the exact failure the block two entries above
+      // documents in bold, and which P01 and P11 each paid for once. Confirmed by
+      // `eslint --print-config`, which is the only evidence that counts for this rule.
+      'no-restricted-imports': ['error', { patterns: [...appEscape('server'), PRIMITIVE_PRIVATE] }],
     },
   },
 
@@ -257,6 +271,24 @@ export default tseslint.config(
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
     rules: { 'no-console': 'off' },
+  },
+
+  // `e2e/serveExport.mjs` is a Node script, not app code: a dependency-free static server that
+  // Playwright starts to serve the web export. It is the only file in `e2e/` that needed anything
+  // — the six specs lint clean under the shared rules, which is why bringing the workspace into
+  // this config cost five lines rather than a second config.
+  //
+  // Node globals are declared rather than assumed, and `console.log` is allowed by RESTATING the
+  // rule without that one clause. `'off'` would drop `console.debug` and `console.trace` with it,
+  // which is the mistake P01 recorded and this file has now avoided four times.
+  {
+    files: ['e2e/serveExport.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
+    rules: {
+      'no-console': ['error', { allow: ['log', 'warn', 'error'] }],
+    },
   },
 
   // The seed script is a hand-run command-line tool whose entire user interface is its

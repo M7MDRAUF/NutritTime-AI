@@ -24,8 +24,25 @@ export function buildNavigationTheme(theme: Theme): NavigationTheme {
   return {
     dark: isDark,
     colors: {
-      // The tint on an active tab and on a header's back affordance.
-      primary: colors.accent.brand,
+      /**
+       * The tint on an active tab and on a header's back affordance — both of which React
+       * Navigation draws as **text**, which is why this is a `content` role and not an `accent`
+       * one.
+       *
+       * It was `accent.brand`, and that shipped a live WCAG 1.4.3 failure: `accent.brand` is a
+       * FILL colour, authored to be readable *under* `content.onBrand`, and light's `#059669` on
+       * `card` (`surface.raised`, `#FFFFFF`) measures **3.77:1** against AA's 4.5:1 for normal
+       * text. DECISIONS.md §3.1 already rejected exactly that pair — "white on the same green is
+       * 3.77:1 and fails AA" — and the tab bar shipped it with the two roles swapped, which is
+       * contrast-symmetric and therefore the identical ratio.
+       *
+       * `content.link` is the role this theme already means by "a navigable affordance rendered as
+       * text": **7.68:1** in light (`#065F46` on `#FFFFFF`) and **10.72:1** in dark (`#6EE7B7` on
+       * `#12231E`), and it is measured on all four surfaces in both schemes in `contrast.test.ts`.
+       * `component-contrast.test.ts` reads this slot back out of this file and re-measures the
+       * pair, so pointing it at a fill colour again fails there rather than on a device.
+       */
+      primary: colors.content.link,
       background: colors.surface.canvas,
       // `card` is the header and tab-bar fill: raised, so the bar reads as above the canvas.
       card: colors.surface.raised,

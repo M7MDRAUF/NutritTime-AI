@@ -436,19 +436,101 @@ describe.each(SCHEMES)('%s scheme: recorded exemptions', (scheme) => {
   );
 });
 
+/**
+ * **The coverage guard, and the direction it used to collapse.**
+ *
+ * The pairing table is hand-written, so this block is the guard against a token being added to
+ * `SemanticTokens` and never appearing in an assertion. It had a hole of its own: it built ONE flat
+ * set from `p.name.split(' on ')` — both halves of every pairing name thrown into the same bag —
+ * and then asked only whether a role appeared in it. A role measured once as a **background**
+ * therefore counted as coverage for its use as a **foreground**.
+ *
+ * That is not hypothetical. `accent.brand` appears in this table exactly once, as the fill under
+ * `content.onBrand`; `TabNavigator.tsx` and `navigationTheme.ts` drew it as the active tab's LABEL
+ * on `surface.raised`, which is **3.77:1** in light, and this guard reported full coverage. It is
+ * the same shape of hole the two docblocks above already record twice — a missing row looks exactly
+ * like a passing one — one level up, in the guard meant to find missing rows.
+ *
+ * So coverage is now **ordered**: the left of a pairing name is the foreground, the right is the
+ * background, and every role has to be classified below before either direction counts. A role
+ * drawn as body text is required on every surface a screen could put it on, not merely "somewhere",
+ * because "somewhere" is the weaker claim that let the tab label through.
+ */
 describe('coverage of the token maps', () => {
-  // The pairing table is hand-written, so this is the guard against a token being added to
-  // `SemanticTokens` and never appearing in an assertion. It fails when a new colour role lands
-  // without a pairing, which is exactly the regression T-11-08 exists to catch.
+  /**
+   * Roles this theme draws as text or as an icon on a surface a SCREEN chooses. Each must be
+   * measured against every surface in `TEXT_SURFACES`, in both schemes.
+   */
+  const TEXT_FOREGROUND_ROLES = [
+    'content.primary',
+    'content.secondary',
+    'content.tertiary',
+    'content.link',
+    'accent.protein',
+    'accent.carb',
+    'accent.fat',
+    'status.info',
+    'status.success',
+    'status.warning',
+    'status.danger',
+  ] as const;
+
+  /**
+   * Foregrounds whose background is fixed by the role itself — a label that exists only for one
+   * fill, a border, a tone on the inverse surface. Each must appear as the foreground of at least
+   * one pairing; which background is named in the table beside it.
+   */
+  const PAIRED_FOREGROUND_ROLES = [
+    'content.inverse',
+    'content.onBrand',
+    'content.onAccent',
+    'content.onDanger',
+    'statusOnInverse.info',
+    'statusOnInverse.success',
+    'statusOnInverse.warning',
+    'statusOnInverse.danger',
+    'border.default',
+    'border.strong',
+    'border.focus',
+    'border.brand',
+    'border.danger',
+  ] as const;
+
+  /**
+   * Roles drawn BEHIND something. `status.danger` is deliberately in both lists: it is a text tone
+   * on the four surfaces and the fill under `content.onDanger`, and a role used both ways has to be
+   * measured both ways.
+   *
+   * `statusSurface.*` moved here from the exemption list, where it had been dead weight: all four
+   * already appear as the background of a `status.* on statusSurface.*` row, so exempting them from
+   * needing a pairing exempted nothing.
+   */
+  const BACKGROUND_ROLES = [
+    'surface.canvas',
+    'surface.raised',
+    'surface.sunken',
+    'surface.overlay',
+    'surface.inverse',
+    'surface.brand',
+    'accent.brand',
+    'accent.brandPressed',
+    'accent.brandSubtle',
+    'accent.cta',
+    'accent.ctaPressed',
+    'accent.ctaSubtle',
+    'status.danger',
+    'statusSurface.info',
+    'statusSurface.success',
+    'statusSurface.warning',
+    'statusSurface.danger',
+  ] as const;
+
+  /** Roles with no pairing in this table at all, each for a stated reason. */
   const COLOUR_ROLES_WITHOUT_A_PAIRING = new Set([
     // Asserted through the exemptions above rather than the AA table.
     'content.disabled',
     'surface.disabled',
     'border.subtle',
-    'statusSurface.info',
-    'statusSurface.success',
-    'statusSurface.warning',
-    'statusSurface.danger',
     'scrim.backdrop',
     'scrim.image',
     // Asserted against the composited scrim above, not against a token background: the thing
@@ -475,13 +557,62 @@ describe('coverage of the token maps', () => {
     return roles;
   }
 
-  const named = new Set(allPairings.flatMap((p) => p.name.split(' on ')));
+  /** A pairing name is `<foreground> on <background>`, and the two halves are kept apart. */
+  function halves(name: string): { foreground: string; background: string } {
+    const parts = name.split(' on ');
+    if (parts.length !== 2 || parts[0] === undefined || parts[1] === undefined) {
+      throw new Error(`Pairing name is not "<foreground> on <background>": ${name}`);
+    }
+    return { foreground: parts[0], background: parts[1] };
+  }
 
-  it.each(SCHEMES)('%s: every colour role is asserted or explicitly exempt', (scheme) => {
-    const unasserted = colourRoles(colorsByScheme[scheme]).filter(
-      (role) => !named.has(role) && !COLOUR_ROLES_WITHOUT_A_PAIRING.has(role),
+  const pairingNames = new Set(allPairings.map((p) => p.name));
+  const measuredAsForeground = new Set(allPairings.map((p) => halves(p.name).foreground));
+  const measuredAsBackground = new Set(allPairings.map((p) => halves(p.name).background));
+  const classified = [
+    ...TEXT_FOREGROUND_ROLES,
+    ...PAIRED_FOREGROUND_ROLES,
+    ...BACKGROUND_ROLES,
+    ...COLOUR_ROLES_WITHOUT_A_PAIRING,
+  ];
+
+  it.each(SCHEMES)('%s: every colour role declares the direction it is drawn in', (scheme) => {
+    const declared = new Set(classified);
+    const unclassified = colourRoles(colorsByScheme[scheme]).filter((role) => !declared.has(role));
+    // A new token cannot be added without someone deciding whether it is drawn on top of something
+    // or underneath it — which is the decision that was never made for `accent.brand`.
+    expect(unclassified, `colour roles with no declared direction of use`).toEqual([]);
+  });
+
+  it('declares no role the token maps do not define', () => {
+    // The other direction. A renamed or deleted token would otherwise leave a stale entry above
+    // that quietly requires nothing, and the guard would report coverage of a role that is gone.
+    const real = new Set(colourRoles(lightColors));
+    expect(classified.filter((role) => !real.has(role))).toEqual([]);
+  });
+
+  it('measures every text foreground on every surface a screen can put it on', () => {
+    const missing = TEXT_FOREGROUND_ROLES.flatMap((role) =>
+      TEXT_SURFACES.map(([surfaceName]) => `${role} on surface.${surfaceName}`).filter(
+        (name) => !pairingNames.has(name),
+      ),
     );
-    expect(unasserted, `colour roles with no pairing and no recorded exemption`).toEqual([]);
+    expect(missing, `text tones with a surface they are never measured against`).toEqual([]);
+  });
+
+  it('measures every foreground AS a foreground, not merely somewhere', () => {
+    // The assertion the old guard could not make. `accent.brand` satisfied the old one by being a
+    // background; the moment a role is declared a foreground it has to appear on the LEFT of a
+    // pairing name, and no amount of use as a fill will substitute for it.
+    const unmeasured = [...TEXT_FOREGROUND_ROLES, ...PAIRED_FOREGROUND_ROLES].filter(
+      (role) => !measuredAsForeground.has(role),
+    );
+    expect(unmeasured, `roles drawn as a foreground with no foreground pairing`).toEqual([]);
+  });
+
+  it('measures every background AS a background', () => {
+    const unmeasured = BACKGROUND_ROLES.filter((role) => !measuredAsBackground.has(role));
+    expect(unmeasured, `roles drawn as a background with no background pairing`).toEqual([]);
   });
 
   it('both schemes define exactly the same roles, so neither can be partial', () => {

@@ -444,7 +444,7 @@ describe('useMealDetails', () => {
 
   it('carries nothing from the wire in the state it returns', async () => {
     /**
-     * PRD §15.5 and TSD §6.5 rule 1. The client keeps the server's body on `.wire` and never in
+     * PRD §12 and TSD §6.5 rule 1. The client keeps the server's body on `.wire` and never in
      * `.message`; this proves the hook does not reach for either.
      *
      * The shape is asserted, not just the kind: the defect this guards is a future `message` field

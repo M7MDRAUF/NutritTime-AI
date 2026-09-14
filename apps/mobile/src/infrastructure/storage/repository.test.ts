@@ -268,6 +268,57 @@ describe('bounds', () => {
     expect(driver.store.has(QUARANTINE_KEY)).toBe(false);
   });
 
+  /**
+   * **The case `createStore`'s `isStorageWriteError` gate was written for and could not be shown.**
+   *
+   * `createStore` builds its repository from `STORAGE_DEFINITIONS[key]` with no injection seam, so
+   * no test one layer up can supply a definition whose `bound` throws — the gate that stops an
+   * arbitrary `Error.message` reaching four rendered surfaces had nothing that would fail if it
+   * were reverted. `createRepository` takes its definition directly, so the guarantee is provable
+   * here instead: **every throw out of `set` is a `StorageWriteError`**, whose message comes from
+   * the fixed local table. That makes the gate upstream correct by construction rather than by
+   * hope, and a `bound` is the one thing on the write path the definition supplies.
+   */
+  it('maps a THROWING `bound` to `write-failed`, with none of its own message escaping', async () => {
+    const driver = memoryDriver();
+    const definition: RepositoryDefinition<readonly string[]> = {
+      ...listDefinition,
+      key: '@test/throwing-bound',
+      bound: () => {
+        // Stands in for what a real `bound` throwing would say: it choked ON the value, so its
+        // message can carry the value — here, the shape of a saved meal the user authored.
+        throw new Error('cannot bound ["peanut satay", "shellfish laksa"]');
+      },
+    };
+
+    const error = await createRepository(definition, runtimeFor(driver))
+      .set(['a'])
+      .catch((value: unknown) => value);
+
+    expect(isStorageWriteError(error)).toBe(true);
+    expect(isStorageWriteError(error) && error.reason).toBe('write-failed');
+    expect(isStorageWriteError(error) && error.key).toBe('@test/throwing-bound');
+    // Not one fragment of the thrown message survives — not through `message`, and not through
+    // `toString()`, which is what a careless `String(error)` on a screen would render.
+    const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    expect(text).toBe('StorageWriteError: That change could not be saved.');
+    expect(text).not.toContain('peanut');
+    expect(text).not.toContain('shellfish');
+    expect(text).not.toContain('cannot bound');
+    // And the write never reached the driver.
+    expect(driver.store.size).toBe(0);
+  });
+
+  it('still REFUSES a bound-exceeded write, rather than calling it `write-failed`', async () => {
+    // The control for the test above: wrapping `bound` in a `try` must not swallow the refusal
+    // that `bound` returning a shortened copy is supposed to raise. Two different conditions.
+    const error = await createRepository(listDefinition, runtimeFor(memoryDriver()))
+      .set(['a', 'b', 'c', 'd'])
+      .catch((value: unknown) => value);
+    expect(isStorageWriteError(error) && error.reason).toBe('bound-exceeded');
+    expect(isStorageWriteError(error) && error.message).toBe('That list is full.');
+  });
+
   it('reports `loaded` for a stored list within the bound', async () => {
     const driver = memoryDriver({ '@test/list': stored(1, ['a']) });
     await expect(readEntry(listDefinition, runtimeFor(driver))).resolves.toEqual({

@@ -26,7 +26,7 @@ import type {
   ThemeMode,
   UserPreferences,
 } from '@nutritime/contracts';
-import { MAX_DISLIKES } from '../../features/onboarding/dietaryValidation.js';
+import { MAX_DISLIKES, MAX_NAME_LENGTH } from '../../features/onboarding/dietaryValidation.js';
 import type { StoreConfig } from '../createStore.js';
 
 export interface PreferencesState {
@@ -157,9 +157,17 @@ export function selectRequestPreferences(state: PreferencesState): {
   return { diet, allergies, goal, budget, dislikedIngredients };
 }
 
-/** `name` is the one optional field: absent means never told, which is not the same as empty. */
+/**
+ * `name` is the one optional field: absent means never told, which is not the same as empty.
+ *
+ * **Bounded as well as trimmed**, because `userPreferencesSchema` types it `.max(60)` and a store
+ * that holds a 61-character name holds a profile the next launch quarantines — taking the allergy
+ * list with it. The form cannot produce one (`maxLength={MAX_NAME_LENGTH}` on the field), so the
+ * cap is invisible to a user typing; it exists for the callers that do not come through a field.
+ * Trimmed again after the cut, so a truncation that lands on a space does not store a trailing one.
+ */
 function withName(preferences: UserPreferences, name: string): UserPreferences {
-  const trimmed = name.trim();
+  const trimmed = name.trim().slice(0, MAX_NAME_LENGTH).trim();
   if (trimmed === '') {
     const { name: _dropped, ...rest } = preferences;
     return rest;
@@ -181,8 +189,58 @@ export function isStorableClockTime(value: string): boolean {
   return STORABLE_CLOCK.test(value);
 }
 
+/**
+ * The dislike list in the only form this store keeps: trimmed, de-duplicated, non-empty, capped.
+ *
+ * One function rather than three copies, because it is applied on **every** write path — the field
+ * action, a wholesale replacement and hydration — and three copies is how two of them came to
+ * differ. `userPreferencesSchema` types the list `z.array(z.string().min(1)).max(30)`, so the empty
+ * string is as unstorable as the 31st entry: `['a', '', 'b']` reached the schema through `replaced`
+ * and would have been quarantined with everything else on the key.
+ */
+function storableDislikes(values: readonly string[]): readonly string[] {
+  return [...new Set(values.map((one) => one.trim()).filter((one) => one !== ''))].slice(
+    0,
+    MAX_DISLIKES,
+  );
+}
+
+/** A time the domain can read, or the one already stored — never the caller's unparseable value. */
+function storableMealTime(value: string, current: string): string {
+  return isStorableClockTime(value) ? value : current;
+}
+
 function sameList(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Two profiles with equal contents — compared field by field rather than by `JSON.stringify`.
+ *
+ * The stringify comparison this replaces was key-ORDER sensitive, and the order genuinely varies:
+ * `withName` appends `name` when a user first sets one, while the same profile read back from disk
+ * arrives in `userPreferencesSchema`'s declared order with `name` second. Two profiles differing
+ * only in that are the same profile, and calling it a change costs a re-render and a storage write
+ * on an action that changed nothing (TSD §6.3 invariant 3).
+ *
+ * Listing every field also means a field added to `UserPreferences` will not compile until someone
+ * decides whether it takes part in the comparison — the same property the branch below relies on.
+ */
+function sameProfile(left: UserPreferences, right: UserPreferences): boolean {
+  return (
+    left.schemaVersion === right.schemaVersion &&
+    left.name === right.name &&
+    left.diet === right.diet &&
+    left.goal === right.goal &&
+    left.budget === right.budget &&
+    left.aiEnabled === right.aiEnabled &&
+    left.themeMode === right.themeMode &&
+    left.mealTimes.breakfast === right.mealTimes.breakfast &&
+    left.mealTimes.lunch === right.mealTimes.lunch &&
+    left.mealTimes.dinner === right.mealTimes.dinner &&
+    sameList(left.allergies, right.allergies) &&
+    sameList(left.dislikedIngredients, right.dislikedIngredients)
+  );
 }
 
 export function preferencesReducer(
@@ -252,13 +310,13 @@ export function preferencesReducer(
        * defaults — **silently erasing the user's allergy list** while `onboarding.completed`
        * survived on its own key, so the app went straight to Home and filtered by nothing.
        *
-       * The form also has a rule for it now, so the user is told. This is the belt: a screen can
-       * forget a rule, and a reducer that cannot produce an unstorable value is what makes that
-       * forgetting survivable.
+       * The form tells the user, and it does so by validating **the text they typed** rather than
+       * the list this branch stored — validating the stored list made the rule unreachable, because
+       * the cap below had already removed what the message was about. This is the belt: a screen
+       * can forget a rule, and a reducer that cannot produce an unstorable value is what makes that
+       * forgetting survivable. The cap therefore stays, and the message is the screen's job.
        */
-      const cleaned = [
-        ...new Set(action.dislikedIngredients.map((one) => one.trim()).filter((one) => one !== '')),
-      ].slice(0, MAX_DISLIKES);
+      const cleaned = storableDislikes(action.dislikedIngredients);
       if (sameList(state.preferences.dislikedIngredients, cleaned)) {
         return state;
       }
@@ -312,18 +370,51 @@ export function preferencesReducer(
     }
 
     case 'preferences/replaced': {
-      const allergies = canonicalAllergies(action.preferences.allergies);
+      const replacement = action.preferences;
+      const allergies = canonicalAllergies(replacement.allergies);
       const changed = !sameList(state.preferences.allergies, allergies);
-      const next: UserPreferences = {
-        ...action.preferences,
-        allergies,
-        // The same two sanitisations the field actions apply. A replacement is the path a restored
-        // backup or a future import takes, and it must not be the way an unstorable value gets in.
-        dislikedIngredients: action.preferences.dislikedIngredients.slice(0, MAX_DISLIKES),
-      };
+      /**
+       * **Every sanitisation the field actions apply, on every field — not a spread.**
+       *
+       * A replacement is the path a restored backup or a future import takes, and it must not be
+       * the way an unstorable value gets in. It was: this branch sanitised allergies and capped
+       * dislikes and did nothing else, so `replace` accepted an unparseable meal time (`'08:'`,
+       * which `parseClockTime` throws on and `clockTimeSchema` rejects), a name past the schema's
+       * 60 characters, and an empty-string dislike — each of them a profile the next launch
+       * quarantines whole, **erasing the declared allergy list**. That is P14's CRITICAL, reached
+       * through the one branch that was supposed to be closed against it.
+       *
+       * Written out field by field rather than spread over `replacement`, deliberately: a field
+       * added to `UserPreferences` later will not compile here until someone decides how it is
+       * sanitised, and a spread would have carried it in unexamined.
+       */
+      const next: UserPreferences = withName(
+        {
+          schemaVersion: replacement.schemaVersion,
+          diet: replacement.diet,
+          allergies,
+          goal: replacement.goal,
+          budget: replacement.budget,
+          dislikedIngredients: storableDislikes(replacement.dislikedIngredients),
+          mealTimes: {
+            breakfast: storableMealTime(
+              replacement.mealTimes.breakfast,
+              state.preferences.mealTimes.breakfast,
+            ),
+            lunch: storableMealTime(replacement.mealTimes.lunch, state.preferences.mealTimes.lunch),
+            dinner: storableMealTime(
+              replacement.mealTimes.dinner,
+              state.preferences.mealTimes.dinner,
+            ),
+          },
+          aiEnabled: replacement.aiEnabled,
+          themeMode: replacement.themeMode,
+        },
+        replacement.name ?? '',
+      );
       // Reference-preserving, like every other branch (TSD 6.3 invariant 3). An identical
       // replacement used to allocate and therefore trigger a storage write.
-      if (!changed && JSON.stringify(next) === JSON.stringify(state.preferences)) {
+      if (!changed && sameProfile(next, state.preferences)) {
         return state;
       }
       return {
@@ -345,7 +436,7 @@ export const preferencesStoreConfig = {
     preferences: {
       ...persisted,
       allergies: canonicalAllergies(persisted.allergies),
-      dislikedIngredients: persisted.dislikedIngredients.slice(0, MAX_DISLIKES),
+      dislikedIngredients: storableDislikes(persisted.dislikedIngredients),
     },
     allergiesRevision: 0,
   }),

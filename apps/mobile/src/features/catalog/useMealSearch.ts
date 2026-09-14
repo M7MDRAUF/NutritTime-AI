@@ -26,7 +26,18 @@ import type { ApiClient } from '../../infrastructure/api/client.js';
 import { queryFrom } from './exploreFilters.js';
 import type { ExploreFilters } from './exploreFilters.js';
 
-/** TSD §6.5's figure. A keystroke is not a request; a pause in typing is. */
+/**
+ * **SDD §11's figure** ("Search debounces at ~300 ms"). A keystroke is not a request; a pause in
+ * typing is.
+ *
+ * The citation here used to read "TSD §6.5", and that section is the **API client** — the
+ * `ApiClient` interface, the per-route deadline table and the abort rules. It carries no debounce
+ * figure; `debounce` does not appear in TSD at all. Recorded rather than reconciled: SDD outranks
+ * TSD, so the value 300 was always authorised, only its attribution was wrong.
+ *
+ * Pinned by `Explore.dom.test.tsx`'s "waits the screen's own default", which withholds the
+ * `debounceMs` prop and advances a fake clock to 299 ms and then to 300 ms.
+ */
 export const SEARCH_DEBOUNCE_MS = 300;
 
 export type MealSearchState =

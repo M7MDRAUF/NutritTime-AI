@@ -16,7 +16,7 @@
  * and in the copy that would have to describe it. Adding one without telling the user what it
  * destroys does not compile.
  *
- * Nothing here is assembled from an exception, a driver string or a stored value — PRD §15.5. The
+ * Nothing here is assembled from an exception, a driver string or a stored value — PRD §12. The
  * only variable parts are record counts.
  */
 
@@ -82,7 +82,7 @@ export const THEME_LABELS: Readonly<Record<ThemeMode, string>> = {
 
 export interface Confirmation {
   readonly title: string;
-  /** What is lost, and what is NOT. Fixed local copy (PRD §15.5), assembled only from counts. */
+  /** What is lost, and what is NOT. Fixed local copy (PRD §12), assembled only from counts. */
   readonly body: string;
   readonly confirmLabel: string;
 }

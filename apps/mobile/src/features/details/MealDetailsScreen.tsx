@@ -257,7 +257,7 @@ export function MealDetailsScreen({ route, navigation }: ScreenProps<'MealDetail
           icon="alertCircle"
           title={COPY.saveErrorTitle}
           // The repository's own message, which is fixed local copy by construction — never a
-          // driver string, which can quote the payload (PRD §15.5).
+          // driver string, which can quote the payload (PRD §12).
           description={favoritesStatus.saveError}
           actionLabel={COPY.retry}
           onAction={favoritesStatus.retrySave}

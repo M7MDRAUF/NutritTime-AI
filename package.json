@@ -15,7 +15,7 @@
     "dev:server": "tsx watch apps/server/src/index.ts",
     "dev:mobile": "npm --workspace apps/mobile run start",
     "seed": "tsx packages/catalog/seed.ts",
-    "typecheck": "tsc --noEmit -p apps/server && tsc --noEmit -p apps/mobile && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/contracts && tsc --noEmit -p packages/catalog && tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p apps/server && tsc --noEmit -p apps/mobile && tsc --noEmit -p packages/domain && tsc --noEmit -p packages/contracts && tsc --noEmit -p packages/catalog && tsc --noEmit -p tsconfig.json && tsc --noEmit -p e2e",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

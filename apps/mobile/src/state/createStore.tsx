@@ -34,7 +34,7 @@ export interface StoreStatus {
   readonly hydrated: boolean;
   readonly entryStatus: EntryStatus;
   readonly saving: boolean;
-  /** A fixed local message, never a driver string (PRD §15.5). */
+  /** A fixed local message, never a driver string (PRD §12). */
   readonly saveError: string | null;
   /**
    * True when the write was refused for exceeding a bound (TSD §6.4).
@@ -164,7 +164,7 @@ export function createStore<K extends StorageKeyName, S, A extends { readonly ty
             }
             /**
              * **Only a `StorageWriteError`'s message is shown, and the previous version of this
-             * was one `throw` away from a PRD §15.5 breach.**
+             * was one `throw` away from a PRD §12 breach.**
              *
              * It read `error instanceof Error ? error.message : …`, defended by a comment saying
              * the message was "the repository's own, fixed and local by construction". That is

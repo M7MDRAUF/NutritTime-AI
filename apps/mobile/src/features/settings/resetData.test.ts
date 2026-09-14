@@ -343,7 +343,7 @@ describe('describeResetFailure', () => {
 
   it('names the sets that survived in fixed local copy, quoting no driver string', async () => {
     /**
-     * PRD §15.5. The memory driver's text is harmless, but a real driver's message can quote the
+     * PRD §12. The memory driver's text is harmless, but a real driver's message can quote the
      * payload — and this payload is a name and an allergy list. The message must be assembled
      * from set names only.
      */

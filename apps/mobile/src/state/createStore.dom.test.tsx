@@ -204,7 +204,7 @@ describe('createStore', () => {
 
   it('reports a failed write with a FIXED local message, never the driver text', async () => {
     /**
-     * PRD §15.5. The memory driver throws `driver refused setItem`, which is harmless — but a real
+     * PRD §12. The memory driver throws `driver refused setItem`, which is harmless — but a real
      * driver's message can quote the payload, and this payload is a name and an allergy list.
      */
     const driver = memoryDriver({});

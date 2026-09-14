@@ -752,7 +752,7 @@ describe('SavedScreen — states (PRD §12)', () => {
     expect(view.find('saved-favorites-error')).not.toBeNull();
     expect(view.find('saved-favorites-offline')).toBeNull();
     expect(view.text()).toContain('still work');
-    // TSD §3.5 and PRD §15.5: nothing off the wire reaches the screen.
+    // TSD §3.5 and PRD §12: nothing off the wire reaches the screen.
     expect(view.text()).not.toContain('ECONNREFUSED');
     expect(view.text()).not.toContain('secret.sock');
   });

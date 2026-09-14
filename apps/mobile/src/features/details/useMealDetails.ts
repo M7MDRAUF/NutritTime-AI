@@ -81,7 +81,7 @@ const NOT_FOUND_STATUS = 404;
  *
  * **Nothing from the error reaches the returned state.** The states carry a `kind` and, when
  * loaded, a `Meal` — no message field, so there is nowhere for a wire string to be smuggled into
- * a screen (PRD §15.5, TSD §6.5 rule 1). The suite asserts the shape, not just the kind.
+ * a screen (PRD §12, TSD §6.5 rule 1). The suite asserts the shape, not just the kind.
  */
 function stateForError(error: unknown): MealDetailsState {
   if (!isApiClientError(error)) {

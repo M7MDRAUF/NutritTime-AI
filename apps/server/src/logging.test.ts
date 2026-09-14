@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { aiLogLine, errorLogLine, framesOf, requestLogLine } from './logging.js';
 
 /**
- * T-08-08, and PRD 15.5 is the whole point: **never a prompt, a question, an answer, an
+ * T-08-08, and PRD 10.3 is the whole point (not "PRD 15.5", which does not exist; the
+ * table is Plan 15.5): **never a prompt, a question, an answer, an
  * allergy list, a name, or a request body.**
  *
  * The way that rule is kept is structural. `requestLogLine` has no parameter through which any

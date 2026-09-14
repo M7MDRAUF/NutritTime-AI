@@ -79,6 +79,29 @@ const GLYPHS = {
   assistant: 'message-outline',
   saved: 'bookmark-outline',
   settings: 'cog-outline',
+
+  /**
+   * ---- The FILLED tab glyphs, which exist so the selected tab is legible without colour.
+   *
+   * The tab bar distinguished its selected tab by tint alone. That tint used to be `accent.brand`,
+   * which failed AA against the bar at **3.77:1**; moving it to `content.link` fixed the contrast
+   * (7.68:1 light, 10.72:1 dark) and, because the inactive tone is `content.tertiary` at 7.58:1,
+   * left the two states **1.01:1 apart** — all but identical in lightness, separated only by hue.
+   *
+   * WCAG requires contrast against the *ground*, not between two states, so that was conformant.
+   * PRD §10.5 is the rule it broke: colour was the only **visible** signal, and a deuteranope reads
+   * dark green and slate as much the same. `accessibilityState.selected` covers assistive tech and
+   * nothing else.
+   *
+   * So the selected tab now changes **shape**. Every pair was checked against the shipped
+   * `MaterialCommunityIcons.json` — all five filled counterparts exist and carry a codepoint
+   * distinct from their outline, which `Icon.dom.test.tsx` asserts rather than assumes.
+   */
+  homeFilled: 'home',
+  exploreFilled: 'compass',
+  assistantFilled: 'message',
+  savedFilled: 'bookmark',
+  settingsFilled: 'cog',
 } as const satisfies Record<string, string>;
 
 export type IconName = keyof typeof GLYPHS;

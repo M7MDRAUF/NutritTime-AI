@@ -3,10 +3,15 @@ import { connect, createServer } from 'node:net';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
+import express from 'express';
+import type { Request, Response } from 'express';
 import { seededCatalog } from '@nutritime/catalog';
-import { createApp } from './app.js';
+import type { Meal } from '@nutritime/contracts';
+import { createApp, createErrorHandler } from './app.js';
 import { buildCatalog } from './catalog.js';
+import type { Catalog } from './catalog.js';
 import { loadConfig } from './config.js';
+import { INTERNAL_ERROR_BODY } from './errors.js';
 
 /**
  * T-08-09: the three boot behaviours, plus the route and middleware contracts of TSD 5.3.
@@ -39,8 +44,12 @@ interface BootResult {
  * a child that cannot find `tsx`. Every case below sets the variables it depends on explicitly
  * so an inherited `.env` cannot decide the outcome.
  */
-function bootEntry(entry: string, env: Record<string, string>): BootResult {
-  const result = spawnSync(process.execPath, ['--import', 'tsx', entry], {
+function bootEntry(
+  entry: string,
+  env: Record<string, string>,
+  args: readonly string[] = [],
+): BootResult {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', entry, ...args], {
     cwd: REPO_ROOT,
     env: { ...process.env, ...env },
     encoding: 'utf8',
@@ -236,8 +245,11 @@ describe('an invalid catalog stops the process', () => {
    * ask for the exit code. It boots the real `bootstrap()` over a fixture rather than
    * corrupting committed data.
    */
+  // The fixture shape travels as an ARGUMENT, not as an environment variable: the fixture used
+  // to read `process.env['CATALOG_FIXTURE']`, which made it a third, unregistered reader of the
+  // environment inside `apps/server` against T-08-02's "exactly one file".
   const bootFixture = (fixture: string, port: number): BootResult =>
-    bootEntry(CATALOG_FIXTURE_ENTRY, { CATALOG_FIXTURE: fixture, PORT: String(port) });
+    bootEntry(CATALOG_FIXTURE_ENTRY, { PORT: String(port) }, [fixture]);
 
   it('exits non-zero naming the record index and the field path', async () => {
     const { status, stderr } = bootFixture('field', await freePort());
@@ -257,6 +269,26 @@ describe('an invalid catalog stops the process', () => {
     const { status, stderr } = bootFixture(fixture, await freePort());
     expect(status).not.toBe(0);
     expect(stderr).toMatch(expected);
+  });
+
+  it('exits non-zero for an allergen tag outside the canonical taxonomy', async () => {
+    /**
+     * **R-16, re-asserted at boot and not only at seed time.** `mealSchema` types
+     * `allergenTags` as `z.array(z.string())`, so `treenut` validates, passes the superRefine,
+     * and then resolves to no canonical allergen at all - a meal that should be rejected for a
+     * declared tree-nut allergy is offered instead, and the failure is silent.
+     *
+     * The seed script's check is seed-time and covers only the hand-authored additions. The
+     * committed file is what this server serves, and it can be edited without the seed ever
+     * running again, so the refusal has to happen where the data is loaded.
+     */
+    const { status, stderr } = bootFixture('allergen-tag', await freePort());
+    expect(status).not.toBe(0);
+    expect(stderr).toContain('record 1');
+    expect(stderr).toContain('allergenTags');
+    // The tag itself, because the whole failure mode is that it looks like a real allergen.
+    expect(stderr).toContain('treenut');
+    expect(stderr).not.toContain('listening');
   });
 
   it('never echoes a record’s own content, only its index and path', async () => {
@@ -428,5 +460,154 @@ describe('the log lines the server actually writes', () => {
       .get('/health')
       .set('Origin', 'http://evil.example.com');
     expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+});
+
+describe('an UNEXPECTED throw, driven through the app rather than asserted as a constant', () => {
+  /**
+   * **T-08-06's and T-08-08's one leak-capable path, which no test drove.**
+   *
+   * `errors.test.ts` asserted `INTERNAL_ERROR_BODY` as a value and `logging.test.ts` asserted
+   * `errorLogLine` as a pure function; nothing connected either to `app.ts`. Replacing
+   * `INTERNAL_ERROR_BODY` at the 500 branch with `String(error)`, and `errorLogLine(...)` with
+   * `String(error)`, left the whole suite green - which is verbatim the defect P08's phase
+   * report records as fixed. The `Content-Encoding: gzip` case above names the 500 branch but is
+   * deliberately reclassified to 400, so its `not.toContain('incorrect header check')` passes
+   * with no 500 line to inspect at all.
+   *
+   * PRD 12 is the authority for the body ("Stack traces and raw provider errors never reach the
+   * user") and PRD 10.3 for the line ("Logs never contain prompts, questions, allergy lists, or
+   * names"). Neither is PRD 15.5, which does not exist - PRD section 15 is "Dependencies and
+   * Assumptions" and has no subsections. The redaction TABLE is Plan 15.5 and TSD 5.8.
+   */
+  const AT = new Date('2026-09-13T10:20:30.400Z');
+
+  /**
+   * What a real throw will carry once there is a route that can compose one (P21's chat lane).
+   * Every fragment of this string is asserted absent from both the body and the log.
+   */
+  const UPSTREAM = 'no match for "does the korma contain peanuts?" - Jane Doe is allergic';
+  const LEAKS = ['peanut', 'korma', 'Jane', 'allergic', 'no match for'] as const;
+
+  /**
+   * The real catalog with the one read the list route makes turned into a throw.
+   *
+   * A genuine non-`ApiError` from inside a real route handler, through the real middleware
+   * stack - not a hand-called error handler. `byId` and `version` stay real so nothing else
+   * about the app changes.
+   */
+  function explodingCatalog(): Catalog {
+    const real = buildCatalog(seededCatalog);
+    return {
+      get meals(): readonly Meal[] {
+        throw new Error(UPSTREAM);
+      },
+      byId: real.byId,
+      version: real.version,
+    };
+  }
+
+  function appThatThrows(): { lines: string[]; app: ReturnType<typeof createApp> } {
+    const lines: string[] = [];
+    return {
+      lines,
+      app: createApp({
+        config: loadConfig({}),
+        catalog: explodingCatalog(),
+        sink: (line) => lines.push(line),
+        now: () => AT,
+      }),
+    };
+  }
+
+  it('answers the FIXED local body, carrying no part of the thrown text', async () => {
+    const { app: captured } = appThatThrows();
+    const response = await request(captured).get('/api/v1/meals');
+
+    expect(response.status).toBe(500);
+    expect(response.body).toStrictEqual(INTERNAL_ERROR_BODY);
+    // `toStrictEqual` alone would still pass if an extra key were added; the raw text is what
+    // proves no fragment of the message survived anywhere in the payload.
+    for (const leak of LEAKS) {
+      expect(response.text, `the 500 body must not carry "${leak}"`).not.toContain(leak);
+    }
+  });
+
+  it('logs the throw by NAME and FRAMES, never its message', async () => {
+    const { lines, app: captured } = appThatThrows();
+    await request(captured).get('/api/v1/meals');
+
+    // Two lines: the error line the handler writes, then the request line on finish.
+    expect(lines).toHaveLength(2);
+    const joined = lines.join('\n');
+    for (const leak of LEAKS) {
+      expect(joined, `no log line may carry "${leak}"`).not.toContain(leak);
+    }
+
+    const errorLine = lines[0] ?? '';
+    expect(errorLine).toContain('"message":"unhandled error"');
+    expect(errorLine).toContain('"errorName":"Error"');
+    expect(errorLine).toContain('"level":"error"');
+    // Frames are what locate the throw, and they are the part that must survive.
+    expect(errorLine).toMatch(/"frames":\["at /);
+
+    const requestLine = lines[1] ?? '';
+    expect(JSON.parse(requestLine)).toMatchObject({
+      level: 'error',
+      status: 500,
+      errorCode: 'internal_error',
+      routeTemplate: '/api/v1/meals',
+    });
+  });
+
+  it('does not answer a SECOND time when the response is already committed', async () => {
+    /**
+     * The `headersSent` branch. No route this server mounts can reach it today - every handler
+     * responds last and fails before it - which is exactly why the handler is a named export
+     * rather than an anonymous closure: this is the same function `createApp` installs, mounted
+     * behind a route that writes and then fails, which is what P21's streaming chat lane will
+     * be.
+     *
+     * A second `response.json` here would throw `ERR_HTTP_HEADERS_SENT` on top of the error
+     * being handled, and delegating to `next(error)` would print the full stack - message
+     * included - to stderr, outside the sink where no test can see it.
+     */
+    const lines: string[] = [];
+    // The committed `Response` itself, kept so the assertions can read what the handler did to
+    // it. The wire cannot tell the two branches apart: `res.end()` on an already-ended response
+    // does not throw and does not reach the client, so a test that only reads `response.text`
+    // stays green with the `headersSent` guard deleted - which is how this branch stayed
+    // untested in the first place.
+    let committed: Response | undefined;
+    const probe = express();
+    probe.get('/committed', (_request: Request, response: Response) => {
+      committed = response;
+      response.status(200).json({ ok: true });
+      throw new Error(UPSTREAM);
+    });
+    probe.use(createErrorHandler({ sink: (line) => lines.push(line), now: () => AT }));
+
+    const response = await request(probe).get('/committed');
+
+    expect(response.status).toBe(200);
+    // Byte-exact: a 500 body appended after the committed one would show up here.
+    expect(response.text).toBe('{"ok":true}');
+    // The branch RETURNS before the 500 path, so the 500 path's stamp never happened: no
+    // `errorCode` on a response that already carries its own status. This is the assertion that
+    // fails when the `headersSent` guard is removed - `response.text` alone does not, because
+    // `res.end()` on an ended response neither throws nor reaches the client.
+    //
+    // `response.destroy()` is deliberately NOT asserted: superagent closes the connection at the
+    // end of the request either way, so `destroyed` is true whether the handler called it or
+    // not, and an assertion no production change can break is decoration.
+    expect(committed?.locals['errorCode']).toBeUndefined();
+    expect(lines).toHaveLength(1);
+    expect(lines[0] ?? '').toContain('"message":"unhandled error"');
+    expect(lines[0] ?? '').toContain('"errorName":"Error"');
+    for (const leak of LEAKS) {
+      expect(lines[0] ?? '', `the committed-response log must not carry "${leak}"`).not.toContain(
+        leak,
+      );
+    }
   });
 });

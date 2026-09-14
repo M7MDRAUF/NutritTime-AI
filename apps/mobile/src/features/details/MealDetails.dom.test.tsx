@@ -76,6 +76,22 @@ const INFERRED_PEANUT_MEAL: Meal = {
 const CLEAN_MEAL: Meal =
   CATALOG.find((meal) => !effectiveAllergenTags(meal).has('peanut')) ?? PEANUT_MEAL;
 
+/**
+ * `english-breakfast` — one of the seven records whose nutrition the project actually derived
+ * (the other 53 carry four `null`s and an `unavailable` provenance).
+ *
+ * **Named by id rather than found by predicate, deliberately.** A `CATALOG.find(origin ===
+ * 'usda-derived')` would silently re-point at a different meal when the catalog changes, and would
+ * hand the suite `undefined` — a skipped claim dressed as a passing one — if the derivation step
+ * ever stopped producing any. Held by id, `record()` throws the moment it is gone, and the origin
+ * assertion in the test below fails the moment it stops being derived.
+ *
+ * It is the only record on this screen whose figures can tell a wired prop from a constant: every
+ * other nutrition assertion in this file is about a record that is already all-`null`, which a
+ * hardcoded `unavailable` provenance satisfies exactly as well as the real one.
+ */
+const DERIVED_MEAL = record('english-breakfast');
+
 const CLOCK = (): string => '2026-09-13T12:00:00.000Z';
 
 function notFoundError(): ApiClientError {
@@ -516,7 +532,9 @@ describe('MealDetailsScreen — the two meanings of `recovered`, and a failed wr
 
     const error = view.at('meal-details-favorites-save-error');
     expect(error.textContent ?? '').toContain('not saved');
-    // The repository's fixed local copy, never a driver string (PRD §15.5).
+    // The repository's fixed local copy, never a driver string. PRD §12 — "stack traces and raw
+    // provider errors never reach the user" — and PRD §10.3 for what a driver string can quote.
+    // (PRD §15 is "Dependencies and Assumptions" and has no subsections; §15.5 does not exist.)
     expect(error.textContent ?? '').toContain('could not be saved');
     expect(view.text()).not.toContain('driver refused');
     // NOT the full-list surface: the two are mutually exclusive by construction.
@@ -537,9 +555,15 @@ describe('MealDetailsScreen — FR-011 fields (T-16-02)', () => {
 
     // 1 — name.
     expect(view.at('meal-details-name').textContent).toBe(meal.name);
-    // 2 — image, with the meal named on it for a screen reader.
+    // 2 — image: the meal's OWN url reaches the element, not only its accessible name.
+    // The label alone asserts nothing about the photograph — `source={{ uri: '' }}` keeps the
+    // testID, the role and the label and renders the skeleton box on all 60 records. The uri is
+    // read off the hidden `<img>` react-native-web puts inside the view that carries the testID.
     expect(meal.imageUrl).not.toBeNull();
     expect(view.label('meal-details-image')).toContain(meal.name);
+    const photograph = view.at('meal-details-image').querySelector('img');
+    expect(photograph).not.toBeNull();
+    expect(photograph?.getAttribute('src')).toBe(meal.imageUrl);
     // 3 — ingredients, name AND measure, every row.
     const ingredients = view.at('meal-details-ingredients');
     meal.ingredients.forEach((item, index) => {
@@ -581,15 +605,75 @@ describe('MealDetailsScreen — FR-011 fields (T-16-02)', () => {
     expect(sources).toContain(meal.provenance.themealdbId ?? 'unreachable');
   });
 
+  it('carries a DERIVED record’s own figures and its whole trace onto the screen', async () => {
+    /**
+     * **The screen's wiring of both nutrition props, which nothing else in the repository pins.**
+     *
+     * `NutritionPanel.dom.test.tsx` is a props-only suite, so it never observes what this screen
+     * passes; and every other nutrition assertion in this file is about a record whose four
+     * figures are already `null`, which a constant `unavailable` provenance satisfies exactly as
+     * well as the meal's own. Probed: with `MealDetailsBody.tsx`'s two props replaced by four
+     * nulls and `{ origin: 'unavailable', dataset: null, servings: null, reason: null }`, every
+     * other test in this phase stays green while the seven derived records report "Not available"
+     * for figures the project derived.
+     *
+     * FR-011's nutrition clause is asserted whole, because it is one sentence: where the figures
+     * came from, the serving count they were divided by, **and** the fact that the count was
+     * authored rather than measured. TSD §7.4 is what forbids the last of those being implied to
+     * be a measurement.
+     */
+    const meal = DERIVED_MEAL;
+    const provenance = meal.nutritionProvenance;
+    const view = await render({ meal });
+
+    // The record is still what every assertion below assumes, or they are all vacuous.
+    expect(provenance.origin).toBe('usda-derived');
+    expect(meal.nutrition.calories).not.toBeNull();
+
+    // Row by row rather than over the panel's whole text, so a figure landing in the wrong macro
+    // fails here instead of passing on a substring.
+    const row = (id: string): string => view.at(`meal-details-nutrition-${id}`).textContent ?? '';
+    expect(row('calories')).toContain(`${String(meal.nutrition.calories)} kcal`);
+    expect(row('protein')).toContain(`${String(meal.nutrition.proteinGrams)} g`);
+    expect(row('carbs')).toContain(`${String(meal.nutrition.carbsGrams)} g`);
+    expect(row('fat')).toContain(`${String(meal.nutrition.fatGrams)} g`);
+    expect(view.at('meal-details-nutrition').textContent ?? '').not.toContain(
+      NUTRITION_UNAVAILABLE,
+    );
+
+    const trace = view.at('meal-details-nutrition-trace').textContent ?? '';
+    expect(provenance.dataset).not.toBeNull();
+    expect(provenance.servings).not.toBeNull();
+    expect(trace).toContain(provenance.dataset ?? 'unreachable');
+    expect(trace).toContain(`Divided by ${String(provenance.servings)} servings`);
+    expect(trace).toContain('authored');
+    expect(trace).toContain('rather than measured');
+    // And the 53-record sentence is absent, so a constant `unavailable` provenance cannot pass.
+    expect(trace).not.toContain('could not be derived');
+  });
+
   it('renders unknown nutrition as "Not available", never 0 (FR-006)', async () => {
     // 53 of the 60 records carry all four `null`, so this is the common case rather than an edge.
+    //
+    // **This is the control for the test above, and the pair is the point.** The two render the
+    // same two props and must disagree about every one of these strings, so no single hardcoded
+    // `nutrition`/`provenance` can satisfy both: constant nulls fail the derived test, and
+    // constant derived figures fail this one.
     const unknown = CATALOG.find((meal) => meal.nutrition.calories === null);
     expect(unknown).toBeDefined();
-    const view = await render({ meal: unknown ?? PEANUT_MEAL });
+    const meal = unknown ?? PEANUT_MEAL;
+    const view = await render({ meal });
 
     const panel = view.at('meal-details-nutrition').textContent ?? '';
     expect(panel).toContain(NUTRITION_UNAVAILABLE);
     expect(panel).not.toContain('0 kcal');
+
+    // The record's OWN recorded reason (TSD §7.4 names the ingredient that failed). Only this
+    // meal's own provenance can put that string on screen.
+    const trace = view.at('meal-details-nutrition-trace').textContent ?? '';
+    expect(meal.nutritionProvenance.reason).not.toBeNull();
+    expect(trace).toContain(meal.nutritionProvenance.reason ?? 'unreachable');
+    expect(trace).not.toContain('Divided by');
   });
 
   it('says so rather than showing a broken box when a meal has no photograph', async () => {

@@ -169,7 +169,7 @@ test.describe('Explore, end to end', () => {
   });
 
   test('never shows a raw provider string, even on a 500', async ({ page }) => {
-    // TSD §3.5 / PRD §15.5. Fulfilled with a body carrying something that must not be rendered.
+    // TSD §3.5 / PRD §12. Fulfilled with a body carrying something that must not be rendered.
     await page.route('**/api/v1/meals**', async (route) => {
       await route.fulfill({
         status: 500,
@@ -235,12 +235,22 @@ test.describe('Explore, end to end', () => {
    * between the browser's URL and that parse. Adding `window.location.origin` to `prefixes` was
    * the obvious candidate and changed nothing, so the cause is **not yet identified**.
    *
-   * `fixme` rather than a deleted spec or a weakened assertion: T-22-01 and T-22-02 own the web
-   * export and the linking config, and this is the assertion that will tell them they are done.
-   * Playwright reports it as expected-to-fail, so the suite is green without the claim being
-   * quietly dropped.
+   * **R-44 is narrower than its own wording, and this comment says so rather than repeating it.**
+   * A **path** does restore: `favorite-persists.spec.ts` reloads on `/saved` and the app comes back
+   * up on Saved with the row already fetched. A **cold `goto`** of a path is rewritten to `/home`
+   * (`settings-reset.spec.ts` measured `goto('/settings')` doing exactly that, with Settings never
+   * mounted). It is the **query-param** case below that lands on Home, which is why
+   * `custom-meal-crud.spec.ts` never reloads `MealForm` — its `mealId` is a query param.
+   *
+   * **`test.fail`, not `test.fixme`, and the difference is the whole point of keeping this test.**
+   * `fixme` **skips**: the body never runs, so it cannot tell T-22-01 and T-22-02 anything — they
+   * could fix web linking and the suite would stay silent until a human deleted the marker, and
+   * meanwhile the assertions below would be dead code that had never once executed against the
+   * real export. `test.fail` runs the body, records the failure as expected so the suite stays
+   * green, and **turns red the moment the deep link starts working** — an unexpected pass is a
+   * failure. That is the same shape P18 used for R-53 with vitest's `it.fails`.
    */
-  test.fixme('a deep link opens Explore with its query already applied', async ({ page }) => {
+  test.fail('a deep link opens Explore with its query already applied', async ({ page }) => {
     await page.goto('/explore?query=chicken');
 
     await expect(page.getByTestId('explore-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });

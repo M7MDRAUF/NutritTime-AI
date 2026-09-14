@@ -104,6 +104,102 @@ export interface AppOptions {
   readonly now?: () => Date;
 }
 
+export interface ErrorHandlerOptions {
+  readonly sink: LogSink;
+  readonly now: () => Date;
+}
+
+/**
+ * The last middleware, lifted out of `createApp` so its two leak-capable branches can be driven.
+ *
+ * **This was an anonymous inline closure, and that is why nothing tested it.** The `500` branch
+ * and the `headersSent` branch are the only two places in the server where an arbitrary upstream
+ * string is in scope, and the suite reached neither: `errors.test.ts` asserted
+ * `INTERNAL_ERROR_BODY` as a constant and `logging.test.ts` asserted `errorLogLine` as a pure
+ * function, with nothing connecting either to the code that calls them. Replacing
+ * `INTERNAL_ERROR_BODY` with `String(error)` here left all 138 tests green - verbatim the defect
+ * P08's phase report records as fixed.
+ *
+ * `headersSent` is unreachable through the routes this server mounts today (every handler
+ * responds last and throws before it), so naming the handler is what makes that branch testable
+ * at all. It stops being hypothetical at P21, where the chat lane writes before it can fail.
+ *
+ * Four parameters, because Express identifies an error handler by arity. `_next` is unused and
+ * must stay declared.
+ */
+export function createErrorHandler(
+  options: ErrorHandlerOptions,
+): (error: unknown, request: Request, response: Response, next: NextFunction) => void {
+  const { sink, now } = options;
+
+  /** Name and frames only - never the message, and never `String(error)` (PRD 10.3, TSD 3.5). */
+  const logUnexpected = (error: unknown): void => {
+    sink(
+      errorLogLine(
+        {
+          errorName: error instanceof Error ? error.name : typeof error,
+          frames: framesOf(error),
+        },
+        now(),
+      ),
+    );
+  };
+
+  return (error: unknown, _request: Request, response: Response, _next: NextFunction): void => {
+    if (response.headersSent) {
+      // NOT `next(error)`: that delegates to Express's own final handler, which prints the
+      // full stack - message included - to stderr, outside the sink where no test can see it.
+      // The response is already committed, so the only correct action is to log safely and
+      // end it. A second `response.json` here would throw ERR_HTTP_HEADERS_SENT on top of the
+      // error being handled.
+      logUnexpected(error);
+      response.destroy();
+      return;
+    }
+    if (isApiError(error)) {
+      response.locals['errorCode'] = error.code;
+      response.status(error.status).json(error.toBody());
+      return;
+    }
+    // **Classify on the STATUS, not on the constructor.** Matching only `413` and
+    // `SyntaxError`+400 left every other body-parser failure falling through to the 500 branch:
+    // a `Content-Encoding: gzip` header with a non-gzip body answered
+    // `500 internal_error` at log level `error`, which reports a malformed request as a server
+    // fault - and any client can produce it at will. TSD 3.5 assigns a body that fails
+    // validation to `invalid_request`.
+    const status = readStatus(error);
+    if (status !== undefined && status >= 400 && status < 500) {
+      // **A malformed escape in the PATH is not a body problem.** `/api/v1/meals/%zz` reaches
+      // here as a `URIError` carrying status 400, thrown by Express's own param decoder before
+      // any handler runs - and answering `{ body: ['the request body could not be read'] }` sent
+      // the client looking at the body of a GET that has none. `instanceof URIError` is exact
+      // rather than a guess at a message: nothing else in this stack throws one.
+      const clientError =
+        error instanceof URIError
+          ? new ApiError('invalid_request', { path: ['the request path could not be decoded'] })
+          : new ApiError('invalid_request', {
+              body: [
+                status === 413
+                  ? 'the request body is too large'
+                  : 'the request body could not be read',
+              ],
+            });
+      response.locals['errorCode'] = clientError.code;
+      response.status(clientError.status).json(clientError.toBody());
+      return;
+    }
+
+    // Anything else: a 500 with a FIXED message, and the error's NAME and FRAMES logged - never
+    // its message, and never `String(error)`. zlib says "incorrect header check"; a future
+    // `new Error(\`no match for "${question}"\`)` would say something far worse, and TSD 3.5
+    // forbids upstream text in a log line as firmly as in a response body. PRD 12 says the same
+    // of the body: "Stack traces and raw provider errors never reach the user."
+    response.locals['errorCode'] = 'internal_error';
+    logUnexpected(error);
+    response.status(500).json(INTERNAL_ERROR_BODY);
+  };
+}
+
 export function createApp(options: AppOptions): Express {
   const { config, catalog } = options;
   const sink = options.sink ?? consoleSink;
@@ -199,76 +295,9 @@ export function createApp(options: AppOptions): Express {
     response.status(missing.status).json(missing.toBody());
   });
 
-  // 6. error handler, last
-  // Four parameters, because Express identifies an error handler by arity. `_next` is unused
-  // and must stay declared.
-  app.use((error: unknown, _request: Request, response: Response, _next: NextFunction) => {
-    if (response.headersSent) {
-      // NOT `next(error)`: that delegates to Express's own final handler, which prints the
-      // full stack - message included - to stderr, outside the sink where no test can see it.
-      // The response is already committed, so the only correct action is to log safely and
-      // end it.
-      sink(
-        errorLogLine(
-          {
-            errorName: error instanceof Error ? error.name : typeof error,
-            frames: framesOf(error),
-          },
-          now(),
-        ),
-      );
-      response.destroy();
-      return;
-    }
-    if (isApiError(error)) {
-      response.locals['errorCode'] = error.code;
-      response.status(error.status).json(error.toBody());
-      return;
-    }
-    // **Classify on the STATUS, not on the constructor.** Matching only `413` and
-    // `SyntaxError`+400 left every other body-parser failure falling through to the 500 branch:
-    // a `Content-Encoding: gzip` header with a non-gzip body answered
-    // `500 internal_error` at log level `error`, which reports a malformed request as a server
-    // fault - and any client can produce it at will. TSD 3.5 assigns a body that fails
-    // validation to `invalid_request`.
-    const status = readStatus(error);
-    if (status !== undefined && status >= 400 && status < 500) {
-      // **A malformed escape in the PATH is not a body problem.** `/api/v1/meals/%zz` reaches
-      // here as a `URIError` carrying status 400, thrown by Express's own param decoder before
-      // any handler runs - and answering `{ body: ['the request body could not be read'] }` sent
-      // the client looking at the body of a GET that has none. `instanceof URIError` is exact
-      // rather than a guess at a message: nothing else in this stack throws one.
-      const clientError =
-        error instanceof URIError
-          ? new ApiError('invalid_request', { path: ['the request path could not be decoded'] })
-          : new ApiError('invalid_request', {
-              body: [
-                status === 413
-                  ? 'the request body is too large'
-                  : 'the request body could not be read',
-              ],
-            });
-      response.locals['errorCode'] = clientError.code;
-      response.status(clientError.status).json(clientError.toBody());
-      return;
-    }
-
-    // Anything else: a 500 with a FIXED message, and the error's NAME and FRAMES logged - never
-    // its message, and never `String(error)`. zlib says "incorrect header check"; a future
-    // `new Error(\`no match for "${question}"\`)` would say something far worse, and TSD 3.5
-    // forbids upstream text in a log line as firmly as in a response body.
-    response.locals['errorCode'] = 'internal_error';
-    sink(
-      errorLogLine(
-        {
-          errorName: error instanceof Error ? error.name : typeof error,
-          frames: framesOf(error),
-        },
-        now(),
-      ),
-    );
-    response.status(500).json(INTERNAL_ERROR_BODY);
-  });
+  // 6. error handler, last. The same function a test mounts directly, so what the suite drives
+  // is what this app installs.
+  app.use(createErrorHandler({ sink, now }));
 
   return app;
 }

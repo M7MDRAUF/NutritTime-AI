@@ -4,8 +4,10 @@
  * This is the defect this module exists to prevent. During the `hydrating` phase the protected
  * screens are not in the navigator at all, so a rejected hydration is not a screen that fails to
  * load — it is an app that never leaves the splash. Every failure below is therefore handled at
- * the key that produced it and converted into an `EntryStatus`, and the only `await` that can
- * reject is wrapped.
+ * the key that produced it and converted into an `EntryStatus`, and every line that can throw —
+ * the `await`, **and the reading of what it answered** — is wrapped. A driver that resolves a
+ * malformed answer is out of contract in a way the compiler cannot see, and it fails this
+ * function exactly as hard as one that rejects.
  *
  * Three consequences worth stating, because each is a thing that would otherwise go wrong:
  *
@@ -102,9 +104,20 @@ function unavailable<T>(definition: RepositoryDefinition<T>): StorageEntry<T> {
  * store reads at boot.
  */
 export async function hydrateStorage(runtime: RepositoryRuntime): Promise<HydrationSnapshot> {
-  let pairs: readonly (readonly [string, string | null])[];
+  let raw: ReadonlyMap<string, string | null>;
+  let now: string;
   try {
-    pairs = await runtime.driver.multiGet(HYDRATION_KEYS);
+    const pairs = await runtime.driver.multiGet(HYDRATION_KEYS);
+    // **Reading the answer is inside the `try`, not after it.** `multiGet`'s return type is a
+    // promise, so a driver can satisfy the compiler and still RESOLVE a shape that is not a list
+    // of pairs; destructuring one then throws synchronously, out of `.map()`, and out of
+    // `hydrateStorage` - the same shape as the `.map()` defect fixed below, and the same
+    // consequence: a rejected hydration is an app that never leaves the splash. The clock is here
+    // for the same reason (a device clock can throw on an invalid date). An unusable driver and
+    // an unreadable answer are the same thing to this function, and the `catch` below is the
+    // right answer to both.
+    raw = new Map<string, string | null>(pairs.map(([key, value]) => [key, value]));
+    now = runtime.now();
   } catch {
     // The driver itself is unusable. Every key is `unavailable`, which TSD 6.3 turns into "do
     // not write over it" — the app runs on defaults this session and destroys nothing.
@@ -121,9 +134,6 @@ export async function hydrateStorage(runtime: RepositoryRuntime): Promise<Hydrat
       recovered: [],
     };
   }
-
-  const raw = new Map<string, string | null>(pairs.map(([key, value]) => [key, value]));
-  const now = runtime.now();
 
   const meta = decodeOne(STORAGE_DEFINITIONS.meta, raw, now);
   const onboarding = decodeOne(STORAGE_DEFINITIONS.onboarding, raw, now);

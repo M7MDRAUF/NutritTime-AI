@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { act } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getByRole } from '@testing-library/dom';
+import { AppState, View } from 'react-native';
+import type { AppStateStatus } from 'react-native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { seededCatalog } from '@nutritime/catalog';
 import { mealSchema } from '@nutritime/contracts';
 import type { Meal, Recommendation, RecommendationResponse } from '@nutritime/contracts';
@@ -11,13 +15,29 @@ import { ThemeProvider } from '../../shared/theme/ThemeProvider.js';
 import { ApiProvider } from '../../infrastructure/api/ApiProvider.js';
 import { StorageProvider } from '../../state/StorageProvider.js';
 import { preferencesStore, preferencesActions } from '../../state/preferences/index.js';
+import type { PreferencesState } from '../../state/preferences/index.js';
+import { uiStore } from '../../state/ui/index.js';
 import { memoryDriver } from '../../infrastructure/storage/__fixtures__/memoryDriver.js';
 import { STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
-import { transportError } from '../../infrastructure/api/errors.js';
+import { ApiClientError, transportError } from '../../infrastructure/api/errors.js';
 import { DEFAULT_PREFERENCES } from '../../infrastructure/storage/definitions.js';
 import type { ApiClient } from '../../infrastructure/api/client.js';
 import type { RecommendationRequest } from '../../infrastructure/api/routes.js';
-import { HomeScreen } from './HomeScreen.js';
+import type { RootParamList } from '../../navigation/routes.js';
+import { HomeScreen, HomeScreenWithFocus } from './HomeScreen.js';
+import { useRecommendations } from './useRecommendations.js';
+
+/**
+ * The one mock a navigator cannot mount without — `HomeScreenWithFocus` is rendered inside a real
+ * stack below, and `@react-navigation/native-stack` reaches `react-native-safe-area-context`
+ * through `@react-navigation/elements`. Its web build ships as `*.web.js` platform files Vitest
+ * does not resolve, so the bare `.js` files load React Native's Flow-typed codegen specs and fail
+ * to parse. Nothing else in this file touches the package.
+ */
+vi.mock('react-native-safe-area-context', async () => {
+  const { createSafeAreaContextMock } = await import('../../navigation/testHarness.js');
+  return createSafeAreaContextMock();
+});
 
 /**
  * T-15-01 … T-15-07, and T-14-07.
@@ -176,6 +196,100 @@ async function render(
   };
 }
 
+/**
+ * The registered component, mounted the way the app mounts it.
+ *
+ * **`HomeScreenWithFocus` was rendered by nothing.** `register.dom.test.tsx` compares the
+ * *registered reference* and never mounts it, so the wrapper's whole body — the `useFocusEffect`
+ * that bumps `focusEpoch` — was unverified: replacing its callback with `() => undefined` left the
+ * suite green, and M-6's frozen clock came back on the focus path in silence.
+ *
+ * It needs a route context (`useFocusEffect` throws without one), which is exactly why the screen
+ * and the wrapper are separate files — so the harness is a two-screen stack: Home, and somewhere
+ * to go. Two rather than one because a screen that is never left is never re-focused, and
+ * re-focus is the event under test.
+ */
+const FocusStack = createNativeStackNavigator<RootParamList>();
+const focusNavigation = createNavigationContainerRef<RootParamList>();
+
+function Elsewhere(): ReactNode {
+  return <View testID="elsewhere" />;
+}
+
+/**
+ * The hook alone, with the period in a `testID` so no theme or store has to be mounted to read it.
+ *
+ * The one seam through which a profile the store would refuse can still reach the period
+ * computation — which is what the guard inside `useRecommendations` exists for.
+ */
+function PeriodProbe({
+  client,
+  preferences,
+}: {
+  readonly client: ApiClient;
+  readonly preferences: PreferencesState;
+}): ReactNode {
+  const { mealPeriod } = useRecommendations({
+    client,
+    preferences,
+    favoriteMealIds: [],
+    now: AT_LUNCH,
+  });
+  return <View testID={`probe-period-${mealPeriod}`} />;
+}
+
+async function renderWithFocus(client: ApiClient): Promise<{
+  find(testID: string): HTMLElement | null;
+  leaveAndReturn(): Promise<void>;
+}> {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const runtime = { driver: memoryDriver({}), now: CLOCK };
+
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      <ThemeProvider mode="light" deviceScheme={null} fontScale={1}>
+        <ApiProvider client={client}>
+          <StorageProvider runtime={runtime}>
+            <preferencesStore.Provider>
+              <uiStore.Provider>
+                <NavigationContainer ref={focusNavigation}>
+                  <FocusStack.Navigator screenOptions={{ headerShown: false }}>
+                    <FocusStack.Screen name="Home" component={HomeScreenWithFocus} />
+                    <FocusStack.Screen name="Settings" component={Elsewhere} />
+                  </FocusStack.Navigator>
+                </NavigationContainer>
+              </uiStore.Provider>
+            </preferencesStore.Provider>
+          </StorageProvider>
+        </ApiProvider>
+      </ThemeProvider>,
+    );
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
+
+  return {
+    find: (testID) => {
+      const found = host.querySelector(`[data-testid="${testID}"]`);
+      return found instanceof HTMLElement ? found : null;
+    },
+    leaveAndReturn: async () => {
+      await act(async () => {
+        focusNavigation.navigate('Settings');
+      });
+      await act(async () => {
+        focusNavigation.goBack();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+    },
+  };
+}
+
 describe('the quarantined-preferences warning', () => {
   it('tells the user their profile was reset, because nothing is filtering any more', async () => {
     /**
@@ -312,6 +426,92 @@ describe('HomeScreen', () => {
     expect(view.find('home-period')?.textContent).toBe('Dinner');
   });
 
+  it('re-reads the clock when the app comes back to the foreground', async () => {
+    /**
+     * **The resume half of M-6, and it was covered by nothing.**
+     *
+     * The test above drives `focusEpoch` as a prop, which is the seam BELOW the trigger. This one
+     * is about the other trigger entirely, and the two are not redundant: returning from the
+     * background does **not** re-fire focus on a screen that never lost it, so the `AppState`
+     * listener is the only code covering the scenario the hook's own comment names — an app opened
+     * at 12:00 and resumed at 20:00 still saying "Lunch".
+     *
+     * The registration is intercepted rather than simulated through jsdom's `visibilitychange`,
+     * because that event is document-wide and this file leaves every earlier tree mounted: a real
+     * event would drive them all. The spy is the production call site — if the hook stopped
+     * subscribing, or subscribed to another event, `listeners` is empty and the test says so.
+     */
+    const listeners: ((status: AppStateStatus) => void)[] = [];
+    const subscription = vi.spyOn(AppState, 'addEventListener').mockImplementation((type, next) => {
+      if (type === 'change') {
+        listeners.push(next);
+      }
+      return { remove: () => undefined };
+    });
+
+    try {
+      const { client } = domainClient();
+      let current = new Date(2026, 8, 13, 12, 30, 0);
+      const view = await render(client, () => current);
+      expect(view.find('home-period')?.textContent).toBe('Lunch');
+      expect(
+        listeners,
+        'the hook must subscribe to AppState, or nothing below means anything',
+      ).toHaveLength(1);
+
+      current = new Date(2026, 8, 13, 20, 0, 0);
+      await act(async () => {
+        listeners[0]?.('active');
+      });
+      await view.settle();
+      expect(view.find('home-period')?.textContent).toBe('Dinner');
+
+      /**
+       * And only `'active'` counts.
+       *
+       * Without the `next === 'active'` guard the period would be re-read as the app LEAVES — at
+       * the moment the user is not looking — and the list would be swapped out under them for the
+       * next time they return. The clock moves to breakfast here, so a hook that reacted to every
+       * transition would say "Breakfast".
+       */
+      current = new Date(2026, 8, 14, 8, 30, 0);
+      await act(async () => {
+        listeners[0]?.('background');
+      });
+      await view.settle();
+      expect(view.find('home-period')?.textContent).toBe('Dinner');
+    } finally {
+      subscription.mockRestore();
+    }
+  });
+
+  it('re-reads the clock when the registered screen is re-focused', async () => {
+    /**
+     * The focus trigger, at the seam the app actually uses: `HomeScreenWithFocus` inside a real
+     * navigator, left and returned to. The test three above proves the hook REACTS to a bump; this
+     * one proves something bumps it.
+     *
+     * The wrapper takes no `now`, deliberately — it is the registered component and a clock prop
+     * no navigator would ever pass is a seam that exists only for its test. So the system clock is
+     * what moves, with only `Date` faked: the hook's 200 ms and 2 s timers stay real, and so do
+     * the microtasks `act` drains.
+     */
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(2026, 8, 13, 12, 30, 0));
+      const { client } = domainClient();
+      const view = await renderWithFocus(client);
+      expect(view.find('home-period')?.textContent).toBe('Lunch');
+
+      vi.setSystemTime(new Date(2026, 8, 13, 20, 0, 0));
+      await view.leaveAndReturn();
+
+      expect(view.find('home-period')?.textContent).toBe('Dinner');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('renders the period with the server unreachable', async () => {
     // The other half of T-15-01's acceptance. A period that needed a response would be blank here.
     const client: ApiClient = {
@@ -380,6 +580,91 @@ describe('HomeScreen', () => {
     expect(first).toBeDefined();
     expect(view.find(`explanation-source-${first ?? ''}`)).not.toBeNull();
     expect(view.text()).toContain('Written by the app');
+  });
+
+  it('shows the loading surface at 200 ms and the AI-progress copy at 2 s (T-15-04)', async () => {
+    /**
+     * **PRD §10.1: "The UI shows a loading state after 200 ms and an AI-progress message after
+     * 2 s" — and until now neither figure was pinned by anything in the repository.** `home-loading`,
+     * both sentences and both constants appeared in the two production files and nowhere else, so
+     * deleting the whole block, or setting `LOADING_AFTER_MS` to 200 000, shipped green: this file
+     * only ever awaited microtasks, and a timer that never fires is indistinguishable from one that
+     * does if nothing advances the clock.
+     *
+     * Driven through the state the screen derives, on a fake clock, with the **document's** numbers
+     * written out. Importing `LOADING_AFTER_MS` and advancing by it would compare the constant to
+     * itself and pass at any value; waiting 2 s of real time would make the suite slower and no more
+     * truthful.
+     *
+     * 200 ms is a threshold in both directions, so both sides are asserted: below it a spinner is
+     * flicker rather than feedback, which is the reason the figure exists.
+     */
+    vi.useFakeTimers();
+    try {
+      const never: ApiClient = {
+        listMeals: () => Promise.reject(new Error('not used')),
+        getMeal: () => Promise.reject(new Error('not used')),
+        recommend: () => new Promise(() => undefined),
+        ask: () => Promise.reject(new Error('not used')),
+      };
+      const view = await render(never);
+
+      expect(view.find('home-loading'), 'nothing at 0 ms').toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(199);
+      });
+      expect(view.find('home-loading'), 'nothing at 199 ms either').toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(view.find('home-loading')?.textContent).toBe('Finding meals for you…');
+
+      await act(async () => {
+        vi.advanceTimersByTime(1_799);
+      });
+      expect(view.find('home-loading')?.textContent, 'still the first copy at 1 999 ms').toBe(
+        'Finding meals for you…',
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(view.find('home-loading')?.textContent).toBe('Still writing your reasons…');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('never promises AI progress when AI is switched off', async () => {
+    /**
+     * The other half of the second threshold, and the branch that decides it: the AI timer is set
+     * only when `aiEnabled`, because "Still writing your reasons…" is a claim about a model that
+     * was never asked. Dropping the ternary — always arming the timer — fails here and nowhere
+     * else.
+     */
+    vi.useFakeTimers();
+    try {
+      const never: ApiClient = {
+        listMeals: () => Promise.reject(new Error('not used')),
+        getMeal: () => Promise.reject(new Error('not used')),
+        recommend: () => new Promise(() => undefined),
+        ask: () => Promise.reject(new Error('not used')),
+      };
+      const view = await render(never);
+      await view.dispatch(preferencesActions.changeAiEnabled(false));
+
+      // Well past both thresholds, and the request is still in flight.
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+
+      // The loading surface still appears — the first threshold is not about AI.
+      expect(view.find('home-loading')?.textContent).toBe('Finding meals for you…');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('surfaces the safety disclaimer above the meals', async () => {
@@ -558,8 +843,21 @@ describe('HomeScreen', () => {
   });
 
   it('offers a retry on both failure states', async () => {
-    // M-5: Home is a tab screen and is never unmounted, so without a retry the only way out of a
-    // failed first request was to change a preference or restart the app.
+    /**
+     * M-5: Home is a tab screen and is never unmounted, so without a retry the only way out of a
+     * failed first request was to change a preference or restart the app.
+     *
+     * **This test was titled "both" and exercised one.** It rejected with `unreachable` only, and
+     * `home-error` — the state `useRecommendations` returns for a 400, a 500 or an unreadable
+     * body, and the one the server emits on `invalid_request` — was rendered by no test in the
+     * repository. Its single mention anywhere was a `toBeNull()` in the empty-result test, which a
+     * deleted element satisfies: removing the whole `failed` block left the suite green and left a
+     * user whose request failed with anything but a transport error on a screen with a disclaimer,
+     * a heading, and no way out.
+     *
+     * Both states now, in sequence, each with its own retry, and the third answer succeeds so the
+     * screen is shown to recover rather than merely to change failures.
+     */
     let calls = 0;
     const flaky: ApiClient = {
       listMeals: () => Promise.reject(new Error('not used')),
@@ -569,42 +867,110 @@ describe('HomeScreen', () => {
         if (calls === 1) {
           return Promise.reject(transportError('recommend', 'unreachable'));
         }
+        if (calls === 2) {
+          // Not a transport failure: the server was reached and refused. `transportError` cannot
+          // build this one, and calling it "offline" would be the comfortable lie S-23 names.
+          return Promise.reject(
+            new ApiClientError({
+              kind: 'server',
+              status: 500,
+              code: 'internal_error',
+              retryable: false,
+              wire: null,
+              route: 'recommend',
+            }),
+          );
+        }
         return Promise.resolve({ mealPeriod: request.mealPeriod, recommendations: [] });
       },
       ask: () => Promise.reject(new Error('not used')),
     };
     const view = await render(flaky);
+
     const offline = view.find('home-offline');
     expect(offline).not.toBeNull();
+    expect(view.find('home-error'), 'unreachable is not an error state').toBeNull();
 
-    const retry = getByRole(offline as HTMLElement, 'button', { name: 'Try again' });
+    const retryOffline = getByRole(offline as HTMLElement, 'button', { name: 'Try again' });
     await act(async () => {
-      retry.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      retryOffline.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     await view.settle();
 
+    // The retry really re-requested, and the second failure is the OTHER state.
     expect(calls).toBe(2);
     expect(view.find('home-offline')).toBeNull();
+    const failed = view.find('home-error');
+    expect(failed).not.toBeNull();
+    // PRD §12's three clauses: what happened, what still works, what to do next.
+    expect(view.text()).toContain('Suggestions could not be loaded.');
+    expect(view.text()).toContain('Explore and your saved meals still work.');
+
+    const retryFailed = getByRole(failed as HTMLElement, 'button', { name: 'Try again' });
+    await act(async () => {
+      retryFailed.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await view.settle();
+
+    expect(calls, 'the error state must re-request too, not merely repaint').toBe(3);
+    expect(view.find('home-error')).toBeNull();
+    expect(view.find('home-offline')).toBeNull();
+    // And it recovered into a real state rather than into nothing.
+    expect(view.find('home-empty')).not.toBeNull();
   });
 
-  it('does not crash when a stored meal time cannot be parsed', async () => {
+  it('does not crash when a meal time cannot be parsed — it settles on a snack', async () => {
     /**
      * C-3's second line of defence. `parseClockTime` throws `RangeError` on anything but
      * zero-padded `HH:mm`, `mealPeriodForDate` is called during RENDER, and there is no error
-     * boundary in this app — so one unparseable anchor unmounted the tree. The store refuses such
-     * a value now, which is the real fix; this asserts the guard behind it, because a migration or
-     * a restored backup is not the store.
+     * boundary in this app — so one unparseable anchor unmounted the tree.
+     *
+     * **Driven at the hook rather than through `replace`, because the route this test used has
+     * been closed.** It dispatched `preferencesActions.replace({… breakfast: '08:' …})` and read
+     * the heading; the store's `replaced` branch now sanitises every field, so `'08:'` is refused
+     * and the previous anchor is kept — the screen said "Lunch" and the assertion failed without
+     * anything about this guard having changed. That closure is the real fix and it is the store's
+     * to assert. The guard behind it still has to hold, because the store is not the only way a
+     * value arrives: a migration, a restored backup or a future import is not the store, and a
+     * crash is the worst possible response. So the hook is handed the state directly.
+     */
+    const unparseable: PreferencesState = {
+      preferences: {
+        ...DEFAULT_PREFERENCES,
+        mealTimes: { breakfast: '08:', lunch: '12:30', dinner: '19:00' },
+      },
+      allergiesRevision: 0,
+    };
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    await act(async () => {
+      createRoot(host).render(
+        <PeriodProbe client={domainClient().client} preferences={unparseable} />,
+      );
+    });
+
+    // Rendered at all — a `RangeError` during render would have thrown out of `act` — and it
+    // settled on the period that claims least rather than on a guess.
+    expect(host.querySelector('[data-testid="probe-period-snack"]')).not.toBeNull();
+  });
+
+  it('calls a period outside every window "Something small"', async () => {
+    /**
+     * The other half of what the test above used to cover: the screen's copy for `snack`, reached
+     * through the real store with anchors it will actually keep. 12:30 sits 630 minutes or more
+     * from all three, and `MEAL_PERIOD_WINDOW` is −90/+120, so no window claims it.
+     *
+     * Not `titleCase`, and that is the point of `PERIOD_HEADING`: "Snack" is not a time of day.
      */
     const { client } = domainClient();
     const view = await render(client);
     await view.dispatch(
       preferencesActions.replace({
         ...DEFAULT_PREFERENCES,
-        mealTimes: { breakfast: '08:', lunch: '12:30', dinner: '19:00' },
+        mealTimes: { breakfast: '00:00', lunch: '01:00', dinner: '02:00' },
       }),
     );
-    // Still standing, and honest about what it settled on.
-    expect(view.find('home-period')).not.toBeNull();
+
     expect(view.find('home-period')?.textContent).toBe('Something small');
   });
 });

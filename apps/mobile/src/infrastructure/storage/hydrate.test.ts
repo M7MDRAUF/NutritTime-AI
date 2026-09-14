@@ -7,6 +7,7 @@ import {
   STORAGE_SCHEMA_VERSION,
 } from './definitions.js';
 import type { RepositoryRuntime, StorageDriver } from './repository.js';
+import type { MemoryDriver } from './__fixtures__/memoryDriver.js';
 import { callsOf, memoryDriver } from './__fixtures__/memoryDriver.js';
 import { HYDRATION_KEYS, hydrateStorage, recordLaunch } from './hydrate.js';
 
@@ -182,6 +183,89 @@ describe('hydration', () => {
     }
     // Nothing was destroyed. `unavailable` is TSD 6.3's signal not to write over the key.
     expect(driver.store.get(STORAGE_KEYS.preferences)).toBe(GOOD_STORE[STORAGE_KEYS.preferences]);
+  });
+
+  /**
+   * **The three vectors in which the driver keeps its promise and breaks its contract.**
+   *
+   * Every failure injected above is a driver that THROWS, and a throwing driver was the only
+   * shape the `try` covered: `multiGet`'s answer was destructured, and the clock read, one line
+   * after the `catch` closed. `StorageDriver` types `multiGet` as returning a promise and cannot
+   * type what the promise resolves TO, so a driver can compile perfectly and still hand back
+   * `undefined`, or objects where tuples were promised — and the destructuring inside `.map()`
+   * then throws synchronously, out of `hydrateStorage`, against the guarantee in bold at the top
+   * of the module. Unreachable through `asyncStorageDriver`; reachable through the same seam P22
+   * will implement over `localStorage`, and FR-001 is what rests on it — a hydration that rejects
+   * holds the app on Splash forever, because the protected screens are not yet in the navigator.
+   */
+  describe('a driver that RESOLVES an answer it should not', () => {
+    function answering(driver: MemoryDriver, multiGet: () => Promise<unknown>): StorageDriver {
+      // The one assertion in this file, and the point of the test: an out-of-contract ANSWER
+      // cannot be expressed in `StorageDriver`'s types — if it could, the compiler would already
+      // be preventing this and there would be nothing to test.
+      return { ...driver, multiGet: multiGet as StorageDriver['multiGet'] };
+    }
+
+    async function expectAllUnavailable(runtime: RepositoryRuntime): Promise<void> {
+      const snapshot = await hydrateStorage(runtime);
+      for (const [name, entry] of Object.entries(snapshot.entries)) {
+        expect(entry.status, name).toBe('unavailable');
+      }
+      // `unavailable`, never `default`: TSD 6.3 turns the first into "do not write over this key"
+      // and the second into "nothing is stored, save freely". Returning `default` for a driver
+      // this broken would invite every store to overwrite good data with a fallback.
+      expect(snapshot.recovered).toEqual([]);
+      expect(snapshot.quarantine.records).toEqual([]);
+    }
+
+    it('does not reject when the answer is not an array at all', async () => {
+      const driver = memoryDriver(GOOD_STORE);
+      await expectAllUnavailable(runtimeFor(answering(driver, () => Promise.resolve(undefined))));
+      expect(driver.store.get(STORAGE_KEYS.preferences)).toBe(GOOD_STORE[STORAGE_KEYS.preferences]);
+    });
+
+    it('does not reject when the answer is a list of the wrong shape', async () => {
+      // `[{ key, value }]` rather than `[[key, value]]` — the difference between AsyncStorage's
+      // shape and the shape a hand-written `localStorage` driver reaches for first.
+      const driver = memoryDriver(GOOD_STORE);
+      await expectAllUnavailable(
+        runtimeFor(
+          answering(driver, () =>
+            Promise.resolve(
+              HYDRATION_KEYS.map((key) => ({ key, value: driver.store.get(key) ?? null })),
+            ),
+          ),
+        ),
+      );
+      expect(driver.store.get(STORAGE_KEYS.favorites)).toBe(GOOD_STORE[STORAGE_KEYS.favorites]);
+    });
+
+    it('does not reject when the CLOCK throws', async () => {
+      // `runtime.now` is `() => new Date().toISOString()` in the app, which throws on an invalid
+      // date. It was read one line outside the `try` for the same reason the answer was.
+      const driver = memoryDriver(GOOD_STORE);
+      await expectAllUnavailable(
+        runtimeFor(driver, () => {
+          throw new Error('clock unavailable');
+        }),
+      );
+      expect(driver.store.get(STORAGE_KEYS.meta)).toBe(GOOD_STORE[STORAGE_KEYS.meta]);
+    });
+
+    it('still reads a WELL-FORMED answer, so the three above cannot pass vacuously', async () => {
+      const driver = memoryDriver(GOOD_STORE);
+      const snapshot = await hydrateStorage(
+        runtimeFor(
+          answering(driver, () =>
+            Promise.resolve(
+              HYDRATION_KEYS.map((key) => [key, driver.store.get(key) ?? null] as const),
+            ),
+          ),
+        ),
+      );
+      expect(snapshot.entries.favorites.status).toBe('loaded');
+      expect(snapshot.entries.preferences.value).toEqual({ ...DEFAULT_PREFERENCES, diet: 'vegan' });
+    });
   });
 
   it('NEVER rejects when the ledger write fails', async () => {

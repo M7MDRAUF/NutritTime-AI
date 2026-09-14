@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { ColorScheme, SemanticTokens } from './semantic.js';
 import { colorsByScheme } from './semantic.js';
 import { buildComponentTokens } from './component.js';
+import { touch } from './primitive.js';
 
 /**
  * **The COMPONENT tokens, on the surfaces they define. Split out of `contrast.test.ts` at P12.**
@@ -230,5 +233,176 @@ describe('component tokens are readable on their own backgrounds', () => {
     expect(compositeOver('#00000080', '#FFFFFF')).toBe('#7f7f7f');
     expect(compositeOver('#123456FF', '#FFFFFF')).toBe('#123456');
     expect(compositeOver('#12345600', '#FFFFFF')).toBe('#ffffff');
+  });
+});
+
+/**
+ * **The navigation chrome — the third composer, and the one that shipped a live AA failure.**
+ *
+ * `contrast.test.ts` answers "is this colour pair readable" and the block above answers "did
+ * `buildComponentTokens` compose a readable pair". Neither can see the third composer: React
+ * Navigation's own chrome, whose tints `TabNavigator.tsx` and `navigationTheme.ts` assemble from
+ * semantic tokens directly. `tabBarActiveTintColor` was `accent.brand` — a FILL role, authored to
+ * sit *under* `content.onBrand` — over `surface.raised`, which is **3.77:1** in light against AA's
+ * 4.5:1 for normal text. Both tokens in that pair were individually correct and the composition was
+ * not, which is exactly the class of defect P12's split was written for; the chrome was simply in
+ * neither half.
+ *
+ * **Both sides of every pair are read from the source file that sets them**, the way
+ * `typography.test.ts` reads `App.tsx`. Restating the pair here is what would let the two drift: a
+ * test that measures `content.link on surface.raised` passes forever regardless of what the
+ * navigator is actually pointed at. A slot pointed at a colour literal, or at something that is not
+ * a colour role, fails to resolve and fails the test rather than silently measuring nothing.
+ */
+const navigationDirectory = path.resolve(import.meta.dirname, '..', '..', 'navigation');
+
+/** Comments in those files name these very tokens, so they are stripped before anything matches. */
+function sourceOf(file: string): string {
+  return fs
+    .readFileSync(path.join(navigationDirectory, file), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+}
+
+/** The `<group>.<member>` role a named slot is pointed at, in the file that sets it. */
+function roleAt(file: string, slot: string): string {
+  const match = new RegExp(`\\b${slot}:\\s*colors\\.([A-Za-z]+)\\.([A-Za-z]+)`).exec(
+    sourceOf(file),
+  );
+  if (match === null) {
+    throw new Error(`${file} does not point ${slot} at a semantic colour token`);
+  }
+  return `${match[1] ?? ''}.${match[2] ?? ''}`;
+}
+
+/** Every `<group>.<member>` that resolves to a colour, so a role read from source can be looked up. */
+function colourValues(tokens: SemanticTokens): Map<string, string> {
+  const values = new Map<string, string>();
+  for (const [group, members] of Object.entries(tokens)) {
+    // The same widening `contrast.test.ts`'s own walker uses: the groups are heterogeneous —
+    // `effect` carries numbers — so one walker cannot read them all without it.
+    for (const [member, value] of Object.entries(members as Record<string, unknown>)) {
+      if (typeof value === 'string') {
+        values.set(`${group}.${member}`, value);
+      }
+    }
+  }
+  return values;
+}
+
+/** Each chrome slot that paints TEXT, and the slot in the same file naming what sits behind it. */
+const CHROME_TEXT_SLOTS = [
+  { file: 'TabNavigator.tsx', foreground: 'tabBarActiveTintColor', background: 'backgroundColor' },
+  {
+    file: 'TabNavigator.tsx',
+    foreground: 'tabBarInactiveTintColor',
+    background: 'backgroundColor',
+  },
+  { file: 'navigationTheme.ts', foreground: 'primary', background: 'card' },
+  { file: 'navigationTheme.ts', foreground: 'text', background: 'card' },
+] as const;
+
+describe('the navigation chrome composes a readable pair', () => {
+  it.each(SCHEMES)('every tint the navigator paints text with is AA in %s', (scheme) => {
+    const values = colourValues(colorsByScheme[scheme]);
+    for (const { file, foreground, background } of CHROME_TEXT_SLOTS) {
+      const foregroundRole = roleAt(file, foreground);
+      const backgroundRole = roleAt(file, background);
+      const tint = values.get(foregroundRole);
+      const behind = values.get(backgroundRole);
+      if (tint === undefined || behind === undefined) {
+        throw new Error(`${file}: ${foregroundRole} or ${backgroundRole} is not a colour role`);
+      }
+      const ratio = contrastRatio(tint, behind);
+      expect(
+        ratio,
+        `${file}: ${foreground} is ${foregroundRole} ${tint} on ${background} ${backgroundRole} ${behind} = ${ratio.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    }
+  });
+
+  it('paints a tab LABEL with that tint, which is why the threshold is 4.5 and not 3', () => {
+    // The premise the threshold rests on. Each `Tabs.Screen` supplies a `title` and no
+    // `tabBarLabel`, so React Navigation renders the tab's text in the active tint - a bare glyph
+    // would owe only 1.4.11's 3:1, which light's `accent.brand` at 3.77:1 would have cleared. If
+    // the labels are ever hidden, this is the assertion that says the threshold may move.
+    const source = sourceOf('TabNavigator.tsx');
+    const titles = [...source.matchAll(/title: '([A-Za-z]+)'/g)].map((match) => match[1]);
+    expect(titles).toEqual(['Home', 'Explore', 'Assistant', 'Saved', 'Settings']);
+    expect(source).not.toContain('tabBarShowLabel');
+  });
+});
+
+/**
+ * **PRD 10.5's other measurable rule — pinned to the requirement, not to itself.**
+ *
+ * Every touch-target assertion in this repo is of the form
+ * `expect(chip.style.minHeight).toBe(String(light.minHeight) + 'px')` — the rendered geometry
+ * compared to the token it was rendered from. Both sides move together, so changing
+ * `touch.buildTo` from 48 to 20 shrinks every button, chip and field in the app and the whole gate
+ * stays green. The three figures below are PRD 10.5's own literals, restated here because that is
+ * the only way a token change can fail against the rule rather than against its own new value.
+ *
+ * `touch.iosMinPt`, `touch.androidMinDp` and `touch.webMinPx` had zero consumers and zero
+ * assertions; these are their first. `touch.gap` still has no consumer — `button.gap` and
+ * `chip.gap` read `space.*` — so it is bounded here and reported as unintegrated rather than given
+ * a consumer it does not have.
+ */
+const PRD_IOS_MIN_PT = 44;
+const PRD_ANDROID_MIN_DP = 48;
+const PRD_WEB_MIN_PX = 24;
+/** Apple HIG and Material both put 8 between two adjacent targets. */
+const HIG_MIN_GAP = 8;
+const PRD_TARGET_FLOOR = Math.max(PRD_IOS_MIN_PT, PRD_ANDROID_MIN_DP, PRD_WEB_MIN_PX);
+
+describe('touch targets meet PRD 10.5', () => {
+  it('states the three platform minima as PRD 10.5 states them', () => {
+    expect([touch.iosMinPt, touch.androidMinDp, touch.webMinPx]).toEqual([
+      PRD_IOS_MIN_PT,
+      PRD_ANDROID_MIN_DP,
+      PRD_WEB_MIN_PX,
+    ]);
+    expect(touch.gap).toBeGreaterThanOrEqual(HIG_MIN_GAP);
+  });
+
+  it('builds to a single value that satisfies all three platforms at once', () => {
+    // PRD 10.5: "48 dp satisfies all three, so it is the single value to build to."
+    expect(touch.buildTo).toBeGreaterThanOrEqual(PRD_TARGET_FLOOR);
+  });
+
+  it.each(SCHEMES)('every tappable component group clears the floor in %s', (scheme) => {
+    const tokens = buildComponentTokens(colorsByScheme[scheme]);
+    for (const [name, minHeight] of [
+      ['button', tokens.button.minHeight],
+      ['field', tokens.field.minHeight],
+      ['chip', tokens.chip.minHeight],
+    ] as const) {
+      expect(
+        minHeight,
+        `${name}.minHeight is ${String(minHeight)}, under PRD 10.5's ${String(PRD_TARGET_FLOOR)}`,
+      ).toBeGreaterThanOrEqual(PRD_TARGET_FLOOR);
+    }
+  });
+
+  it('sizes a target identically in both schemes', () => {
+    // Geometry is not a scheme decision. `buildComponentTokens` takes only the colour map, so a
+    // height that differed between the two could only come from a scheme-aware expression.
+    const light = buildComponentTokens(colorsByScheme.light);
+    const dark = buildComponentTokens(colorsByScheme.dark);
+    expect([light.button.minHeight, light.field.minHeight, light.chip.minHeight]).toEqual([
+      dark.button.minHeight,
+      dark.field.minHeight,
+      dark.chip.minHeight,
+    ]);
+  });
+
+  it('records the badge exemption rather than omitting it', () => {
+    // `NutritionBadge` is read, not tapped — TSD 6.7 makes it a separate component from `Chip` for
+    // exactly that reason — so the floor does not apply to it. Asserted as an exemption in the
+    // house style of `border.subtle`: a badge that grew to a tappable height would tell someone,
+    // and so would a floor that fell under the web minimum.
+    const badge = buildComponentTokens(colorsByScheme.light).badge;
+    expect(badge.minHeight).toBeLessThan(PRD_TARGET_FLOOR);
+    expect(badge.minHeight).toBeGreaterThanOrEqual(PRD_WEB_MIN_PX);
   });
 });

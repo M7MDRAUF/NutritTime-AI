@@ -32,5 +32,8 @@
     "react-native-screens": "4.26.2",
     "react-native-svg": "15.15.4",
     "react-native-web": "0.21.2"
+  },
+  "devDependencies": {
+    "@nutritime/catalog": "0.1.0"
   }
 }

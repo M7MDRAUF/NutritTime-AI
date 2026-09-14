@@ -1,5 +1,10 @@
 /**
- * Request logging (TSD 5.8, PRD 15.5).
+ * Request logging (PRD 10.3, TSD 5.8, Plan 15.5).
+ *
+ * **The citation, because this module used to carry the wrong one.** "PRD 15.5" is cited widely
+ * across this phase and does not exist: PRD section 15 is "Dependencies and Assumptions" and has
+ * no subsections. The requirement is PRD 10.3 - "Logs never contain prompts, questions, allergy
+ * lists, or names" - and the table spelling it out is Plan 15.5, restated in TSD 5.8.
  *
  * One structured JSON line per request. **Never a prompt, a question, an answer, an allergy
  * list, a name, or a request body** - and the way that rule is kept is that this module has no

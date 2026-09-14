@@ -614,7 +614,7 @@ describe('SettingsScreen — favourites clear (T-18-05, T-18-07)', () => {
     // The truth the user needs: the screen and the device disagree.
     expect(storedValue(base, STORAGE_KEYS.favorites)).toEqual([...FAVORITES]);
     expect(view.read('data-favorites')).toBe('');
-    // A retry, because this one can succeed. And no driver string anywhere (PRD §15.5).
+    // A retry, because this one can succeed. And no driver string anywhere (PRD §12).
     expect(notice.textContent).toContain('Try again');
     expect(notice.textContent).not.toContain('driver refused');
   });
@@ -768,7 +768,7 @@ describe('SettingsScreen — full reset (T-18-06, T-18-07)', () => {
      * A reset that partly failed and said nothing is worse than one that names what it could not
      * remove: the user believes their allergy list is gone while it is still on disk. The message
      * must also survive the unmount that produced it, which is why the provider holds it above the
-     * conditional — and it must be built from set labels, never from the exception (PRD §15.5).
+     * conditional — and it must be built from set labels, never from the exception (PRD §12).
      */
     const base = seededDriver();
     const refusing: MemoryDriver = {
