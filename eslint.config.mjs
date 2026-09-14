@@ -97,6 +97,18 @@ const NO_CLOCK = [
   },
 ];
 
+/**
+ * `primitive.ts` is private to the theme directory (TSD §6.6).
+ *
+ * Broad on purpose: `**\/theme/primitive.js` does NOT match the real specifier
+ * `../shared/theme/primitive.js`, because the leading `..` defeats it.
+ */
+const PRIMITIVE_PRIVATE = {
+  group: ['**primitive.js', '**primitive'],
+  message:
+    'primitive.ts is private to the theme directory (TSD §6.6): import a semantic or component token.',
+};
+
 export default tseslint.config(
   // e2e/ is a separate workspace with its own toolchain (TSD 8.1); it is linted by its own
   // config at P24, not by this one.
@@ -179,27 +191,8 @@ export default tseslint.config(
   },
 
   // Rule 3 - every other package: no reaching into apps, and no I/O in catalog either.
-  //
-  // `packages/design-system` is named here because it was the one package in `packages/` that
-  // Rule 3 did not cover, so nothing stopped a token module importing from `apps/`. Found by
-  // the P11 verification; nothing did, but it was unenforced (A-11-04).
   {
-    files: ['packages/catalog/**/*.ts', 'packages/design-system/**/*.ts'],
-    rules: { 'no-restricted-imports': ['error', { patterns: APP_ESCAPES }] },
-  },
-
-  // `boundary.test.ts` reads the source tree from disk to prove no module imports `primitive`
-  // past the barrel's deliberate omission. It is a test, so the I/O denylist does not reach it
-  // anyway - named explicitly so the carve-out is visible rather than incidental.
-  {
-    files: ['packages/design-system/src/theme/boundary.test.ts'],
-    rules: { 'no-restricted-imports': ['error', { patterns: APP_ESCAPES }] },
-  },
-
-  // The seed script is the one place in packages/ that is allowed file-system and network
-  // access: it is a build-time tool, run by hand, never imported by the running app (TSD 7.2).
-  {
-    files: ['packages/catalog/seed.ts', 'packages/catalog/src/seed/**/*.ts'],
+    files: ['packages/catalog/**/*.ts'],
     rules: { 'no-restricted-imports': ['error', { patterns: APP_ESCAPES }] },
   },
 
@@ -209,9 +202,42 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': ['error', { patterns: appEscape('mobile') }] },
   },
 
-  // Rules 4 and 5 - and AsyncStorage has exactly one importer.
+  // Expo's Metro and Babel configs MUST be CommonJS: Metro loads `metro.config.js` with
+  // `require` and Babel does the same for its own. They are build configuration, not app code,
+  // and nothing in the bundle imports them - so `require`, `module` and `__dirname` are
+  // declared here rather than the files being rewritten into a module format their loaders do
+  // not accept.
+  {
+    files: ['apps/mobile/metro.config.js', 'apps/mobile/babel.config.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { require: 'readonly', module: 'writable', __dirname: 'readonly' },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+
+  // Rules 4 and 5, plus the privacy of `primitive.ts`.
+  //
+  // **All three live in ONE rule entry, and that is not tidiness.** Flat config REPLACES
+  // `no-restricted-imports` for an overlapping glob rather than merging it, so a separate
+  // `apps/mobile/src/**` block declaring the primitive pattern was silently discarded by this
+  // one - `eslint --print-config` showed the pattern simply absent. P01 learned this from the
+  // import-boundary rules; it cost a probe to notice again here.
   {
     files: ['apps/mobile/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        { paths: [ASYNC_STORAGE], patterns: [...appEscape('server'), PRIMITIVE_PRIVATE] },
+      ],
+    },
+  },
+
+  // The theme directory itself may import it - that is the whole point of the directory. The
+  // rule is RESTATED minus the primitive pattern rather than switched off, so Rules 4 and 5
+  // survive here. An `'off'` exemption would drop all three.
+  {
+    files: ['apps/mobile/src/shared/theme/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', { paths: [ASYNC_STORAGE], patterns: appEscape('server') }],
     },

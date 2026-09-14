@@ -6,17 +6,19 @@ import path from 'node:path';
  * T-11-05's acceptance is "`primitive.ts` not importable outside the theme directory", with
  * "Lint rule + test" as its evidence. This is the test half.
  *
- * The lint half is **not delivered by P11** and is not silently missing: `eslint.config.mjs` is
- * outside this phase's ownership, so a `no-restricted-imports` entry for `packages/design-system`
- * is recorded as a follow-up in the phase report instead of being added here. Until it exists this
- * file is the only thing standing between a screen and a raw ramp step, which is why it reads the
- * tree from disk rather than asserting something about a module it imported — an import-based check
- * would pass while a violating file sat right beside it, unread.
+ * The lint half landed at P11 as a Rule 3 entry and was re-pointed at `apps/mobile` when these
+ * modules were re-homed here. This file remains the stronger of the two halves, because it reads
+ * the tree from disk: an import-based check would pass while a violating file sat right beside it,
+ * unread.
  */
 
-const packageRoot = path.resolve(import.meta.dirname, '..', '..');
-const sourceRoot = path.join(packageRoot, 'src');
-const themeDirectory = path.join(sourceRoot, 'theme');
+// Re-homed at P12. Scanning `apps/mobile/src` rather than one package's `src` is a STRONGER
+// check than the original: the thing worth preventing is a screen reaching a raw ramp step, and
+// the screens live here.
+const themeDirectory = import.meta.dirname;
+const sourceRoot = path.resolve(themeDirectory, '..', '..');
+/** The barrel now lives inside the theme directory, because the theme IS the module. */
+const barrelPath = path.join(themeDirectory, 'index.ts');
 
 function typeScriptFilesUnder(directory: string): string[] {
   const found: string[] = [];
@@ -44,7 +46,7 @@ describe('primitive.ts is private to the theme directory', () => {
     // failure mode of any test that walks a directory.
     expect(files.length).toBeGreaterThan(3);
     expect(files).toContain(path.join(themeDirectory, 'primitive.ts'));
-    expect(files).toContain(path.join(sourceRoot, 'index.ts'));
+    expect(files).toContain(barrelPath);
   });
 
   it.each([
@@ -59,12 +61,12 @@ describe('primitive.ts is private to the theme directory', () => {
     const offenders = files
       .filter((file) => path.dirname(file) !== themeDirectory)
       .filter((file) => importsPrimitive(fs.readFileSync(file, 'utf8')))
-      .map((file) => path.relative(packageRoot, file));
+      .map((file) => path.relative(sourceRoot, file));
     expect(offenders, 'files outside src/theme/ importing primitive.js').toEqual([]);
   });
 
-  it('the package entry point does not re-export it', () => {
-    const index = fs.readFileSync(path.join(sourceRoot, 'index.ts'), 'utf8');
+  it('the theme barrel does not re-export it', () => {
+    const index = fs.readFileSync(barrelPath, 'utf8');
     expect(importsPrimitive(index)).toBe(false);
     expect(index).not.toMatch(/export\s+\*\s+from\s+['"][^'"]*primitive/);
     // Comments stripped first. The first version of this assertion failed on `index.ts`'s own doc

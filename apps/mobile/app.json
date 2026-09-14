@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "NutriTime AI",
+    "slug": "nutritime-ai",
+    "version": "0.1.0",
+    "scheme": "nutritime",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": false },
+    "android": { "adaptiveIcon": { "backgroundColor": "#ECFDF5" } },
+    "web": { "bundler": "metro", "output": "static" }
+  }
+}
