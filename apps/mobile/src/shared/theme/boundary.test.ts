@@ -26,7 +26,18 @@ function typeScriptFilesUnder(directory: string): string[] {
     const full = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       found.push(...typeScriptFilesUnder(full));
-    } else if (entry.name.endsWith('.ts')) {
+      // `.tsx` too, and leaving it out made this whole file blind. `'AppText.tsx'.endsWith('.ts')`
+      // is FALSE, so the walker scanned 31 `.ts` files and skipped 42 `.tsx` ones - every shared
+      // component, every navigator, the screen registry, and `ThemeProvider` itself. The docblock
+      // above says "the thing worth preventing is a screen reaching a raw ramp step, and the
+      // screens live here", which was exactly true of every file it could not see: adding
+      // `import { palette } from '../theme/primitive.js'` to any component broke nothing here.
+      //
+      // An oversight rather than a choice - the structurally identical walker in
+      // `asyncStorageDriver.test.ts` reads both extensions. The lint half of T-11-05 did cover
+      // these files (`--print-config` on a `.tsx` shows the `primitive` pattern), so the boundary
+      // was enforced; just not by the half this file calls the stronger of the two.
+    } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) {
       found.push(full);
     }
   }

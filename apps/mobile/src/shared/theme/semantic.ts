@@ -126,6 +126,34 @@ export interface SemanticTokens {
     readonly danger: string;
   };
 
+  /**
+   * The same four tones, for a foreground sitting on `surface.inverse`.
+   *
+   * **Added at P12 to repair a measured WCAG 1.4.11 failure, not as an enhancement.** `toast`'s
+   * background is `surface.inverse`, and `status` is authored against `surface.canvas` - its
+   * opposite in both schemes - so every one of the eight `toast.tone*` pairings P11 shipped landed
+   * between **1.49:1 and 2.76:1**, against the 3:1 a non-text indicator needs and the AA in both
+   * themes PRD 10.5 requires. `contrast.test.ts` had no pairing for this surface, so nothing
+   * failed and the tokens looked finished.
+   *
+   * **No new colour was authored to fix it.** An inverse surface has the brightness of the OTHER
+   * scheme's canvas, so it takes the other scheme's hand-authored status tones: light's
+   * `statusOnInverse` IS dark's `status`, and dark's is light's. Every pairing then clears
+   * **5.78:1 to 10.69:1** - not merely 1.4.11's 3:1 but AA for text - because each value is being
+   * used against exactly the surface brightness it was authored for. Pinned in
+   * `contrast.test.ts`.
+   *
+   * (The upper figure first written here was 11.71, which is not a pairing in either map: it came
+   * from a `content.link` probe run while choosing the approach. The true range across all eight
+   * is 5.78 - dark danger - to 10.69 - light warning.)
+   */
+  readonly statusOnInverse: {
+    readonly info: string;
+    readonly success: string;
+    readonly warning: string;
+    readonly danger: string;
+  };
+
   readonly border: {
     /** Decorative dividers only. Below 3:1 by design — see `contrast.test.ts`. */
     readonly subtle: string;
@@ -243,6 +271,15 @@ export const lightColors: SemanticTokens = {
     warning: palette.amber[100],
     danger: palette.red[100],
   },
+  // The 400 ramp, which is the DARK scheme's `status`. `surface.inverse` in the light scheme is
+  // `slate[900]`, so a tone on it is a tone on a dark ground, and these are the four values
+  // authored for one. 7.02 / 9.29 / 10.69 / 6.45:1.
+  statusOnInverse: {
+    info: palette.blue[400],
+    success: palette.green[400],
+    warning: palette.amber[400],
+    danger: palette.red[400],
+  },
   border: {
     subtle: palette.sage[100],
     // slate[500], not the generator's `Border`. A field whose only boundary is 1.10:1 against the
@@ -334,8 +371,33 @@ export const darkColors: SemanticTokens = {
     warning: '#2B2109',
     danger: '#2E1414',
   },
+  // Mirror of light's: the 800 ramp plus red[700], which is the LIGHT scheme's `status`. The dark
+  // scheme's `surface.inverse` is `ink[200]`, a light ground. 7.79 / 6.86 / 6.33 / 5.78:1.
+  statusOnInverse: {
+    info: palette.blue[800],
+    success: palette.green[800],
+    warning: palette.amber[800],
+    danger: palette.red[700],
+  },
   border: {
-    subtle: palette.ink[700],
+    /**
+     * **Authored at P12, not a ramp step, because no ramp step works.**
+     *
+     * This was `ink[700]` (`#1E332C`), and `surface.overlay` is `ink[800]` (`#18302A`) - adjacent
+     * steps of the same ramp. Measured **1.0469:1**, under `contrast.test.ts`'s own
+     * `VISIBLE_MINIMUM` of 1.05, so the `Divider` separating a dark `Sheet`'s header from its
+     * content was invisible. The exemption test measured `border.subtle` against
+     * `surface.canvas` ALONE (1.3662, comfortable), which is the same shape of gap that let the
+     * `toast.tone*` failure ship: a pairing that is not in the table is not verified.
+     *
+     * Every existing ink step was tried and none fits: `ink[700]` is 1.047 at worst and the next
+     * step up, `ink[600]`, is 3.19 - past 1.4.11's 3:1, so it reads as a control boundary rather
+     * than a decorative rule, and it is already `border.default`'s value, which would collapse
+     * two roles into one. `#2B423B` is the smallest move that clears the floor with margin on all
+     * four dark surfaces: **1.301 overlay, 1.361 raised, 1.526 canvas, 1.698 sunken.** Light needs
+     * no change (1.074 at worst, on sunken).
+     */
+    subtle: '#2B423B',
     default: palette.ink[600],
     strong: palette.ink[300],
     focus: palette.green[300],

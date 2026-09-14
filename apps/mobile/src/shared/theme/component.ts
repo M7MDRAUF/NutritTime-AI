@@ -142,7 +142,13 @@ export interface ComponentTokens {
     readonly zIndex: number;
     readonly duration: number;
     readonly easing: readonly [number, number, number, number];
-    /** Per tone: the icon and border colour. The message text stays `text` for legibility. */
+    /**
+     * Per tone: the icon and border colour. The message text stays `text` for legibility.
+     *
+     * Drawn from `statusOnInverse`, NOT `status`. The four values P11 put here were the canvas
+     * tones and were unreadable on this surface - between 1.49:1 and 2.76:1 - which is recorded on
+     * the `statusOnInverse` declaration.
+     */
     readonly toneInfo: string;
     readonly toneSuccess: string;
     readonly toneWarning: string;
@@ -334,10 +340,10 @@ export function buildComponentTokens(color: SemanticTokens): ComponentTokens {
       zIndex: zIndex.toast,
       duration: duration.base,
       easing: easing.decelerate,
-      toneInfo: color.status.info,
-      toneSuccess: color.status.success,
-      toneWarning: color.status.warning,
-      toneDanger: color.status.danger,
+      toneInfo: color.statusOnInverse.info,
+      toneSuccess: color.statusOnInverse.success,
+      toneWarning: color.statusOnInverse.warning,
+      toneDanger: color.statusOnInverse.danger,
     },
 
     badge: {

@@ -237,7 +237,7 @@ export default tseslint.config(
   // rule is RESTATED minus the primitive pattern rather than switched off, so Rules 4 and 5
   // survive here. An `'off'` exemption would drop all three.
   {
-    files: ['apps/mobile/src/shared/theme/**/*.ts'],
+    files: ['apps/mobile/src/shared/theme/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': ['error', { paths: [ASYNC_STORAGE], patterns: appEscape('server') }],
     },

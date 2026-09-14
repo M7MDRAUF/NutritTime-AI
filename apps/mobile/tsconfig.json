@@ -1,11 +1,36 @@
 {
-  "extends": "../../tsconfig.base.json",
+  // **TSD §2.2 specifies this file, and it now says what the document says.** It had drifted in
+  // three ways, only one of which was recorded: it extended `../../tsconfig.base.json` alone,
+  // dropped the `@/*` alias, and narrowed `lib` to `["ES2023","DOM"]`. Dropping
+  // `expo/tsconfig.base` cost `customConditions: ["react-native"]`, `moduleDetection: "force"`
+  // and `allowJs` — no dependency in the tree resolves through a `react-native` exports condition
+  // today, so nothing miscompiled, but a document that specifies a file's contents outranks the
+  // file (Plan §4: PRD > SDD > TSD > Plan), and `Plan.md` T-01-08's note could not authorise the
+  // deviation because the Plan is the lowest rank of the four.
+  "extends": ["expo/tsconfig.base", "../../tsconfig.base.json"],
   "compilerOptions": {
-    "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM"],
-    "rootDir": "src",
-    "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    // §2.2: "the only path alias in the repo". A TypeScript alias only — Metro does not resolve
+    // it, so runtime imports inside `apps/mobile` stay relative and every one ends in `.js`.
+    // It currently has no users; restored because the document names it, not because code needs it.
+    "paths": { "@/*": ["./src/*"] },
+
+    // A recorded ADDITION rather than a contradiction — §2.2 fixes `extends` and `paths` and says
+    // nothing about `types`. It is required: without it, TypeScript's automatic type inclusion
+    // does not reach the root's `@types/node` from this directory, and `node:fs` is not resolved
+    // like a module ("skipping module 'node:fs' that looks like an absolute URI") — it exists only
+    // as an ambient declaration inside `@types/node`. Its absence broke the four tests that read
+    // SOURCE FILES from disk to assert an import boundary or a token/loader agreement:
+    // `boundary.test.ts`, `typography.test.ts`, `linking.dom.test.ts`, `asyncStorageDriver.test.ts`.
+    //
+    // Naming the two global packages is also stricter than discovery: everything else — `vitest`,
+    // `@testing-library/dom`, `@types/react-dom` — arrives through ordinary import resolution,
+    // which `types` does not affect.
+    "types": ["node", "react"]
   },
+  // `index.ts` and `App.tsx` sit OUTSIDE `src/`, which is why there is no `rootDir`: it made this
+  // project fail outright (`TS6059`) and, with `noEmit`, constrained nothing worth constraining —
+  // and while it did, `App.tsx`, `index.ts` and `packages/catalog/seed.ts` were invisible to the
+  // gate. `baseUrl` is gone for a different reason: TypeScript 6.0 deprecates it (`TS5101`), and
+  // `paths` resolves relative to this file without it.
   "include": ["src/**/*.ts", "src/**/*.tsx", "index.ts", "App.tsx"]
 }

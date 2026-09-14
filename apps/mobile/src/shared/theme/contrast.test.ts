@@ -244,10 +244,62 @@ const nonTextPairings: readonly Pairing[] = [
   })),
 );
 
+/**
+ * **`surface.inverse` — the surface this file did not cover, and a defect got through because of
+ * it.**
+ *
+ * P11 verified every text tone on canvas, raised, sunken and overlay. `toast` sits on
+ * `surface.inverse`, which is none of those, so the four `toast.tone*` tokens - `status.*`, which
+ * is authored against `surface.canvas`, the inverse surface's OPPOSITE in both schemes - shipped
+ * at between **1.49:1 and 2.76:1** and nothing failed. The component author measured it and
+ * refused to render them, which is the only reason it was caught before a device.
+ *
+ * The lesson generalises past this fix: **a pairing that is not in this table is not verified, and
+ * a missing row looks exactly like a passing one.** Any future component that introduces a new
+ * surface has to add its rows here in the same change.
+ */
+const inverseTextTones = [
+  ['content.inverse', (c: SemanticTokens) => c.content.inverse],
+  ['statusOnInverse.info', (c: SemanticTokens) => c.statusOnInverse.info],
+  ['statusOnInverse.success', (c: SemanticTokens) => c.statusOnInverse.success],
+  ['statusOnInverse.warning', (c: SemanticTokens) => c.statusOnInverse.warning],
+  ['statusOnInverse.danger', (c: SemanticTokens) => c.statusOnInverse.danger],
+] as const satisfies ReadonlyArray<readonly [string, (c: SemanticTokens) => string]>;
+
+const inversePairings: readonly Pairing[] = inverseTextTones.map(([toneName, foreground]) => ({
+  name: `${toneName} on surface.inverse`,
+  foreground,
+  background: (c: SemanticTokens) => c.surface.inverse,
+  // AA for TEXT, not 1.4.11's 3:1 for an indicator. A tone glyph is a non-text indicator and 3:1
+  // would suffice, but every one of these clears 5.78:1 with the values crossed, so asserting the
+  // weaker bound would leave room for a regression that is still technically conforming.
+  minimum: AA_NORMAL_TEXT,
+}));
+
+/**
+ * The status tones must NOT be usable on the inverse surface, which is the point of the split.
+ *
+ * Asserted as a failure rather than left implicit: if a future edit ever made `status.*` readable
+ * on `surface.inverse` - by moving `surface.inverse` towards the canvas, say - then `statusOnInverse`
+ * would be redundant and someone should be told, rather than the two quietly converging.
+ */
+const statusOnInverseIsNecessary: readonly Pairing[] = [
+  ['status.info', (c: SemanticTokens) => c.status.info],
+  ['status.success', (c: SemanticTokens) => c.status.success],
+  ['status.warning', (c: SemanticTokens) => c.status.warning],
+  ['status.danger', (c: SemanticTokens) => c.status.danger],
+].map(([toneName, foreground]) => ({
+  name: `${String(toneName)} on surface.inverse`,
+  foreground: foreground as (c: SemanticTokens) => string,
+  background: (c: SemanticTokens) => c.surface.inverse,
+  minimum: AA_NON_TEXT,
+}));
+
 const allPairings: readonly Pairing[] = [
   ...surfaceTextPairings,
   ...filledPairings,
   ...nonTextPairings,
+  ...inversePairings,
 ];
 
 const SCHEMES: readonly ColorScheme[] = ['light', 'dark'];
@@ -457,3 +509,31 @@ describe('the type scale does not create a large-text loophole', () => {
     }
   });
 });
+
+describe('the canvas status tones are unusable on surface.inverse', () => {
+  // The reason `statusOnInverse` exists, asserted rather than assumed. Every one of these was
+  // between 1.49:1 and 2.76:1 when `toast.tone*` pointed at them, and all eight failed 1.4.11.
+  it.each(SCHEMES)('in %s', (scheme) => {
+    const colors = colorsByScheme[scheme];
+    for (const pairing of statusOnInverseIsNecessary) {
+      const ratio = contrastRatio(pairing.foreground(colors), pairing.background(colors));
+      expect(
+        ratio,
+        `${pairing.name} measures ${ratio.toFixed(2)}:1 - if this now PASSES 3:1, statusOnInverse is redundant and should be removed rather than left to diverge`,
+      ).toBeLessThan(AA_NON_TEXT);
+    }
+  });
+});
+
+/**
+ * **The component tokens, on the surfaces THEY define. This is the block whose absence let a
+ * defect ship.**
+ *
+ * Every pairing above is semantic-on-semantic. The `toast.tone*` failure lived in `component.ts`:
+ * the four tokens pointed at `status.*`, which is verified to AA on four surfaces and is
+ * unreadable on the fifth - `toast.background` - which no row covered because no SEMANTIC token
+ * names it. A semantic-level suite cannot see that class of defect at all: both halves are
+ * individually correct and the composition is not.
+ *
+ * So this asserts what `buildComponentTokens` actually produced, which is what a component reads.
+ */

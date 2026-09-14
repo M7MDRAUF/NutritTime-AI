@@ -1,5 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src" },
+  "compilerOptions": {
+    "rootDir": "src",
+    // This package has its own `node_modules/@types`, and TypeScript's automatic type inclusion
+    // stops at the FIRST such directory it finds walking up - so the root's `@types/node` was
+    // never reached and `package.test.ts`, which reads `package.json` off disk, did not compile.
+    // `apps/server` and `packages/domain` need no such line because they have no local `@types`.
+    "types": ["node"]
+  },
   "include": ["src/**/*.ts"]
 }

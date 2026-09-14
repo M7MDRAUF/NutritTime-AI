@@ -233,16 +233,30 @@ export const opacity = {
 } as const;
 
 /**
- * One family carries the whole hierarchy through weight (TSD 6.6). The stack ends at the platform
- * face so that a screen renders correctly before Inter has loaded — and so no feature file ever
- * names a typeface.
+ * One family carries the whole hierarchy through weight (TSD 6.6) — but on React Native the weight
+ * has to be in the FAMILY NAME, which is why this is a map and not a string.
  *
- * Weights are strings: React Native's `fontWeight` accepts `'400' | '600' | ...`, and a numeric
- * literal would not assign to it.
+ * **The previous value was `'Inter, -apple-system, Roboto, sans-serif'`, and it was wrong in two
+ * ways at once.** React Native's native `fontFamily` takes a single family name and does not parse
+ * a CSS fallback list, so on a device it matched nothing and silently fell back to the system face;
+ * and nothing in the app ever loaded Inter, so even a correct single name would have found no font
+ * to match. It rendered correctly only on web, where the stack really is CSS — which is precisely
+ * how it survived P11 and P12 unnoticed (R-32).
+ *
+ * A second native constraint forces the shape: **RN does not synthesise weights for a custom
+ * family.** Setting `fontFamily: 'Inter'` with `fontWeight: '700'` gives regular Inter on Android
+ * and is unreliable on iOS. Each weight must name its own loaded face, so the scale's `fontWeight`
+ * indexes this map and `fontWeight` is still set beside it for the web export, which does use it.
+ *
+ * Keys are strings because React Native's `fontWeight` accepts `'400' | '600' | ...` and a numeric
+ * literal would not assign to it — which also makes `typeFamily[step.fontWeight]` total by
+ * construction.
  */
 export const typeFamily = {
-  /** Inter first, then SF on iOS and Roboto on Android. `sans-serif` is the web export's tail. */
-  sans: 'Inter, -apple-system, Roboto, sans-serif',
+  '400': 'Inter_400Regular',
+  '600': 'Inter_600SemiBold',
+  '700': 'Inter_700Bold',
+  '800': 'Inter_800ExtraBold',
 } as const;
 
 /**

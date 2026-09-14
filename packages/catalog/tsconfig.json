@@ -1,5 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src" },
-  "include": ["src/**/*.ts"]
+  "compilerOptions": {
+    // Same shadowing as `packages/contracts`, and this package needs Node's types in SOURCE and
+    // not only in tests: `usda-dataset.ts` reads the archive from disk and `seed.ts` is a script.
+    "types": ["node"]
+  },
+  // `seed.ts` sits at the package root (TSD §7.2 puts it there, and `npm run seed` invokes it by
+  // that path), so it is named explicitly and `rootDir: "src"` is gone - it would have rejected
+  // the file outright, which is how the script stayed outside the per-project typecheck.
+  "include": ["src/**/*.ts", "seed.ts"]
 }

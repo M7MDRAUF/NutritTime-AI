@@ -17,18 +17,95 @@ import { useColorScheme, useWindowDimensions, PixelRatio } from 'react-native';
 import type { ThemeMode } from '@nutritime/contracts';
 import { buildComponentTokens, colorsByScheme, resolveScheme } from './index.js';
 import type { ColorScheme, ComponentTokens, SemanticTokens } from './index.js';
+// The one legal importer of `primitive.js` outside the token modules themselves: this file IS
+// inside the theme directory, and applying the scale is exactly what it is for.
+import { typeFamily, typeScale } from './primitive.js';
 
 /** Beyond this the layout must reflow rather than shrink text (PRD 10.5). */
 export const LARGE_TEXT_SCALE = 1.3;
+
+export type TypeVariant = keyof typeof typeScale;
+
+export interface TextTokens {
+  readonly fontFamily: string;
+  readonly fontSize: number;
+  readonly lineHeight: number;
+  readonly fontWeight: '400' | '600' | '700' | '800';
+  readonly letterSpacing: number;
+  /** TSD 6.6 fixes `label` as uppercase. Carried here so no consumer re-decides it. */
+  readonly textTransform: 'none' | 'uppercase';
+}
+
+export type Typography = Readonly<Record<TypeVariant, TextTokens>>;
 
 export interface Theme {
   readonly scheme: ColorScheme;
   readonly colors: SemanticTokens;
   readonly components: ComponentTokens;
-  /** The OS text-scaling factor, clamped to something a layout can survive. */
+  /**
+   * The type scale with the OS font scale ALREADY APPLIED.
+   *
+   * DECISIONS.md S-09 assigns this multiplication to `useTheme()`, and until it existed every
+   * label in the component batches had no legal source for its size: the scale lives in
+   * `primitive.ts`, which is private to this directory, and the semantic and component tokens
+   * are colour and geometry only. A component agent stopped rather than invent literals, which
+   * is the correct outcome and is why this is here.
+   *
+   * **Because the scale is pre-multiplied, every `Text` must set `allowFontScaling={false}`.**
+   * React Native would otherwise apply the OS factor a second time and a 2x setting would
+   * render 4x. That is the direct cost of putting the multiplication here rather than in each
+   * component, and it is worth it: one place decides, and a screen cannot forget to scale.
+   */
+  readonly typography: Typography;
+  /** The OS text-scaling factor, for anything that must size itself against the text. */
   readonly fontScale: number;
   /** True when text is large enough that a row should become a column. */
   readonly isLargeText: boolean;
+}
+
+/**
+ * One variant, scaled.
+ *
+ * `letterSpacing` scales too, which is easy to miss: React Native measures it in points and it
+ * does not track the font scale on its own, so leaving `-0.5` fixed while the body grows to
+ * 32 px visibly loosens a headline exactly when it is largest.
+ */
+function scaleVariant(variant: TypeVariant, scale: number): TextTokens {
+  const step = typeScale[variant];
+  return {
+    // The face is chosen BY THE WEIGHT, because React Native does not synthesise weights for a
+    // custom family. `typeScale`'s `fontWeight` and `typeFamily`'s keys are the same four string
+    // literals, so this index is total and needs no fallback.
+    fontFamily: typeFamily[step.fontWeight],
+    fontSize: step.fontSize * scale,
+    lineHeight: step.lineHeight * scale,
+    fontWeight: step.fontWeight,
+    letterSpacing: step.letterSpacing * scale,
+    // `label` is the only uppercase variant (TSD 6.6: 700 uppercase at +1 tracking). The scale
+    // carries the weight and the tracking but not the transform, so it is decided once here
+    // rather than at eight call sites.
+    textTransform: variant === 'label' ? 'uppercase' : 'none',
+  };
+}
+
+/**
+ * Written out key by key rather than reduced over `Object.entries`.
+ *
+ * A mapped reduce under `noUncheckedIndexedAccess` needs a cast or a non-null assertion to
+ * satisfy `Record<TypeVariant, TextTokens>`, and this project forbids both. Eight lines that
+ * typecheck beat four that need an escape hatch.
+ */
+function buildTypography(scale: number): Typography {
+  return {
+    display: scaleVariant('display', scale),
+    headline: scaleVariant('headline', scale),
+    title: scaleVariant('title', scale),
+    subheading: scaleVariant('subheading', scale),
+    body: scaleVariant('body', scale),
+    bodyStrong: scaleVariant('bodyStrong', scale),
+    caption: scaleVariant('caption', scale),
+    label: scaleVariant('label', scale),
+  };
 }
 
 /**
@@ -78,6 +155,7 @@ export function ThemeProvider({
       scheme,
       colors,
       components: buildComponentTokens(colors),
+      typography: buildTypography(scale),
       fontScale: scale,
       isLargeText: scale >= LARGE_TEXT_SCALE,
     };

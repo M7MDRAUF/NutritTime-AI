@@ -52,8 +52,9 @@ loadDotEnv();
  * standing for every phase from P02 to P27, where a mis-scoped include glob would report
  * "no tests" and pass green.
  *
- * `setupFiles` for the dom project arrives with vitest.setup.dom.mts at P12, when there is a
- * React Native environment to mock. Adding it now would fail on a missing file.
+ * `setupFiles` for the dom project arrived at P12, as reserved: `vitest.setup.dom.mts` sets
+ * `IS_REACT_ACT_ENVIRONMENT`, without which every `act()` call warns on stderr while the test
+ * still passes.
  */
 export default defineConfig({
   test: {
@@ -78,10 +79,22 @@ export default defineConfig({
         resolve: {
           alias: {
             'react-native': path.resolve(import.meta.dirname, 'node_modules/react-native-web'),
+            // `@expo/vector-icons` publishes JSX inside a `.js` file
+            // (`build/createIconSet.js:79` is `return <Text />`), and rolldown refuses to parse
+            // it - "Unexpected JSX expression" - which failed twelve of sixteen dom suites at the
+            // import. Widening the transform with `esbuild.include` + `loader: 'jsx'` does not
+            // reach rolldown's parser, so the module is aliased to a double for this project only.
+            // The app imports the real component; what the double costs and what it preserves is
+            // written out in the file itself.
+            '@expo/vector-icons/MaterialCommunityIcons': path.resolve(
+              import.meta.dirname,
+              'apps/mobile/src/shared/components/__testing__/iconSet.tsx',
+            ),
           },
         },
         test: {
           name: 'dom',
+          setupFiles: ['./vitest.setup.dom.mts'],
           environment: 'jsdom',
           server: {
             deps: {
