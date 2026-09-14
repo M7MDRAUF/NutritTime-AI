@@ -1,0 +1,23 @@
+{
+  // **Its own root, extending nothing.** `../tsconfig.base.json` is for the workspaces, and this
+  // package is deliberately outside them (TSD §2.1) so browser binaries stay out of the root
+  // lockfile. Extending it would also drag in `@nutritime/*` path resolution that this suite must
+  // not have: an e2e spec asserts what a USER can see, and a spec that imported the domain could
+  // assert against the same code it is supposed to be checking from the outside.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["specs/**/*.ts", "playwright.config.ts"]
+}

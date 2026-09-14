@@ -50,7 +50,21 @@ const MINUTES_SPOKEN = 'minutes';
 
 export interface MealCardProps {
   readonly name: string;
-  readonly imageUrl: string;
+  /**
+   * **`string | null`, because `Meal.imageUrl` is.**
+   *
+   * This was `string`, and the tracer slice found it the first time a real catalog record met this
+   * component: `contracts/core.ts` types the field nullable and `mealSchema` validates it as
+   * `httpUrl.nullable()`, so a meal legitimately has no photograph. Every hand-written fixture in
+   * the component suite chose a URL, so nothing failed — the mismatch could only surface where a
+   * real `Meal` is passed, which is here at P13 and not at P12.
+   *
+   * The component already had the affordance: the image box is floored with `card.skeleton`, which
+   * exists exactly for "no image yet". `null` now renders that floor and no `Image` at all. The
+   * alternative — a caller writing `imageUrl ?? ''` — would have type-checked and issued a request
+   * for the empty URL, failing in the network log rather than in the types.
+   */
+  readonly imageUrl: string | null;
   /** Already formatted by the caller: this component never renders a currency itself. */
   readonly priceLabel: string;
   readonly preparationMinutes: number;
@@ -160,13 +174,20 @@ export function MealCard({
             {/*
               Decorative: the card's accessible name already carries everything the photograph
               illustrates, and TheMealDB publishes no alternative text to use instead.
+
+              Omitted entirely when there is no URL, rather than rendered with an empty `uri`: the
+              skeleton fill behind it IS the no-image state, and `contrast.test.ts` verifies the
+              name over the scrim over that fill at 6.85:1, so the card stays readable with no
+              photograph at all.
             */}
-            <Image
-              source={{ uri: imageUrl }}
-              resizeMode="cover"
-              accessibilityIgnoresInvertColors
-              style={StyleSheet.absoluteFill}
-            />
+            {imageUrl === null ? null : (
+              <Image
+                source={{ uri: imageUrl }}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+                style={StyleSheet.absoluteFill}
+              />
+            )}
             <View style={{ backgroundColor: card.imageScrim, padding: card.gap }}>
               {/*
                 Not `AppText`. `card.imageText` is a layer-3 decision - `content.onImage`, which is

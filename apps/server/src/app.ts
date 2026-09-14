@@ -41,16 +41,28 @@ function readStatus(error: unknown): number | undefined {
   return undefined;
 }
 
-/** The Expo dev server, plus the API port's own siblings. Credentials off (TSD 5.3). */
+/**
+ * The Expo web origins, plus the API port's own siblings. Credentials off (TSD 5.3).
+ *
+ * **Both spellings of every port, which `19006` was missing.** It had only the `localhost` form
+ * while 8081 and the API port each had both, so an app served on `http://127.0.0.1:19006` was
+ * blocked by CORS — and P13's first end-to-end run found it exactly that way: every data spec fell
+ * into "Working offline" while the screen itself was correct.
+ *
+ * `localhost` and `127.0.0.1` are DIFFERENT origins to a browser, so one without the other is an
+ * allowlist that depends on how the developer happened to type the address. Derived from one list
+ * of ports now, rather than written out, so a third port cannot arrive half-covered.
+ */
+const WEB_PORTS = [
+  /** Expo's Metro dev server. */
+  8081 /** Expo web, and where `expo export`'s static build is served. */, 19006,
+] as const;
+
 function corsOrigins(config: ServerConfig): readonly string[] {
-  const port = String(config.PORT);
-  return [
-    `http://localhost:${port}`,
-    `http://127.0.0.1:${port}`,
-    'http://localhost:8081',
-    'http://127.0.0.1:8081',
-    'http://localhost:19006',
-  ];
+  return [config.PORT, ...WEB_PORTS].flatMap((port) => [
+    `http://localhost:${String(port)}`,
+    `http://127.0.0.1:${String(port)}`,
+  ]);
 }
 
 /**

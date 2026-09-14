@@ -4,6 +4,8 @@
   "private": true,
   "main": "index.ts",
   "scripts": {
+    "start": "expo start",
+    "build": "expo export --platform web --output-dir dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

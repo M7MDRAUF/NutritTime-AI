@@ -49,6 +49,20 @@ export const ROUTE_PATHS = {
  * to `nutritime://settings` leaves the user somewhere to go back to rather than on a dead end.
  */
 export const linking: LinkingOptions<RootParamList> = {
+  /**
+   * The custom scheme only, and **web deep linking does not work yet** — see R-44.
+   *
+   * P13's end-to-end run found that `/explore?query=chicken`, served from the static export, lands
+   * on Home rather than Explore. Adding `window.location.origin` to this list was the obvious
+   * candidate and it changed nothing, so the cause is elsewhere and is **not yet identified**.
+   * `routes.test.ts` and `linking.dom.test.ts` both pass, because `getStateFromPath` parses these
+   * paths correctly in isolation — it is the wiring between the browser's URL and that parse that
+   * is missing.
+   *
+   * Left as it is rather than guessed at: T-22-01 and T-22-02 own the web export and this config,
+   * and the e2e spec for it is `test.fixme` so it turns back on when P22 fixes it instead of being
+   * deleted and forgotten.
+   */
   prefixes: [LINKING_PREFIX],
   config: {
     screens: {

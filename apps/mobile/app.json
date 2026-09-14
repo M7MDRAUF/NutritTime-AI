@@ -7,8 +7,17 @@
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "assetBundlePatterns": ["**/*"],
-    "ios": { "supportsTablet": false },
-    "android": { "adaptiveIcon": { "backgroundColor": "#ECFDF5" } },
-    "web": { "bundler": "metro", "output": "static" }
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ECFDF5"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
   }
 }

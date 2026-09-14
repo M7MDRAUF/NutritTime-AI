@@ -145,6 +145,35 @@ describe('middleware contracts', () => {
     expect(response.headers['access-control-allow-credentials']).toBeUndefined();
   });
 
+  it('allows BOTH spellings of every port it allows at all', async () => {
+    /**
+     * **`localhost` and `127.0.0.1` are different origins to a browser**, so an allowlist carrying
+     * one without the other depends on how the developer happened to type the address.
+     *
+     * `19006` had only the `localhost` form, and P13's first end-to-end run found it the hard way:
+     * the web export served on `http://127.0.0.1:19006` was CORS-blocked, so every data spec fell
+     * into "Working offline" while the screen itself was perfectly correct. Enumerated as pairs
+     * here, because that is the property — not "19006 works", which the old single assertion on
+     * 8081 could not have told anyone about.
+     */
+    for (const port of [4000, 8081, 19006]) {
+      for (const host of ['localhost', '127.0.0.1']) {
+        const origin = `http://${host}:${String(port)}`;
+        const response = await request(app).get('/health').set('Origin', origin);
+        expect(
+          response.headers['access-control-allow-origin'],
+          `${origin} must be allowed - a browser blocks the request when this header is absent`,
+        ).toBe(origin);
+      }
+    }
+  });
+
+  it('still refuses an origin that is not on the list', async () => {
+    // The pair rule above must not have widened into "anything on the loopback".
+    const response = await request(app).get('/health').set('Origin', 'http://127.0.0.1:4173');
+    expect(response.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
   it('never advertises the framework', async () => {
     const response = await request(app).get('/health');
     expect(response.headers['x-powered-by']).toBeUndefined();
