@@ -128,10 +128,15 @@ describe('middleware contracts', () => {
     expect(response.body.error.code).toBe('meal_not_found');
   });
 
-  it('answers an unknown path outside the meals route with a plain 404', async () => {
+  it('answers an unknown path with a DECLARED error code, not a sixth one', async () => {
+    // This branch used to emit `not_found`, which is not among TSD 3.5's five codes and carried
+    // no `retryable` although `ApiErrorBody` requires one - so the path every unmatched request
+    // lands on answered with a shape the client cannot parse.
     const response = await request(app).get('/nope');
     expect(response.status).toBe(404);
-    expect(response.body.error.code).toBe('not_found');
+    expect(response.body.error.code).toBe('meal_not_found');
+    expect(response.body.error.retryable).toBe(false);
+    expect(typeof response.body.error.message).toBe('string');
   });
 
   it('sets cors headers for an allowed origin and omits credentials', async () => {

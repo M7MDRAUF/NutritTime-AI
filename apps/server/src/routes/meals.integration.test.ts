@@ -240,13 +240,40 @@ describe('GET /api/v1/meals/:mealId', () => {
     expect(response.body.error.retryable).toBe(false);
   });
 
-  it('round-trips a URL-encoded id', async () => {
+  it('decodes a percent-escaped id before looking it up', async () => {
+    // **The previous version of this test encoded nothing.** `kebabIdSchema` admits only
+    // `[a-z0-9-]`, and `encodeURIComponent` leaves every one of those characters alone - so it
+    // sent the id verbatim and asserted a plain lookup for the second time. `%2D` is a hyphen
+    // written the long way: the route now genuinely receives an escape, and a route that did not
+    // decode would miss.
     const known = catalog.meals.find((meal) => meal.id.includes('-'));
     expect(known).toBeDefined();
-    const encoded = encodeURIComponent(known?.id ?? '');
-    const response = await get(`/api/v1/meals/${encoded}`);
+    const escaped = (known?.id ?? '').replace('-', '%2D');
+    expect(escaped).toContain('%2D');
+    const response = await get(`/api/v1/meals/${escaped}`);
     expect(response.status).toBe(200);
     expect(response.body.id).toBe(known?.id);
+  });
+
+  it('answers 404 for an escape that decodes to something no id can be', async () => {
+    // `%2F` is not a path separator once escaped, so `:mealId` captures it whole and the route is
+    // asked for an id containing a slash. A clean 404 is the answer; a 500 is not, and neither is
+    // anything that treats `..` as a directory.
+    for (const path of ['/api/v1/meals/a%2Fb', '/api/v1/meals/..%2F..%2Fetc%2Fpasswd']) {
+      const response = await get(path);
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe('meal_not_found');
+    }
+  });
+
+  it('reports a malformed escape as a path problem, never as a body problem', async () => {
+    // `%zz` cannot be decoded at all; Express throws before the handler runs. It is a 400 - but
+    // the details have to name the PATH, because a GET carries no body and saying otherwise sends
+    // the client looking in a place that does not exist.
+    const response = await get('/api/v1/meals/%zz');
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('invalid_request');
+    expect(Object.keys(response.body.error.details ?? {})).toStrictEqual(['path']);
   });
 
   it('preserves null nutrition through serialisation', async () => {
@@ -273,7 +300,9 @@ describe('the log line carries the mounted route template', () => {
     await request(captured).get('/api/v1/meals');
     await request(captured).get(`/api/v1/meals/${catalog.meals[0]?.id ?? ''}`);
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toContain('"routeTemplate":"/api/v1/meals/"');
+    // No trailing slash: a collection route's own path is `/`, and TSD 5.4 names the endpoint
+    // without one.
+    expect(lines[0]).toContain('"routeTemplate":"/api/v1/meals"');
     expect(lines[1]).toContain('"routeTemplate":"/api/v1/meals/:mealId"');
     // ...and still never the concrete id.
     expect(lines[1]).not.toContain(catalog.meals[0]?.id ?? 'IMPOSSIBLE');

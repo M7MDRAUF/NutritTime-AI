@@ -68,6 +68,23 @@ function mountedAt(prefix: string) {
   };
 }
 
+/**
+ * The mount prefix joined to the router-relative path.
+ *
+ * A collection route's own path is `'/'`, so a naive concatenation logged
+ * `/api/v1/meals/` with a trailing slash the TSD does not use. Dropped here rather than in the
+ * routers, because it is a property of how the two halves join.
+ */
+function routeTemplateOf(request: Request, response: Response): string {
+  if (request.route === undefined) {
+    return '(unmatched)';
+  }
+  const mount =
+    typeof response.locals['mountPath'] === 'string' ? response.locals['mountPath'] : '';
+  const relative = String(request.route.path);
+  return `${mount}${relative === '/' ? '' : relative}`;
+}
+
 export interface AppOptions {
   readonly config: ServerConfig;
   readonly catalog: Catalog;
@@ -112,10 +129,7 @@ export function createApp(options: AppOptions): Express {
             // The mount prefix is prepended because `route.path` is ROUTER-RELATIVE: under
             // the meals router a detail request reports `/:mealId`, so without it the list and
             // detail endpoints share one template. Flagged at P08 as a trap for this phase.
-            routeTemplate:
-              request.route === undefined
-                ? '(unmatched)'
-                : `${typeof response.locals['mountPath'] === 'string' ? response.locals['mountPath'] : ''}${String(request.route.path)}`,
+            routeTemplate: routeTemplateOf(request, response),
             status: response.statusCode,
             durationMs: Date.now() - startedAt,
             ...(typeof response.locals['errorCode'] === 'string'
@@ -164,7 +178,13 @@ export function createApp(options: AppOptions): Express {
       response.status(error.status).json(error.toBody());
       return;
     }
-    response.status(404).json({ error: { code: 'not_found', message: 'Not found.' } });
+    // `not_found` was a SIXTH wire code, and it carried no `retryable` although
+    // `ApiErrorBody` requires one - so the branch every unmatched path lands on, including the
+    // not-yet-built chat route, answered with a shape the client cannot parse. TSD 3.5 has five
+    // codes; `meal_not_found` is the one that describes "the thing you asked for is not here".
+    const missing = new ApiError('meal_not_found');
+    response.locals['errorCode'] = missing.code;
+    response.status(missing.status).json(missing.toBody());
   });
 
   // 6. error handler, last
@@ -201,9 +221,21 @@ export function createApp(options: AppOptions): Express {
     // validation to `invalid_request`.
     const status = readStatus(error);
     if (status !== undefined && status >= 400 && status < 500) {
-      const reason =
-        status === 413 ? 'the request body is too large' : 'the request body could not be read';
-      const clientError = new ApiError('invalid_request', { body: [reason] });
+      // **A malformed escape in the PATH is not a body problem.** `/api/v1/meals/%zz` reaches
+      // here as a `URIError` carrying status 400, thrown by Express's own param decoder before
+      // any handler runs - and answering `{ body: ['the request body could not be read'] }` sent
+      // the client looking at the body of a GET that has none. `instanceof URIError` is exact
+      // rather than a guess at a message: nothing else in this stack throws one.
+      const clientError =
+        error instanceof URIError
+          ? new ApiError('invalid_request', { path: ['the request path could not be decoded'] })
+          : new ApiError('invalid_request', {
+              body: [
+                status === 413
+                  ? 'the request body is too large'
+                  : 'the request body could not be read',
+              ],
+            });
       response.locals['errorCode'] = clientError.code;
       response.status(clientError.status).json(clientError.toBody());
       return;

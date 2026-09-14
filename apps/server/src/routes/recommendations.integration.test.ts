@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { seededCatalog } from '@nutritime/catalog';
+import type { Meal, ScoreReasonKind } from '@nutritime/contracts';
+import { effectiveAllergenTags, isDietCompatible } from '@nutritime/domain';
 import { createApp } from '../app.js';
 import { buildCatalog } from '../catalog.js';
 import { loadConfig } from '../config.js';
@@ -73,26 +75,147 @@ describe('the allergen hard rejection, through HTTP', () => {
     }
   });
 
-  it('rejects on an allergen only inferable from the ingredient list', async () => {
-    // No declared tag needed: `hasAllergenConflict` works on effective tags, declared union
-    // inferred, and checking the declared list alone is how an untagged nut reaches someone.
-    const response = await post(
-      body({ mealPeriod: 'lunch', preferences: { ...body().preferences, allergies: ['seafood'] } }),
-    );
-    expect(response.status).toBe(200);
-    for (const entry of response.body.recommendations) {
-      const ingredients: string = JSON.stringify(entry.meal.ingredients).toLowerCase();
-      expect(ingredients).not.toContain('prawn');
-      expect(ingredients).not.toContain('salmon');
+  /**
+   * **This needs a catalog the seed does not contain, and that is the finding.**
+   *
+   * The version this replaces posted `allergies: ['seafood']` and asserted that the top three
+   * happened to contain no prawn or salmon. Three things were wrong with it at once:
+   *
+   * 1. `seafood` is not a canonical allergen - `normalizeAllergen('seafood')` returns `null`,
+   *    and the canonical terms are `shellfish` and `fish`. The request excluded NOTHING, so the
+   *    test would have passed with the allergen filter deleted outright.
+   * 2. Only three meals come back, so "no prawn in the top three" is a claim about scoring, not
+   *    about rejection.
+   * 3. Of the sixty seeded records, exactly two carry a tag they do not declare - and both are
+   *    `gluten` implied by a declared `wheat`, which is the implication table rather than
+   *    ingredient inference. **No seeded meal can exercise this path at all.**
+   *
+   * So the catalog is built for the purpose: one meal whose `allergenTags` is empty and whose
+   * ingredient list alone implies `shellfish`, and one that implies nothing. Two meals both fit
+   * inside the three the endpoint returns, which turns the assertion from "did not appear" -
+   * satisfiable by a low score - into "was rejected", with the allergy-free run as the control
+   * proving the meal was reachable to begin with.
+   */
+  describe('an allergen present ONLY in the ingredient list', () => {
+    // Taken from the VALIDATED catalog, not from `seededCatalog` - which the package types as
+    // `unknown` on purpose, because nothing may treat raw JSON as a `Meal` before `mealSchema`
+    // has seen it. Throwing here rather than falling back keeps a vanished fixture loud: a
+    // silent default would leave this suite testing a meal it invented.
+    const base = catalog.byId.get('baingan-bharta');
+    if (base === undefined) {
+      throw new Error('fixture meal "baingan-bharta" is missing from the seeded catalog');
     }
+
+    const variant = (id: string, name: string, firstIngredient: string): Meal => {
+      const source = structuredClone(base);
+      return {
+        ...source,
+        id,
+        name,
+        // Declared empty ON PURPOSE. A record like this is the one a tag review cannot catch by
+        // reading tags, and it is how an untagged prawn reaches someone who cannot eat one.
+        allergenTags: [],
+        ingredients: [{ name: firstIngredient, measure: '200 g' }, ...source.ingredients],
+      };
+    };
+
+    const inferenceCatalog = buildCatalog([
+      variant('untagged-prawn-dish', 'Untagged Prawn Dish', 'King Prawns'),
+      variant('plain-lentil-dish', 'Plain Lentil Dish', 'Red Lentils'),
+    ]);
+    const inferenceApp = createApp({
+      config: loadConfig({}),
+      catalog: inferenceCatalog,
+      sink: () => undefined,
+    });
+
+    const ask = (allergies: readonly string[]) =>
+      request(inferenceApp)
+        .post('/api/v1/recommendations')
+        .set('Content-Type', 'application/json')
+        .send(
+          JSON.stringify(
+            body({ mealPeriod: 'lunch', preferences: { ...body().preferences, allergies } }),
+          ),
+        );
+
+    it('declares no tag, so a rejection can only have come from inference', () => {
+      const prawn = inferenceCatalog.byId.get('untagged-prawn-dish');
+      expect(prawn).toBeDefined();
+      expect(prawn?.allergenTags).toStrictEqual([]);
+      expect(prawn === undefined ? [] : [...effectiveAllergenTags(prawn)]).toContain('shellfish');
+    });
+
+    it('returns the meal when no allergy is declared - the control', async () => {
+      const response = await ask([]);
+      expect(response.status).toBe(200);
+      const ids: string[] = response.body.recommendations.map(
+        (entry: { meal: { id: string } }) => entry.meal.id,
+      );
+      expect(ids).toContain('untagged-prawn-dish');
+      expect(ids).toContain('plain-lentil-dish');
+    });
+
+    it('rejects it for a declared shellfish allergy, keeping the other meal', async () => {
+      const response = await ask(['shellfish']);
+      expect(response.status).toBe(200);
+      const ids: string[] = response.body.recommendations.map(
+        (entry: { meal: { id: string } }) => entry.meal.id,
+      );
+      expect(ids).not.toContain('untagged-prawn-dish');
+      // Not an empty response: the filter removed the conflicting meal and nothing else.
+      expect(ids).toStrictEqual(['plain-lentil-dish']);
+    });
+
+    it('protects a user who typed a non-canonical but recognisable word', async () => {
+      // `seafood` is NOT a canonical allergen - `normalizeAllergen('seafood')` is `null` - and
+      // TSD 5.5 types `allergies` as free strings, so a preferences screen or a person can send
+      // it. It rejects anyway, through `conflictingAllergens` path 3: the term's own inference
+      // (`fish`, `shellfish`) overlaps the meal's effective tags.
+      //
+      // I expected this to FAIL when I wrote it, on the reasoning that a null canonical form
+      // protects nobody. Path 3 exists precisely for the everyday word, and pinning it here
+      // stops a later simplification from removing the only thing standing between the word a
+      // person actually types and a prawn.
+      const response = await ask(['seafood']);
+      const ids: string[] = response.body.recommendations.map(
+        (entry: { meal: { id: string } }) => entry.meal.id,
+      );
+      expect(ids).toStrictEqual(['plain-lentil-dish']);
+    });
+
+    it('protects only by literal name for a word the lexicon does not know (R-30)', async () => {
+      // The honest limit of a free-text allergy field, stated as a test rather than left to be
+      // discovered. `coriander` matches because an ingredient is literally named "Coriander
+      // Leaves" (path 2). `cilantro` is the SAME PLANT and matches nothing: it is not canonical,
+      // it infers nothing, and the word does not appear in the ingredient list.
+      //
+      // Not a defect in this route and not fixable here - the fix is either a lexicon entry or a
+      // narrowed contract, and narrowing `allergies` is a TSD 5.5 amendment. **R-30: the
+      // containment is that P14 offers the canonical list rather than a text box.**
+      const [known, unknown] = await Promise.all([ask(['coriander']), ask(['cilantro'])]);
+      const idsOf = (response: { body: { recommendations: { meal: { id: string } }[] } }) =>
+        response.body.recommendations.map((entry) => entry.meal.id);
+      expect(idsOf(known)).toStrictEqual([]);
+      expect(idsOf(unknown)).toHaveLength(2);
+    });
   });
 
-  it('never returns a diet-incompatible meal', async () => {
-    const response = await post(body({ preferences: { ...body().preferences, diet: 'vegan' } }));
-    for (const entry of response.body.recommendations) {
-      expect(entry.meal.dietTags).toContain('vegan');
-    }
-  });
+  it.each(['vegan', 'vegetarian', 'gluten-aware'] as const)(
+    'never returns a meal incompatible with diet=%s',
+    async (diet) => {
+      const response = await post(body({ preferences: { ...body().preferences, diet } }));
+      expect(response.status).toBe(200);
+      expect(response.body.recommendations.length).toBeGreaterThan(0);
+      for (const entry of response.body.recommendations) {
+        // Asserted through `isDietCompatible`, not `dietTags.includes(diet)`. The literal test
+        // passes for `vegan` by luck and is WRONG for `vegetarian`, where a vegan meal is a
+        // correct answer carrying no `vegetarian` tag - so the strict version of this assertion
+        // would have failed a route that behaved correctly.
+        expect(isDietCompatible(diet, entry.meal.dietTags)).toBe(true);
+      }
+    },
+  );
 });
 
 describe('the response shape', () => {
@@ -114,6 +237,21 @@ describe('the response shape', () => {
         expect(previous.meal.id < current.meal.id).toBe(true);
       }
     }
+  });
+
+  it('breaks a real tie on id ascending, not on catalog order', async () => {
+    // **The suite above could never reach this branch.** `lunch` + `vegan` is a request that
+    // does: `baingan-bharta` and `fasoliyyeh-bi-z-zayt-syrian-green-beans-with-olive-oil` both
+    // score 71, and `b` sorts before `f`. Asserted as an exact pair rather than "is sorted",
+    // because a comparator falling back to catalog order would still look sorted.
+    const response = await post(
+      body({ mealPeriod: 'lunch', preferences: { ...body().preferences, diet: 'vegan' } }),
+    );
+    const entries: { score: number; meal: { id: string } }[] = response.body.recommendations;
+    const [first, second] = entries;
+    expect(first?.score).toBe(second?.score);
+    expect(first?.meal.id).toBe('baingan-bharta');
+    expect(second?.meal.id).toBe('fasoliyyeh-bi-z-zayt-syrian-green-beans-with-olive-oil');
   });
 
   it('carries scoreReasons so a score can be checked rather than trusted', async () => {
@@ -150,13 +288,16 @@ describe('the response shape', () => {
       (entry: { meal: { nutritionProvenance: { origin: string } } }) =>
         entry.meal.nutritionProvenance.origin === 'unavailable',
     );
-    if (unavailable !== undefined) {
-      const goal = unavailable.scoreReasons.find(
-        (reason: { kind: string }) => reason.kind === 'goal-match',
-      );
-      expect(goal.points).toBe(0);
-      expect(goal.detail).toMatch(/not available/i);
-    }
+    // Asserted, not assumed. Wrapping the body in `if (unavailable !== undefined)` made the whole
+    // test vacuous the moment scoring moved a record: it would have gone on passing while
+    // checking nothing. 53 of the 60 seeded records have no nutrition, so this is the common
+    // case rather than a lucky one.
+    expect(unavailable).toBeDefined();
+    const goal = unavailable.scoreReasons.find(
+      (reason: { kind: string }) => reason.kind === 'goal-match',
+    );
+    expect(goal.points).toBe(0);
+    expect(goal.detail).toMatch(/not available/i);
   });
 });
 
@@ -228,6 +369,13 @@ describe('fallbackExplanation', () => {
     })),
   });
 
+  /** For the cases where the KIND matters and not only the points. */
+  const withKinds = (reasons: readonly (readonly [ScoreReasonKind, number, string])[]) => ({
+    meal: catalog.meals[0]!,
+    score: reasons.reduce((total, [, points]) => total + points, 0),
+    scoreReasons: reasons.map(([kind, points, detail]) => ({ kind, points, detail })),
+  });
+
   it('cites the highest-scoring reasons, in points order', () => {
     expect(fallbackExplanation(scored([5, 30, 20]))).toBe('Reason 1, reason 2, and reason 0.');
   });
@@ -247,9 +395,65 @@ describe('fallbackExplanation', () => {
     expect(fallbackExplanation(scored([0, 0]))).toBe('This one fits your preferences.');
   });
 
-  it('is deterministic for equal points, using declaration order as the tie-break', () => {
+  it('is deterministic for equal points', () => {
     const first = fallbackExplanation(scored([10, 10, 10]));
     expect(first).toBe(fallbackExplanation(scored([10, 10, 10])));
     expect(first).toBe('Reason 0, reason 1, and reason 2.');
+  });
+
+  it('breaks a points tie on SCORE_REASON_KINDS order, not on array position', () => {
+    // **The test above cannot tell the two apart**, because its reasons all carry the same kind
+    // and `scoreMeal` happens to emit them in declaration order - so array position and kind
+    // order coincide and either implementation passes. Here the array is deliberately in the
+    // REVERSE of declaration order: `budget-match` is declared before `local-availability`, so a
+    // comparator keyed on the contract puts the budget reason first, and one keyed on the index
+    // puts availability first.
+    expect(
+      fallbackExplanation(
+        withKinds([
+          ['local-availability', 10, 'Available locally'],
+          ['budget-match', 10, 'Inside your budget'],
+        ]),
+      ),
+    ).toBe('Inside your budget, and available locally.');
+  });
+
+  it('cites the penalty alongside the positives, rather than only the good news', () => {
+    // **This is the dishonesty the P09/P10 verification found.** Filtering to `points > 0`
+    // excluded `disliked-ingredient`, whose points are never positive - so a meal penalised -50
+    // was explained entirely in its favour. A score of 3 out of 100 read as two reasons to eat
+    // it, with the one thing the user asked to avoid the only fact left out.
+    expect(
+      fallbackExplanation(
+        withKinds([
+          ['meal-period-match', 30, 'Suits lunch'],
+          ['diet-match', 20, 'Fits vegan'],
+          ['disliked-ingredient', -50, 'Contains mushrooms, which you dislike'],
+        ]),
+      ),
+    ).toBe('Suits lunch, and fits vegan, though contains mushrooms, which you dislike.');
+  });
+
+  it('cites the heaviest penalty when there is more than one', () => {
+    expect(
+      fallbackExplanation(
+        withKinds([
+          ['meal-period-match', 30, 'Suits lunch'],
+          ['disliked-ingredient', -10, 'Contains onion, which you dislike'],
+          ['local-availability', -50, 'Not stocked nearby'],
+        ]),
+      ),
+    ).toBe('Suits lunch, though not stocked nearby.');
+  });
+
+  it('still names the penalty when nothing at all scored in the meal favour', () => {
+    expect(
+      fallbackExplanation(
+        withKinds([
+          ['meal-period-match', 0, 'Not usually a lunch'],
+          ['disliked-ingredient', -50, 'Contains mushrooms, which you dislike'],
+        ]),
+      ),
+    ).toBe('Contains mushrooms, which you dislike, but it fits your other preferences.');
   });
 });
