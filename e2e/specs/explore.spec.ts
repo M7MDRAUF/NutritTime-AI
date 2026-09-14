@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { enterApp } from '../support/appPhase.js';
 
 /**
  * The first end-to-end spec (T-13-07): Explore, against the real server and the real catalog.
@@ -38,7 +39,10 @@ const FIRST_PAINT_MS = 20_000;
  * because it is a separate claim.
  */
 async function openExplore(page: Page): Promise<void> {
-  await page.goto('/');
+  // `enterApp` seeds the phase, because P14 gave the app an onboarding gate and an empty device no
+  // longer starts on the tabs — which failed all twelve of these specs the moment P14 landed. The
+  // journey itself is `onboarding.spec.ts`'s subject, not this file's.
+  await enterApp(page);
   await page.getByRole('tab', { name: 'Explore' }).click();
 }
 
@@ -173,17 +177,21 @@ test.describe('Explore, end to end', () => {
   });
 
   test('the five tabs are reachable, from the landing screen', async ({ page }) => {
-    await page.goto('/');
+    await enterApp(page);
 
     // Real icons now (A-11), so a tab is addressed by its accessible NAME rather than its glyph -
     // which also asserts that the icon contributes nothing to that name, since it is `aria-hidden`.
     for (const name of ['Home', 'Explore', 'Assistant', 'Saved', 'Settings']) {
       await expect(page.getByRole('tab', { name })).toBeVisible({ timeout: FIRST_PAINT_MS });
     }
-    // Home is the initial tab and it has no screen registered yet, so the placeholder is the
-    // CORRECT render. Asserted rather than tolerated: it is what proves the registry is wired,
-    // and P14 onward will replace it one route at a time.
-    await expect(page.getByRole('heading', { name: /Home is not available yet/ })).toBeVisible();
+    // Home is the initial tab and P15 registered it, so Home's own screen is what renders. This
+    // assertion used to look for "Home is not available yet" and was correct until P15 landed —
+    // kept and updated rather than deleted, because a registry with a screen behind it is the
+    // stronger claim.
+    await expect(page.getByTestId('home-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+    // The routes with no screen yet still show the placeholder, which is the registry working.
+    await page.getByRole('tab', { name: 'Saved' }).click();
+    await expect(page.getByRole('heading', { name: /Saved is not available yet/ })).toBeVisible();
   });
 
   /**

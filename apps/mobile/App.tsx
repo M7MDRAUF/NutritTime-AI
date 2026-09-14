@@ -29,9 +29,14 @@ import { Inter_800ExtraBold } from '@expo-google-fonts/inter/800ExtraBold';
 import { ThemeProvider, useTheme } from './src/shared/theme/ThemeProvider.js';
 import { ApiProvider } from './src/infrastructure/api/ApiProvider.js';
 import { RootNavigator } from './src/navigation/RootNavigator.js';
+import type { BootPhase } from './src/navigation/routes.js';
 import { buildNavigationTheme } from './src/navigation/navigationTheme.js';
 import { linking } from './src/navigation/linking.js';
 import { registerScreens } from './src/features/register.js';
+import { SplashSurface } from './src/features/onboarding/SplashSurface.js';
+import { StorageProvider } from './src/state/StorageProvider.js';
+import { preferencesStore } from './src/state/preferences/index.js';
+import { onboardingStore } from './src/state/onboarding/index.js';
 
 /**
  * The four faces the type scale actually names, and no more.
@@ -57,7 +62,13 @@ const FONTS = {
  * Split from `App` only so it can call `useTheme()` — a hook cannot read a provider its own
  * component renders.
  */
-function NavigationRoot({ fontsReady }: { readonly fontsReady: boolean }): ReactNode {
+function NavigationRoot({
+  fontsReady,
+  phase,
+}: {
+  readonly fontsReady: boolean;
+  readonly phase: BootPhase;
+}): ReactNode {
   const theme = useTheme();
   // Memoised because `NavigationContainer` re-renders the whole tree when `theme` changes
   // identity, and a fresh object every render would make that every render.
@@ -66,12 +77,15 @@ function NavigationRoot({ fontsReady }: { readonly fontsReady: boolean }): React
   return (
     <NavigationContainer theme={navigationTheme} linking={linking}>
       {/*
-        `hydrating` until the fonts resolve, then `app`. T-14-06 replaces the second half of this
-        with the real phase, derived from storage hydration and the onboarding store (TSD §6.1);
-        the font gate stays and is ANDed with it. `app` rather than a third state because P12's own
-        verification is that an empty Home renders in both themes.
+        **The real boot phase (T-14-06), ANDed with the font gate.**
+
+        `StorageProvider` supplies `onboarding` or `app` from what hydration actually found; the
+        font gate holds it at `hydrating` until the faces resolve. Both have to be satisfied,
+        because `hydrating` is the one phase in which the protected screens are not in the
+        navigator at all — which is what makes FR-001's guarantee structural rather than a
+        redirect over a mounted tree.
       */}
-      <RootNavigator phase={fontsReady ? 'app' : 'hydrating'} />
+      <RootNavigator phase={fontsReady ? phase : 'hydrating'} />
     </NavigationContainer>
   );
 }
@@ -86,6 +100,41 @@ function NavigationRoot({ fontsReady }: { readonly fontsReady: boolean }): React
  * simply being registered in time.
  */
 registerScreens();
+
+/**
+ * The boot phase, derived from the LIVE onboarding store.
+ *
+ * **This used to read the hydration snapshot, and the first end-to-end run found out why that was
+ * wrong.** A snapshot is read once at boot and never updated, so dispatching `onboarding/completed`
+ * moved the store and left the phase behind: pressing Save at the end of setup did nothing visible
+ * until the app was restarted. Two specs failed on it — "completes the journey and lands in the
+ * app" and "the choices survive a reload" — and no dom test had covered it, because none of them
+ * renders the navigator.
+ *
+ * So the phase is computed here, inside the store's provider, from the value that changes.
+ *
+ * An `unavailable` onboarding key means the store was created from its fallback, `completed:
+ * false` — which is the conservative reading, and the right one: showing setup to someone who has
+ * already done it costs them a few taps, while skipping it for someone who has not leaves the app
+ * with no diet, no allergies and no meal times.
+ */
+/**
+ * What renders while the one `multiGet` is in flight.
+ *
+ * The navigator cannot be used for it — it lives inside `StorageProvider`, which is what is waiting
+ * — so this is the phase's own surface. Deliberately the minimum: a coloured ground and the app's
+ * name, with no spinner, because hydration is a local read that finishes in milliseconds and a
+ * spinner that flashes for one frame reads as a fault.
+ */
+function HydratingSplash(): ReactNode {
+  return <SplashSurface />;
+}
+
+function PhasedNavigation({ fontsReady }: { readonly fontsReady: boolean }): ReactNode {
+  const onboarding = onboardingStore.useValue();
+  const phase: BootPhase = onboarding.completed ? 'app' : 'onboarding';
+  return <NavigationRoot fontsReady={fontsReady} phase={phase} />;
+}
 
 export default function App(): ReactNode {
   const [fontsLoaded, fontError] = useFonts(FONTS);
@@ -112,7 +161,29 @@ export default function App(): ReactNode {
         */}
         <ApiProvider>
           <StatusBar style="auto" />
-          <NavigationRoot fontsReady={fontsReady} />
+          {/*
+            Hydration once, above the stores, because TSD §6.1 requires ONE `multiGet` across all
+            six keys — not one per store. Each store then creates itself from its own slice.
+
+            The store providers sit inside it and outside the navigator: a screen in any phase can
+            read preferences, and the `preferences` store is what `DietarySetupScreen` writes during
+            `onboarding`, before the app phase exists.
+          */}
+          {/*
+            `fallback` is `Splash`, and without it this phase was unreachable: `StorageProvider`
+            rendered NOTHING until the snapshot resolved, and the navigator that holds `Splash` is
+            inside it. So `hydrating` only ever came from the font gate, while PRD §8.1 opens
+            "Splash hydrates persisted state" and TSD §6.1 ties the phase to the `multiGet`.
+            FR-001's guarantee was stronger than specified rather than weaker — nothing rendered at
+            all — but the screen the document names never appeared.
+          */}
+          <StorageProvider fallback={<HydratingSplash />}>
+            <preferencesStore.Provider>
+              <onboardingStore.Provider>
+                <PhasedNavigation fontsReady={fontsReady} />
+              </onboardingStore.Provider>
+            </preferencesStore.Provider>
+          </StorageProvider>
         </ApiProvider>
       </ThemeProvider>
     </SafeAreaProvider>

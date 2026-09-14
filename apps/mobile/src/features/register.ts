@@ -25,6 +25,9 @@
 
 import { registerScreen } from '../navigation/registry.js';
 import { ExploreScreen } from './catalog/ExploreScreen.js';
+import { HomeScreenWithFocus } from './home/HomeScreen.js';
+import { OnboardingScreen } from './onboarding/OnboardingScreen.js';
+import { DietarySetupScreen } from './onboarding/DietarySetupScreen.js';
 
 /**
  * Register every screen this build has.
@@ -32,9 +35,14 @@ import { ExploreScreen } from './catalog/ExploreScreen.js';
  * Idempotent: `registerScreen` returns early when the same component is registered twice, so
  * calling this from `App.tsx` and again from a test harness notifies no listener the second time.
  *
- * The nine routes that are not here yet render `PlaceholderScreen`, which is the registry working
- * as designed rather than a gap — P14 to P21 fill them in, and each one is a single line.
+ * The routes that are not here yet render `PlaceholderScreen`, which is the registry working as
+ * designed rather than a gap — P15 to P21 fill them in, and each one is a single line.
  */
 export function registerScreens(): void {
+  registerScreen('Onboarding', OnboardingScreen);
+  registerScreen('DietarySetup', DietarySetupScreen);
+  // The focus-aware wrapper, not the bare screen: the period has to be re-read when the user
+  // comes back to this tab (M-6).
+  registerScreen('Home', HomeScreenWithFocus);
   registerScreen('Explore', ExploreScreen);
 }

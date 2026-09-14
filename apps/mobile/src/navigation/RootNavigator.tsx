@@ -50,7 +50,21 @@ export function RootNavigator({ phase }: RootNavigatorProps): ReactNode {
       ) : phase === 'onboarding' ? (
         // Gestures off (TSD §6.1): onboarding is a sequence with a validated end, and a swipe
         // back out of dietary setup would land the user in the app with no preferences stored.
-        <Stack.Group screenOptions={{ gestureEnabled: false }}>
+        /**
+         * `navigationKey` is load-bearing, and P14's first end-to-end run is what proved it.
+         *
+         * **`DietarySetup` exists in BOTH this phase and the next one** — it is a gate during
+         * onboarding and a detour from Settings afterwards. Without distinct keys, React Navigation
+         * sees the same route name on both sides of the phase change and KEEPS it in the stack: so
+         * completing onboarding advanced the phase, wrote `{completed: true}`, swapped the screen
+         * set — and left the user looking at the setup form they had just finished.
+         *
+         * The keys make the two declarations different screens, so the onboarding route is dropped
+         * from navigation state when the phase advances. That is TSD §6.1's "the phase determines
+         * which screens exist" holding from the other direction: a route that survives the change
+         * is a redirect-on-a-mounted-tree wearing a different hat.
+         */
+        <Stack.Group navigationKey="onboarding" screenOptions={{ gestureEnabled: false }}>
           <Stack.Screen name="Onboarding" component={screenFor('Onboarding')} />
           <Stack.Screen name="DietarySetup" component={screenFor('DietarySetup')} />
         </Stack.Group>
@@ -66,8 +80,15 @@ export function RootNavigator({ phase }: RootNavigatorProps): ReactNode {
           />
           <Stack.Screen name="MealForm" component={screenFor('MealForm')} />
           {/* Reachable again from Settings, which is why `DietarySetupParams` carries
-              `returnTo`. Gestures stay on here: this visit is a detour, not a gate. */}
-          <Stack.Screen name="DietarySetup" component={screenFor('DietarySetup')} />
+              `returnTo`. Gestures stay on here: this visit is a detour, not a gate.
+
+              `navigationKey="app"` pairs with the onboarding group's key above — see the note
+              there for why the two must differ. */}
+          <Stack.Screen
+            name="DietarySetup"
+            navigationKey="app"
+            component={screenFor('DietarySetup')}
+          />
         </>
       )}
     </Stack.Navigator>
