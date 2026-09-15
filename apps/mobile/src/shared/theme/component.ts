@@ -266,7 +266,11 @@ export function buildComponentTokens(color: SemanticTokens): ComponentTokens {
       borderColorError: color.border.danger,
       borderWidth: stroke.hairline,
       // Focus thickens the border rather than replacing it: the field must not appear to move or
-      // resize when it gains focus.
+      // resize when it gains focus. These two widths are the app's ONLY rendered focus indicator —
+      // `focusRing` below has no consumer — so what matters is the relation between them and not
+      // either value: equal widths leave a focused field looking exactly like an unfocused one.
+      // `focus-indicator.test.ts` pins the relation, which is what the two `.dom.test.tsx`
+      // assertions comparing a render to its own token cannot.
       borderWidthFocused: stroke.regular,
       errorText: color.status.danger,
       errorGap: space.xs,
@@ -387,7 +391,12 @@ export function buildComponentTokens(color: SemanticTokens): ComponentTokens {
     focusRing: {
       color: color.border.focus,
       // The generator's 3 px ring geometry, adopted. Its 12.5%-alpha colour is not: at that alpha
-      // the ring lands far below 1.4.11's 3:1, so it is drawn at full `border.focus`.
+      // the ring lands far below 1.4.11's 3:1, so the ring is specified at full `border.focus`.
+      //
+      // **Specified, and not drawn: this group has no consumer.** The focus state the app renders
+      // is `field.borderWidthFocused`, not this ring, and `DECISIONS.md` 5's reason for rejecting
+      // `outline: none` — that `focusRing` "is always visible and 3:1" — is therefore about a ring
+      // nothing paints. `focus-indicator.test.ts` holds the measurement and the verdict.
       width: stroke.focus,
       offset: stroke.regular,
       // One step above the element's own radius, so the ring sits concentric with the corner it

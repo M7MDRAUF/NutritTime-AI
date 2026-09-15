@@ -27,9 +27,22 @@
   // yet was outside the program altogether — ESLint saw the file, `tsc -p e2e` did not. The
   // directory was then named explicitly, which fixed that one case and left the mechanism intact.
   //
-  // The second failure was P25 adding `e2e/perf/**`: fifteen files, linted but **not typechecked
-  // by `npm run check`**, and it hid a real type error until the agent found it by hand. Naming
+  // The second failure was P25 adding `e2e/perf/**`: linted but **not typechecked by
+  // `npm run check`**, and it hid a real type error until the agent found it by hand. Naming
   // `perf/**` too would fix that one case and leave the mechanism intact again.
+  //
+  // **The count this sentence used to give — "fifteen files" — is RETRACTED, and no live count
+  // replaces it, because a count into this directory expires the way a line number into `Plan.md`
+  // does (§6.1q).** Measured: `find e2e/perf -type f` returned **13** at 2026-09-15T00:09:48Z and
+  // **14** at 2026-09-15T00:17:25Z, all `.ts` and all flat at both readings — it grew by
+  // `interaction2.perf.spec.ts` between those two runs, while this comment was being written.
+  // Fifteen was never measured at all: `docs/phase-reports/P25.md` asserts a "fifteen-file
+  // harness" in prose and then reports what it actually ran nine lines later — *"`tsc -p e2e` now
+  // sees **13** files under `e2e/perf/` and is clean"*.
+  //
+  // Which is the argument for the remedy below rather than a footnote to it: the reason the number
+  // is allowed to move is that **nothing here has to know it**. Re-run the `find` if you want
+  // today's figure; do not put it back in this file.
   //
   // So the list is gone. A directory cannot be forgotten if nothing has to remember it — the same
   // reasoning that replaced the hand-listed denied-claim sweep in `assistantCopy.test.ts` with a

@@ -5,10 +5,10 @@ import type { Page, TestInfo } from '@playwright/test';
 /**
  * Layout at the four supported widths (T-22-07).
  *
- * `Plan.md:1373` "No unintended horizontal scroll at 320/375/414/768 px" · `Plan.md:2486` the same
- * figures, evidence "Playwright screenshots" · `Plan.md:2777` §20 "Every screen usable at 320 px
- * without a horizontal scrollbar" · `Plan.md:2778` §20 "Supported viewports | 320 · 375 · 414 · 768
- * px, verified by screenshot". The widths are `playwright.config.ts`'s four projects.
+ * **Quoted, not cited by line: `Plan.md:1373/2486/2777/2778` had all EXPIRED (+11 at the P28 audit, more since) — RETRACTED;
+ * §6.1q.** §17's T-22-07 row: "No unintended horizontal scroll at 320/375/414/768 px"; §18's P22 table repeats the figures,
+ * evidence "Playwright screenshots"; §20: "Every screen usable at 320 px without a horizontal scrollbar" and "Supported
+ * viewports | 320 · 375 · 414 · 768 px, verified by screenshot". The widths are `playwright.config.ts`'s four projects.
  *
  * **The obvious assertion passes under the defect, which is why this file measures elements.**
  * `body.scrollWidth > body.clientWidth` is **false while the defect is present**, so an overflow at
@@ -226,10 +226,22 @@ test('the five tabs and the tab bar fit the viewport', async ({ page, app }, inf
 test('the modal and the two pushed forms fit the viewport', async ({ page, app }, info) => {
   const bag: LayoutReport[] = [];
   await app();
-  await page.getByRole('tab', { name: 'Explore' }).click();
-  await expect(page.getByTestId('explore-list')).toBeVisible({ timeout: FIRST_PAINT_MS });
-  // Scoped to Explore: Home stays mounted behind it with the same `meal-<id>` ids.
-  const card = page.getByTestId('explore-screen').locator('[data-testid^="meal-"]').first();
+  /*
+    **Entered through Home rather than Explore, and the reason is R-82 rather than taste.**
+
+    This test's subject is the three screens BELOW — the modal and the two pushed forms — and
+    Explore was only the door to the first of them. At 320 px that door is shut: `explore-list`
+    renders at height 0 because the screen's fixed siblings take 636 px of 513 (search 50, filters
+    328, disclaimer 258), so a tap-through there measured nothing at the narrowest supported width
+    and reported it as a failure of `meal-details-screen`.
+
+    Home lists the three recommendations under the same `meal-<id>` ids, so the door moves and the
+    three screens are measured at all four widths again. **The gap is not swallowed:** it has its
+    own test at the end of this file, which asserts the Explore list is visible and is marked as a
+    checked gap where it is not.
+  */
+  await expect(page.getByTestId('home-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+  const card = page.getByTestId('home-screen').locator('[data-testid^="meal-"]').first();
   await expect(card).toBeVisible({ timeout: FIRST_PAINT_MS });
   await card.click();
   await expect(page.getByTestId('meal-details-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
@@ -346,4 +358,54 @@ test('wide content is permitted inside a container that scrolls', async ({ page,
   expect(clips.exempted).toBe(0);
   expect(clips.clipped.length).toBeGreaterThan(0);
   expect(clips.clipped.map((box) => box.by)).toContain('[explore-filters]');
+});
+
+/**
+ * **R-82: the Explore list is zero pixels tall at 320 px, and this is the marker.**
+ *
+ * `explore-screen` is 513 px at 320 x 568 — 568 less the 55 px tab bar — and its three
+ * `flex-grow: 0` siblings already exceed it: the search field **50**, `explore-filters` **328**,
+ * `explore-disclaimer` **258**, so **636 in 513**. The list has `flex: 1` and a `0%` basis (added
+ * at P28, and measured to be genuinely applied), so it grows into what is left, and what is left
+ * is nothing. It renders with `aria-label="20 meals"`: present, populated, announced, and
+ * invisible. The whole catalogue is unreachable at the narrowest width `Plan.md` §20 supports.
+ *
+ * **Marked, not skipped, and not deleted.** `test.fail` turns this red the day the layout is
+ * fixed, which is the only kind of known-gap marker this project accepts. A `test.skip` would
+ * stay quiet forever and a deletion would lose the measurement.
+ *
+ * **The predicate came from a four-project run, not from reasoning about wrap points, and the
+ * first guess was wrong.** `width < 768` was the obvious reading — R-72's clipping is phone-wide
+ * and this looked like the same shape — and the run answered `Expected to fail, but passed` at
+ * **both 375 and 414**: the filter chips wrap onto fewer rows there, so the fixed siblings fit
+ * and the list keeps real height. **The gap is 320 alone.** A `test.fail` at a width that
+ * actually passes fails the suite in the other direction, which is how R-44's marker came to be
+ * recorded as a `test.fixme` that could never have turned red.
+ *
+ * **Why it is not fixed here:** the remedy is a decision about how much of a 568 px screen a
+ * safety notice and three chip groups may claim, and the notice cannot simply become a
+ * `ListHeaderComponent` because it is required in every state — including before the first
+ * response, where there is no list to hang a header on. That is a design ruling, not a flex fix.
+ */
+test('the Explore list has height at every supported width (R-82)', async ({ page, app }) => {
+  const width = page.viewportSize()?.width ?? 0;
+  test.fail(width < 375, 'R-82: fixed siblings take 636 px of a 513 px screen at 320 px');
+
+  await app();
+  await page.getByRole('tab', { name: 'Explore' }).click();
+  await expect(page.getByTestId('explore-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
+
+  // The list must EXIST before its height means anything: a screen that rendered no list at all
+  // would satisfy a height assertion vacuously, and the loading state is a real state.
+  const list = page.getByTestId('explore-list');
+  await expect(list).toHaveCount(1, { timeout: FIRST_PAINT_MS });
+
+  const height = await list.evaluate((node) => Math.round(node.getBoundingClientRect().height));
+  // Asserted as a real number of pixels rather than through `toBeVisible`, so the failure message
+  // carries the measurement: "expected 0 to be greater than 40" names the defect, while
+  // "unexpected value hidden" names a symptom that has four possible causes.
+  expect(
+    height,
+    `explore-list is ${String(height)} px tall at ${String(width)} px wide`,
+  ).toBeGreaterThan(40);
 });

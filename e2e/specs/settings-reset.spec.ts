@@ -599,7 +599,12 @@ test.describe('each confirmed clear removes only what it names', () => {
     await expect(page.getByTestId('saved-screen')).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(page.getByTestId('saved-custom-empty')).toBeVisible({ timeout: FIRST_PAINT_MS });
     await expect(
-      page.getByTestId('saved-custom').getByTestId(`saved-recipe-${CUSTOM_MEAL.id}`),
+      // **Rescoped at P28, and this one mattered more than the others.** It is a
+      // `toHaveCount(0)`, so the stale `saved-custom` scope did not fail — it **succeeded for
+      // the wrong reason**, matching nothing because the rows became cells of the root list
+      // rather than because the recipe was cleared. The thing this assertion guards is that a
+      // cleared recipe is really gone.
+      page.getByTestId('saved-screen').getByTestId(`saved-recipe-${CUSTOM_MEAL.id}`),
     ).toHaveCount(0);
     await expect(page.getByTestId('saved-favorites-empty')).toHaveCount(0);
 

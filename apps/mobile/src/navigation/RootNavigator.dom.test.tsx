@@ -17,8 +17,10 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
 import type { ReactNode } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import type { NavigationContainerRefWithCurrent } from '@react-navigation/native';
 import { ThemeProvider } from '../shared/theme/ThemeProvider.js';
 import { StorageProvider } from '../state/StorageProvider.js';
 import { uiStore } from '../state/ui/index.js';
@@ -27,9 +29,10 @@ import type { MemoryDriver } from '../infrastructure/storage/__fixtures__/memory
 import { STORAGE_KEYS, STORAGE_SCHEMA_VERSION } from '../infrastructure/storage/definitions.js';
 import type { UiTab } from '../infrastructure/storage/definitions.js';
 import { RootNavigator } from './RootNavigator.js';
-import { ROUTE_PATHS, linking } from './linking.js';
+import { NON_LINKABLE_SCREENS, ROUTE_PATHS, linking } from './linking.js';
+import type { LinkableScreenName } from './linking.js';
 import { SCREEN_ROUTE_NAMES } from './routes.js';
-import type { BootPhase, ScreenRouteName } from './routes.js';
+import type { BootPhase, RootParamList, ScreenRouteName } from './routes.js';
 import { renderToDom } from './testHarness.js';
 import type { DomRender } from './testHarness.js';
 
@@ -54,12 +57,23 @@ vi.mock('react-native-safe-area-context', async () => {
  */
 const CLOCK = () => '2026-09-13T12:00:00.000Z';
 
-function App({ phase }: { readonly phase: BootPhase }): ReactNode {
+function App({
+  phase,
+  navigationRef,
+}: {
+  readonly phase: BootPhase;
+  /**
+   * Only the landmark section passes one. A navigation from outside the tree is how "two screens
+   * are mounted at once" is reached without a screen registry to click through — nothing is
+   * registered here, so the placeholders have no links.
+   */
+  readonly navigationRef?: NavigationContainerRefWithCurrent<RootParamList>;
+}): ReactNode {
   return (
     <ThemeProvider mode="light" deviceScheme="light" fontScale={1}>
       <StorageProvider runtime={{ driver: memoryDriver({}), now: CLOCK }}>
         <uiStore.Provider>
-          <NavigationContainer>
+          <NavigationContainer ref={navigationRef}>
             <RootNavigator phase={phase} />
           </NavigationContainer>
         </uiStore.Provider>
@@ -134,6 +148,97 @@ describe('the root navigator', () => {
 
     expect(tabNames(view.host)).toEqual(['Home', 'Explore', 'Assistant', 'Saved', 'Settings']);
     expect(view.text()).not.toContain('Splash is not available yet');
+    await view.unmount();
+  });
+});
+
+/**
+ * **R-77 and `Plan.md` §20's `Semantic HTML` row, which asks for "one `main` landmark".**
+ *
+ * Every assertion below is a COUNT rather than a presence check, and that is the whole design.
+ * The built export had zero `role="main"`; the obvious repair — an ungated `screenLayout` — was
+ * measured at **1** landmark at rest, **2** with `MealDetails` pushed over the tabs and **3** with
+ * `MealForm` above that, because a native stack keeps the screens below the top one mounted. A
+ * `toBeTruthy()` on the landmark passes all three. So does a wrapper placed outside
+ * `Stack.Navigator`, which is one landmark forever and is also the entire viewport.
+ *
+ * `LANDMARK` is written out rather than read from the component, per BRIEF §6.1g: a selector
+ * derived from `ScreenLandmark` would match whatever that file happens to say.
+ */
+const LANDMARK = '[role="main"]';
+
+function landmarks(host: HTMLElement): readonly HTMLElement[] {
+  return [...host.querySelectorAll(LANDMARK)].filter(
+    (el): el is HTMLElement => el instanceof HTMLElement,
+  );
+}
+
+/** The one landmark, or a failure naming how many there actually were. */
+function theLandmark(host: HTMLElement): HTMLElement {
+  const found = landmarks(host);
+  expect(found.length, `expected exactly one ${LANDMARK}`).toBe(1);
+  const only = found[0];
+  if (only === undefined) {
+    // Unreachable past the assertion above; `noUncheckedIndexedAccess` wants it said anyway, and
+    // a throw is preferable to the cast that would otherwise hide a real zero.
+    throw new Error(`no ${LANDMARK} in the document`);
+  }
+  return only;
+}
+
+describe('the main landmark', () => {
+  // Every phase, because a phase that renders a different screen set is a different document and
+  // the rule is one landmark per document, not one per happy path.
+  for (const phase of ['hydrating', 'onboarding', 'app'] as const) {
+    it(`is present exactly once in the ${phase} phase`, async () => {
+      const view = await renderToDom(<App phase={phase} />);
+
+      // Both halves: react-native-web resolves the role to an ARIA attribute AND upgrades the
+      // `div` to a `main` element, and losing either is a regression a screen reader would feel.
+      expect(theLandmark(view.host).tagName).toBe('MAIN');
+      expect(view.host.querySelectorAll('main')).toHaveLength(1);
+      await view.unmount();
+    });
+  }
+
+  it('encloses the screen the user is on', async () => {
+    const view = await renderToDom(<App phase="app" />);
+
+    expect(theLandmark(view.host).textContent).toContain(placeholderFor('Home'));
+    await view.unmount();
+  });
+
+  /**
+   * **The case the count exists for.** Two pushes leave three stack routes mounted — asserted
+   * here, so this test cannot pass by the pushes silently failing — and the landmark must still be
+   * one, must have MOVED to the focused screen, and must no longer contain the tab bar. The tab
+   * bar is asserted still mounted for the same reason: "not inside the landmark" would otherwise
+   * be satisfied by the tabs having unmounted.
+   */
+  it('stays a single landmark, on the focused screen, with two screens still mounted beneath', async () => {
+    const ref = createNavigationContainerRef<RootParamList>();
+    const view = await renderToDom(<App phase="app" navigationRef={ref} />);
+    expect(theLandmark(view.host).textContent).toContain(placeholderFor('Home'));
+
+    await act(async () => {
+      ref.navigate('MealDetails', { mealId: 'dessert-42', origin: 'home' });
+    });
+    await act(async () => {
+      ref.navigate('MealForm', { mealId: 'custom-7' });
+    });
+
+    expect(ref.getRootState()?.routes.map((route) => route.name)).toEqual([
+      'Tabs',
+      'MealDetails',
+      'MealForm',
+    ]);
+    const landmark = theLandmark(view.host);
+    expect(landmark.textContent).toContain(placeholderFor('MealForm'));
+    expect(landmark.textContent).not.toContain(placeholderFor('Home'));
+
+    const tabBar = view.host.querySelector('[role="tablist"]');
+    expect(tabBar, 'the tabs unmounted, so "outside the landmark" proves nothing').not.toBeNull();
+    expect(landmark.contains(tabBar)).toBe(false);
     await view.unmount();
   });
 });
@@ -226,7 +331,6 @@ interface DeepLinkCase {
  * than never added.
  */
 const DEEP_LINKS = {
-  Splash: { url: '/splash', slug: 'splash', phase: 'hydrating', decoy: 'settings' },
   Onboarding: { url: '/onboarding', slug: 'onboarding', phase: 'onboarding', decoy: 'settings' },
   DietarySetup: { url: '/dietary-setup', slug: 'dietary-setup', phase: 'app', decoy: 'settings' },
   Home: { url: '/home', slug: 'home', phase: 'app', decoy: 'settings' },
@@ -241,7 +345,7 @@ const DEEP_LINKS = {
     decoy: 'saved',
   },
   Settings: { url: '/settings', slug: 'settings', phase: 'app', decoy: 'saved' },
-} as const satisfies Record<ScreenRouteName, DeepLinkCase>;
+} as const satisfies Record<LinkableScreenName, DeepLinkCase>;
 
 /** The placeholder names its route, so "which screen opened" is readable rather than inferred. */
 function placeholderFor(name: ScreenRouteName): string {
@@ -260,11 +364,26 @@ describe('a cold URL', () => {
     window.history.replaceState({}, '', '/');
   });
 
-  it('covers every screen in the route table', () => {
-    expect(Object.keys(DEEP_LINKS).sort()).toEqual([...SCREEN_ROUTE_NAMES].sort());
+  it('covers every LINKABLE screen in the route table', () => {
+    /**
+     * **Every screen minus the non-linkable ones, so the table still cannot lose a row silently.**
+     *
+     * `Splash` left this table at P28 because it is not a destination: making `/splash` restore was
+     * measured and it **strands** the user — zero interactive elements, no tab bar, nothing that
+     * advances it, and an `alert` role announcing a load that is not happening. The row that used
+     * to be here was green only under `phase: 'hydrating'`, which `App.tsx` never passes, so it
+     * asserted a path no user could take.
+     *
+     * The exclusion is not restated here: `linking.dom.test.ts` pins that it is exactly
+     * `['Splash']`, and a second copy of that list is how two lists come to disagree.
+     */
+    const linkable = SCREEN_ROUTE_NAMES.filter(
+      (name) => !(NON_LINKABLE_SCREENS as readonly string[]).includes(name),
+    );
+    expect(Object.keys(DEEP_LINKS).sort()).toEqual([...linkable].sort());
   });
 
-  for (const name of SCREEN_ROUTE_NAMES) {
+  for (const name of Object.keys(DEEP_LINKS) as readonly LinkableScreenName[]) {
     const { url, slug, phase, decoy } = DEEP_LINKS[name];
 
     // One case per path rather than one loop inside one `it`, so a single broken `ROUTE_PATHS`

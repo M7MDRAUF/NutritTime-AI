@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
+import { MEAL_QUERY_MAX_LENGTH } from '@nutritime/contracts';
 import { seededCatalog } from '@nutritime/catalog';
 import { queryMeals } from '@nutritime/domain';
 import { createApp } from '../app.js';
@@ -199,6 +200,41 @@ describe('query validation', () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('invalid_request');
     expect(Object.keys(response.body.error.details ?? {})).toContain(parameter);
+  });
+
+  it('accepts a query at `MEAL_QUERY_MAX_LENGTH` and rejects one character more', async () => {
+    /**
+     * **The enforcement half of the search ceiling, asserted on the wire (R-74, R-78).**
+     *
+     * Until P28 the figure 100 was declared three times — here, in
+     * `apps/mobile/src/shared/components/SearchField.tsx`, and in TSD §5.4 — and the only thing
+     * pinning them together was a regex in the mobile suite that read *this file as text*. That
+     * compared two literals; it never ran the route, so `.max(99)` and `.max(101)` were both
+     * invisible to it. The figure now lives once, in `packages/contracts`, and what is left to
+     * prove is that this route actually enforces it.
+     *
+     * **The pair is the test.** A route bounding at one less accepts nothing at the ceiling and
+     * passes the rejection; a route bounding at one more accepts both. Neither survives both
+     * assertions, and that is the off-by-one an off-by-one is most likely to be.
+     *
+     * The accepted case asserts **200 with a real body** rather than merely a non-400: a ceiling
+     * enforced by returning an error page for every long query would also avoid the 400.
+     */
+    const atCeiling = 'a'.repeat(MEAL_QUERY_MAX_LENGTH);
+    const accepted = await get(`/api/v1/meals?query=${atCeiling}`);
+    expect(accepted.status).toBe(200);
+    // No meal is named a hundred a's, so the honest answer is an empty page of a known total -
+    // 200 with `meals: []`, never a 404 (Plan C-02: an empty set answers a narrow question).
+    expect(accepted.body.meals).toStrictEqual([]);
+    expect(accepted.body.total).toBe(0);
+
+    const refused = await get(`/api/v1/meals?query=${atCeiling}a`);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('invalid_request');
+    expect(Object.keys(refused.body.error.details ?? {})).toContain('query');
+    // And the refusal still does not echo the submitted value, which is the rule the whole details
+    // shape exists for (TSD §3.5) - a 100-character echo would be the easiest place to forget it.
+    expect(JSON.stringify(refused.body)).not.toContain(atCeiling);
   });
 
   it('ignores an unknown parameter rather than rejecting it', async () => {

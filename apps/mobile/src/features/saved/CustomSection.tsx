@@ -6,6 +6,19 @@
  * mounts, so there is no request to wait on and no server to be unreachable from. `SavedScreen.tsx`'s
  * docstring carries the full reasoning.
  *
+ * **This file no longer renders a section; it renders one section's HEADER and one of its ROWS**
+ * (T-22-08). `SavedScreen` owns a single `SectionList`, so the parts of a section arrive through
+ * three separate callbacks rather than one subtree, and what used to be a wrapping `View` is now the
+ * header alone. Two consequences are worth stating because they are easy to get wrong:
+ *
+ *  - **The rows are siblings of the header, not children of it.** `saved-custom` therefore contains
+ *    the heading and the notices and none of the recipes. Nothing asserts containment and nothing
+ *    should: the row's own `testID` is how a row is found.
+ *  - **The empty state lives in the HEADER, with the create affordance, not in the footer.** A
+ *    windowed list renders its footer last and may not reach it at all while the first section is
+ *    long; a state whose whole job is to be seen cannot depend on that. It is also where it already
+ *    was in document order — immediately after the create affordance.
+ *
  * Two states here are the ones a user can be hurt by, and both are silent without this file:
  *
  *  - **`entryStatus === 'unavailable'`** — the key could not be read, so `createStore` refuses to
@@ -23,10 +36,14 @@
  * mounts with the section, and `StatusMessage`'s `role="alert"` is spoken on that insertion rather
  * than on every render. `saved-custom-full` is left silent on purpose - it is drawn whenever the
  * section is drawn for a user at the bound, so announcing it would interrupt on every visit to
- * Saved and report nothing that arrived. One caveat, recorded rather than papered over:
- * `SavedScreen` renders this section and `FavoritesSection` at two sibling positions whose order
- * the `section` route param chooses, with no `key`, so a URL that changes `section` remounts both
- * and re-announces.
+ * Saved and report nothing that arrived.
+ *
+ * **The caveat that used to be here is gone, and this is the replacement.** It said a `section`
+ * param change remounts both sections and re-announces. It no longer can: the header is a keyed
+ * cell of the `SectionList` (`'custom:header'`), so swapping the two sections reorders keyed
+ * children and React moves the node instead of rebuilding it. What HAS replaced it is narrower and
+ * is recorded in `SavedScreen.tsx`: a header far enough down a long first section is not mounted at
+ * the first paint, so its alert is spoken when the user scrolls to it rather than on arrival.
  */
 
 import type { ReactNode } from 'react';
@@ -43,23 +60,52 @@ import type { EntryStatus } from '../../infrastructure/storage/repository.js';
 import { MAX_CUSTOM_MEALS } from '../../state/customMeals/index.js';
 import { SavedMealRow } from './SavedMealRow.js';
 
-export interface CustomSectionProps {
-  readonly meals: readonly CustomMeal[];
+/**
+ * One row of the custom section.
+ *
+ * Tagged, and the tag is not decoration: both sections feed ONE `SectionList`, so the two row types
+ * meet in a single `renderItem` and have to be told apart by the type system rather than by shape.
+ * The index travels with the record for the key below.
+ */
+export interface CustomRow {
+  readonly kind: 'recipe';
+  readonly index: number;
+  readonly meal: CustomMeal;
+}
+
+export function customRows(meals: readonly CustomMeal[]): readonly CustomRow[] {
+  return meals.map((meal, index) => ({ kind: 'recipe', index, meal }));
+}
+
+/**
+ * **The id alone is not a sufficient key here.** `favorites` holds **ids**, so `['a','a']` and
+ * `['a']` denote the same set and its `create` de-duplicates; `customMeals` holds **records**, so
+ * two entries under one id are two meals the user authored and the store keeps both deliberately —
+ * de-duplicating at hydration would delete one silently, which is P14's defect class. The
+ * duplicate-key cost lands here instead, and it is the renderer's to pay. Nothing is de-duplicated
+ * for display either: hiding a meal the user wrote to keep React quiet is the same data loss, one
+ * layer up.
+ *
+ * Index first, because an id may contain a colon and `${id}:${index}` could then collide.
+ */
+export function customRowKey(row: CustomRow): string {
+  return `${String(row.index)}:${row.meal.id}`;
+}
+
+export interface CustomSectionHeaderProps {
+  /** How many recipes the section holds — the empty state's only input. */
+  readonly count: number;
   readonly atBound: boolean;
   readonly entryStatus: EntryStatus;
-  readonly allergies: readonly string[];
-  readonly onOpen: (mealId: string) => void;
   readonly onCreate: () => void;
 }
 
-export function CustomSection({
-  meals,
+export function CustomSectionHeader({
+  count,
   atBound,
   entryStatus,
-  allergies,
-  onOpen,
   onCreate,
-}: CustomSectionProps): ReactNode {
+}: CustomSectionHeaderProps): ReactNode {
   const { components } = useTheme();
   const unreadable = entryStatus === 'unavailable';
 
@@ -127,36 +173,30 @@ export function CustomSection({
       )}
 
       {/* Suppressed under `unavailable`, for the reason given in `FavoritesSection`. */}
-      {meals.length === 0 ? (
-        unreadable ? null : (
-          <EmptyState
-            testID="saved-custom-empty"
-            title="You have not written any recipes yet"
-            description="A meal you add here is yours: it stays on this device and is never sent anywhere."
-          />
-        )
-      ) : (
-        meals.map((meal, index) => (
-          /**
-           * **The id alone is not a sufficient key here.** `favorites` holds **ids**, so `['a','a']`
-           * and `['a']` denote the same set and its `create` de-duplicates; `customMeals` holds
-           * **records**, so two entries under one id are two meals the user authored and the store
-           * keeps both deliberately — de-duplicating at hydration would delete one silently, which
-           * is P14's defect class. The duplicate-key cost lands here instead, and it is the
-           * renderer's to pay. Nothing is de-duplicated for display either: hiding a meal the user
-           * wrote to keep React quiet is the same data loss, one layer up.
-           *
-           * Index first, because an id may contain a colon and `${id}:${index}` could then collide.
-           */
-          <SavedMealRow
-            key={`${String(index)}:${meal.id}`}
-            meal={meal}
-            allergies={allergies}
-            testID={`saved-recipe-${meal.id}`}
-            onOpen={onOpen}
-          />
-        ))
-      )}
+      {count === 0 && !unreadable ? (
+        <EmptyState
+          testID="saved-custom-empty"
+          title="You have not written any recipes yet"
+          description="A meal you add here is yours: it stays on this device and is never sent anywhere."
+        />
+      ) : null}
     </View>
+  );
+}
+
+export interface CustomRowViewProps {
+  readonly row: CustomRow;
+  readonly allergies: readonly string[];
+  readonly onOpen: (mealId: string) => void;
+}
+
+export function CustomRowView({ row, allergies, onOpen }: CustomRowViewProps): ReactNode {
+  return (
+    <SavedMealRow
+      meal={row.meal}
+      allergies={allergies}
+      testID={`saved-recipe-${row.meal.id}`}
+      onOpen={onOpen}
+    />
   );
 }

@@ -17,11 +17,30 @@ import type { RouteName } from './routes.js';
 export type ApiClientFailureKind = 'server' | 'unreachable' | 'timeout' | 'unreadable';
 
 /**
- * **Fixed. Local. The only strings a user ever sees from this client.**
+ * **Fixed. Local. And a user sees NONE of them — the count is zero, not four.**
  *
- * Deliberately uninformative about the cause, in the same spirit as the server's own table. A
- * screen that wants to say more keys its own copy off `code` and `status` — PRD 12 requires each
- * screen to say what still works, which is a sentence only the screen knows.
+ * The previous sentence here read *"the only strings a user ever sees from this client"*, and it is
+ * **retracted**: it was false in the safe direction, which is the direction that invites a reader to
+ * treat these as product copy and improve them. Measured over the tree rather than asserted —
+ * `grep -rn "API_CLIENT_MESSAGES" apps/ e2e/ packages/` returns this declaration, the
+ * `ApiClientError` constructor below, and **test files only**; and every production consumer of the
+ * error reads `kind`, `status`, `code` or `retryable` and never `.message`
+ * (`useMealSearch.ts`, `useRecommendations.ts`, `useMealDetails.ts`, `favoritesFeed.ts`,
+ * `useAssistant.ts`, whose `failureFor` docblock states the rule outright: *"Nothing from
+ * `error.message` or `error.wire` is ever rendered"*). `MealDetails.dom.test.tsx` pins the design in
+ * the same words — *"`API_CLIENT_MESSAGES` phrases are deliberately not reused as screen copy"*.
+ *
+ * So what these four are is the value of `ApiClientError.message`: a **diagnostic**, deliberately
+ * uninformative about the cause, in the same spirit as the server's own table. Every screen keys its
+ * own copy off `code` and `status` — PRD 12 requires each screen to say what still works, which is
+ * a sentence only the screen knows, and that is why none of these four is ever rendered.
+ *
+ * **Not to be reconciled with `WireErrorEnvelope.message`'s *"Never render this"* below — they are
+ * two different strings and neither docstring contradicts the other.** These four are local and
+ * chosen here; that one is the server's own text arriving over the wire and reachable only as
+ * `ApiClientError.wire.message`. The P28 hygiene audit recorded them as a self-contradiction in one
+ * file on the premise that both docstrings describe these four; they do not. Recorded so the next
+ * reader does not "fix" the disagreement by weakening the true half.
  */
 export const API_CLIENT_MESSAGES: Readonly<Record<ApiClientFailureKind, string>> = {
   server: 'The request could not be completed.',

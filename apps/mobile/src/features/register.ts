@@ -61,7 +61,14 @@ import { AssistantScreen } from './assistant/AssistantScreen.js';
  * `fontsReady` at all — because a font gate is a reason to wait, not a phase to render. So the
  * route is no longer reachable by *that* path. **It stays registered anyway**, and the paragraph
  * above is why: the justification for leaving it out was wrong once, on reasoning that sounded
- * airtight, and `linking.ts:128` still declares `/splash` deep-linkable.
+ * airtight.
+ *
+ * **The second half of that justification is gone as of P28** and is removed rather than left
+ * standing: `/splash` is no longer declared deep-linkable — `NON_LINKABLE_SCREENS` in
+ * `navigation/linking.ts` records why, having measured that restoring it strands the user on a
+ * surface with no controls. The first half stands on its own, which is why the route stays
+ * registered. (The old text also cited a line number into a file still being edited, which had
+ * already expired — §6.1q.)
  *
  * `RootNavigator.dom.test.tsx` asserted that placeholder, so the suite documented the state rather
  * than catching it — a test can only be evidence about what someone thought to claim.

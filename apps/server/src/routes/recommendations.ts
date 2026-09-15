@@ -19,7 +19,7 @@
 import { Router } from 'express';
 import type { Request, Response, Router as ExpressRouter } from 'express';
 import { recommendationRequestSchema, SCORE_REASON_KINDS } from '@nutritime/contracts';
-import type { Recommendation, RecommendationResponse, ScoreReason } from '@nutritime/contracts';
+import type { Recommendation, RecommendationResponse } from '@nutritime/contracts';
 import { recommend } from '@nutritime/domain';
 import type { ScoredMeal } from '@nutritime/domain';
 import { explainRecommendation } from '../ai/explanation.js';
@@ -124,7 +124,20 @@ function toRecommendation(scored: ScoredMeal, explained: ExplainedReason): Recom
     meal: scored.meal,
     score: scored.score,
     // Carried for debugging, per T-10-03: a score with no reasons is a number nobody can check.
-    scoreReasons: scored.scoreReasons as readonly ScoreReason[],
+    //
+    // **No assertion here, and the assertion that used to be here is RETRACTED.** This line read
+    // `scored.scoreReasons as readonly ScoreReason[]` with no reason stated, and both sides were
+    // already the same type: `ScoredMeal.scoreReasons` (`packages/domain/src/scoring.ts`,
+    // `export interface ScoredMeal`) and `Recommendation.scoreReasons`
+    // (`packages/contracts/src/core.ts`, `export interface Recommendation`) are both
+    // `readonly ScoreReason[]` of the one `ScoreReason` that `@nutritime/contracts` declares and
+    // that `scoring.ts` imports from there. So the cast asserted nothing today and disarmed the
+    // only check that matters tomorrow: the day the domain's reason shape diverges from the wire
+    // contract's, an assertion turns a compile error into a silently wrong `POST /recommendations`
+    // body. Measured, not argued - `tsc --noEmit -p apps/server` is exit 0 without it, and with the
+    // cast gone but its import kept the only error is TS6196 on `ScoreReason` itself, which is the
+    // proof that the type was imported into this module for nothing but the cast.
+    scoreReasons: scored.scoreReasons,
     explanation: explained.explanation,
     explanationSource: explained.explanationSource,
   };

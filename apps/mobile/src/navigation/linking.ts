@@ -11,6 +11,12 @@
  * than audited later. Containers get no path of their own: a URL names a destination screen, and
  * the navigators in between are how the app gets there, not part of what the user asked for.
  *
+ * **Having a slug and being URL-addressable are two different things, and `NON_LINKABLE_SCREENS`
+ * is where they part company** (T-22-03). `ROUTE_PATHS` names all ten screens, because a slug is
+ * also what `design-system/pages/` and Plan.md §14.5 call the page. `config.screens` is the set a
+ * URL may actually name, and it is **nine** of those ten. The tenth is `Splash`, and the reasoning
+ * plus the measurement behind it are on that constant.
+ *
  * Slugs come from Plan §14.5's route table and `design-system/pages/`, so a page's file name, its
  * route and its URL are the same word.
  */
@@ -43,6 +49,54 @@ export const ROUTE_PATHS = {
   MealDetails: 'meal-details/:mealId',
   Settings: 'settings',
 } as const satisfies Record<ScreenRouteName, string>;
+
+/**
+ * The screens no URL may name. **`/splash` is a decision with a measurement behind it** (T-22-03).
+ *
+ * Until this constant existed, `config.screens` answered to `/splash` while `RootNavigator`
+ * declared `Splash` in the `hydrating` phase alone — and `App.tsx` passes `app` or `onboarding`
+ * and nothing else, because a font gate is a reason to hold the container's mount rather than a
+ * phase to render. `StackRouter` filters a parsed state through its own `routeNames`, so the parse
+ * was made and then thrown away: the config promised a destination the navigator had no route to.
+ * **That disagreement, and no missing behaviour, is what left T-22-03 reading 9 of 10.**
+ *
+ * **Making it restore was built and measured, and the destination is a dead end.** With `Splash`
+ * declared alongside `Tabs` in the `app` phase, a cold `/splash` does land on `SplashSurface` and
+ * does keep its URL — and then stays there. That surface renders a ground and the word NutriTime
+ * with **zero interactive elements**, no tab bar beneath it (a root-stack screen covers it), and
+ * no timer or effect that could advance it; measured in jsdom against the real component. It also
+ * carries `accessibilityRole="alert"` and the label "Loading NutriTime", so a screen reader is
+ * told the app is loading while nothing is loading. A path that restores onto a permanent dead end
+ * is not what T-22-03 asks for — it is R-50's white page with a wordmark on it, and it fails the
+ * standard R-44's own fix was held to.
+ *
+ * **What a cold `/splash` does instead, measured in both worlds and unchanged by this constant:**
+ * the parse yields nothing, so the navigator opens its default and the address bar is rewritten.
+ * In the `app` phase that is `/home` on a clean device and the user's last tab when there is one,
+ * with the tab bar and five ways out; in `onboarding` it is `/onboarding`, which is where a user
+ * with nothing stored belongs anyway. `e2e/specs/explore.spec.ts` already asserts exactly that, in
+ * the case named *"/splash degrades to the app rather than stranding the user on a boot surface"*.
+ * This constant is what makes the config agree with the behaviour that spec pins, rather than
+ * declaring a tenth path it cannot honour.
+ *
+ * **`Splash` stays a screen in `routes.ts` and stays registered**, which is the narrower claim:
+ * PRD §11 names it, and leaving it out of `features/register.ts` on a justification that sounded
+ * airtight once put "Splash is not available yet" in front of real users. Note what does *not*
+ * argue for the route: the surface shown during hydration is `DataResetProvider`'s `fallback`,
+ * which renders the `SplashSurface` **component** directly and never goes through this config or
+ * the navigator. Conflating the component with the route is how the original justification went
+ * wrong, so it is worth keeping the two apart here. Not being URL-addressable is not the same as
+ * not existing.
+ */
+export const NON_LINKABLE_SCREENS = ['Splash'] as const satisfies readonly ScreenRouteName[];
+
+/**
+ * A screen a URL may name — every leaf screen except those above.
+ *
+ * Exported so a caller that enumerates deep links gets the nine from the type system rather than
+ * from a list it maintains by hand.
+ */
+export type LinkableScreenName = Exclude<ScreenRouteName, (typeof NON_LINKABLE_SCREENS)[number]>;
 
 /**
  * **`Tabs.initialRouteName: 'HomeTab'` does not put a back target under a deep-linked tab, and the
@@ -125,7 +179,11 @@ export const linking: LinkingOptions<RootParamList> = {
    */
   config: {
     screens: {
-      Splash: ROUTE_PATHS.Splash,
+      // **No `Splash`** — see `NON_LINKABLE_SCREENS` for the measurement. Every other leaf screen
+      // appears here exactly once, and `linking.dom.test.ts` walks this object and compares its
+      // leaf set against `SCREEN_ROUTE_NAMES` minus that constant. So a screen added to the route
+      // table arrives either linkable or deliberately excluded, and never undecided — which is
+      // the disagreement, not any missing behaviour, that T-22-03 stood at 9 of 10 on.
       Onboarding: ROUTE_PATHS.Onboarding,
       DietarySetup: ROUTE_PATHS.DietarySetup,
       Tabs: {

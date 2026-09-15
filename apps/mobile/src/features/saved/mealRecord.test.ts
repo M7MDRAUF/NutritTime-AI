@@ -18,6 +18,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import { kebabIdSchema } from '@nutritime/contracts';
 import { customMealSchema } from '../../infrastructure/storage/definitions.js';
 import { createRecord, updateRecord } from './mealRecord.js';
@@ -204,5 +206,135 @@ describe('updateRecord', () => {
   it('applies the same backstop as a create', () => {
     const result = updateRecord(VALUES, existing(), { now: () => 'not a timestamp' });
     expect(result.ok).toBe(false);
+  });
+});
+
+// ------------------------------------------------------ the seam, re-derived from the directory
+
+/**
+ * **No module in `features/saved/` imports another in a circle** — `Plan.md` §12.2 rule 6 and
+ * `TSD.md` §2.3 rule 5, "no cyclic imports between modules".
+ *
+ * This is the enforcement half of the fix `mealRecord.ts` describes, and it exists because the
+ * rule had none. P28's audit found the tree's only cycle in this directory — `mealRecord.ts` took
+ * `MealFormErrors` back from `mealFormValidation.ts`, which imports this module's functions as
+ * values — and it could only find it with a bespoke script, because **nothing in the gate detects
+ * a cycle**: ESLint has no built-in check and every plugin that does is a dependency `TSD.md`
+ * §2.1 does not pin (X-10). The cycle was harmless solely because `verbatimModuleSyntax` erases a
+ * type-only import, and the audit measured what that was worth: putting a value import in its
+ * place failed **0 of 292 tests**. A guard nothing would notice the loss of is the defect class
+ * this project keeps finding, so the seam is asserted here rather than explained in a comment.
+ *
+ * Over `.js` specifiers **including type-only ones**, because the rule is about the source graph:
+ * a value-edge-only scan reports zero on the exact state the audit called a defect.
+ *
+ * Scoped to this directory rather than the whole app because of where the cost is. Detecting the
+ * cycles is nearly free — Tarjan over `apps/mobile/src`'s 174 files and ~500 edges measured
+ * 0.4–0.8 ms — while *walking and resolving* that tree costs 135–200 ms. `imports.test.ts`
+ * already pays the walk for its own two assertions, so the whole-app check belongs there and is
+ * filed for it; paying the walk a second time here would buy nothing. Nine modules is cheap
+ * enough to scan outright, and the path-enumerating detector below names the loop, which a
+ * strongly-connected-component count does not.
+ */
+const SAVED_DIR = import.meta.dirname;
+
+/** Comments blanked character for character, so a docstring cannot contribute an edge. */
+function withoutComments(text: string): string {
+  const blank = (segment: string): string =>
+    [...segment].map((character) => (character === '\n' ? '\n' : ' ')).join('');
+  const block = new RegExp('/\\*[\\s\\S]*?\\*/', 'g');
+  const line = new RegExp('//[^\\n]*', 'g');
+  return text.replace(block, blank).replace(line, blank);
+}
+
+/** Sibling modules a file imports or re-exports from, `import type` included. */
+function siblingsOf(file: string): readonly string[] {
+  const text = withoutComments(fs.readFileSync(path.join(SAVED_DIR, file), 'utf8'));
+  const found: string[] = [];
+  // Assembled rather than written out, for the reason `imports.test.ts` records: a literal
+  // specifier in this file's own source is something its scanner would then report.
+  const pattern = new RegExp(['from', "\\s+'\\./([^']+)\\.js'"].join(''), 'g');
+  for (const match of text.matchAll(pattern)) {
+    const base = match[1];
+    if (base === undefined) continue;
+    for (const candidate of [`${base}.ts`, `${base}.tsx`]) {
+      if (fs.existsSync(path.join(SAVED_DIR, candidate))) found.push(candidate);
+    }
+  }
+  return found;
+}
+
+/** Every cycle in a directed graph, each reported once, smallest rotation first. */
+function cyclesIn(graph: ReadonlyMap<string, readonly string[]>): readonly string[] {
+  const found = new Set<string>();
+  const walk = (node: string, trail: readonly string[]): void => {
+    const seen = trail.indexOf(node);
+    if (seen !== -1) {
+      const loop = trail.slice(seen);
+      const printed = loop
+        .map((start, index) => [...loop.slice(index), ...loop.slice(0, index), start].join(' -> '))
+        .sort();
+      found.add(printed[0] ?? loop.join(' -> '));
+      return;
+    }
+    for (const next of graph.get(node) ?? []) walk(next, [...trail, node]);
+  };
+  for (const node of graph.keys()) walk(node, []);
+  return [...found].sort();
+}
+
+describe('the features/saved module graph', () => {
+  const modules = fs
+    .readdirSync(SAVED_DIR)
+    .filter((name) => name.endsWith('.ts') || name.endsWith('.tsx'))
+    .filter((name) => !name.includes('.test.'));
+  const graph: ReadonlyMap<string, readonly string[]> = new Map(
+    modules.map((name) => [name, siblingsOf(name)]),
+  );
+  const edges = [...graph.values()].reduce((total, list) => total + list.length, 0);
+
+  it('scans every production module in this directory, and finds real edges', () => {
+    // A scan that collected nothing would satisfy the cycle assertion vacuously. The subject here
+    // IS the source text, so these floors are the control that keeps the assertion from being
+    // true of an empty graph.
+    expect(modules).toContain('mealRecord.ts');
+    expect(modules).toContain('mealFormValidation.ts');
+    expect(modules.length).toBeGreaterThanOrEqual(8);
+    expect(edges).toBeGreaterThanOrEqual(10);
+  });
+
+  it('has no import cycle, type-only edges included', () => {
+    const cycles = cyclesIn(graph);
+    expect(cycles, `import cycles in features/saved:\n  ${cycles.join('\n  ')}`).toStrictEqual([]);
+  });
+
+  it('keeps mealRecord.ts independent of mealFormValidation.ts, in either import form', () => {
+    // Named apart from the general check so a failure says which edge came back rather than only
+    // that some cycle exists. This is the edge P28 found, and the one a future
+    // `import type { MealFormErrors }` would restore.
+    expect(graph.get('mealRecord.ts')).not.toContain('mealFormValidation.ts');
+    expect(graph.get('mealFormValidation.ts')).toContain('mealRecord.ts');
+  });
+
+  it('detects a cycle when there is one, and reports none when there is not', () => {
+    // The detector's own control. Without this pair a `cyclesIn` that returned `[]` for every
+    // input would pass the assertion above forever — which is how the cycle it replaces survived.
+    const twoCycle = new Map([
+      ['a', ['b']],
+      ['b', ['a']],
+    ]);
+    const threeCycle = new Map([
+      ['a', ['b']],
+      ['b', ['c']],
+      ['c', ['a']],
+    ]);
+    const acyclic = new Map([
+      ['a', ['b', 'c']],
+      ['b', ['c']],
+      ['c', []],
+    ]);
+    expect(cyclesIn(twoCycle)).toStrictEqual(['a -> b -> a']);
+    expect(cyclesIn(threeCycle)).toStrictEqual(['a -> b -> c -> a']);
+    expect(cyclesIn(acyclic)).toStrictEqual([]);
   });
 });

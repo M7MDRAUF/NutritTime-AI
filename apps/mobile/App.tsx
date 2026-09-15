@@ -32,6 +32,7 @@ import { RootNavigator } from './src/navigation/RootNavigator.js';
 import type { BootPhase } from './src/navigation/routes.js';
 import { buildNavigationTheme } from './src/navigation/navigationTheme.js';
 import { linking } from './src/navigation/linking.js';
+import { ErrorBoundary } from './src/navigation/ErrorBoundary.js';
 import { registerScreens } from './src/features/register.js';
 import { SplashSurface } from './src/features/onboarding/SplashSurface.js';
 import { DataResetProvider } from './src/features/settings/DataResetProvider.js';
@@ -200,7 +201,37 @@ function ThemedNavigation({ fontsReady }: { readonly fontsReady: boolean }): Rea
   return (
     <ThemeProvider mode={themeMode}>
       <ThemedStatusBar />
-      <PhasedNavigation fontsReady={fontsReady} />
+      {/*
+        **R-50: inside the themed provider, outside `NavigationContainer`.**
+
+        Before this, `componentDidCatch`, `getDerivedStateFromError` and `ErrorBoundary` had **zero**
+        occurrences anywhere in `apps/mobile`, and there was no class component at any level — so any
+        throw during render unmounted the whole tree, which on the web export is a white page with no
+        control and no route back. P22's plan called a boundary around the navigator *"this phase's
+        most valuable single task"*; it was never built, and that phase's report never mentioned it.
+        The P28 audit called that its clearest self-indictment.
+
+        **Inside this provider, because the fallback needs it.** `ErrorState` calls `useTheme()`,
+        which throws outside a `ThemeProvider` — and mounting above the inner provider would paint
+        the fallback in `system` while the user had chosen dark, which is T-18-04's defect on the one
+        surface where it is least forgivable.
+
+        **Outside `NavigationContainer`, because that is where R-44's class of failure lived.** A
+        throw from the container's own render — the `linking` config, `buildNavigationTheme`, or the
+        URL `useLinking` resolves once at mount — cannot be caught by a boundary mounted inside it.
+        Being outside also means the retry **remounts the container**, so the URL is re-resolved
+        against the real route set rather than replaying a corrupted navigation state. Wrapping
+        `PhasedNavigation` rather than `NavigationRoot` additionally covers the boot-phase derivation
+        and the font gate.
+
+        **What it does NOT cover, stated rather than implied:** every provider above it —
+        `SafeAreaProvider`, the outer `ThemeProvider`, `ApiProvider`, `DataResetProvider` and the five
+        stores. A throw there is still a white page. A boundary that high needs a **theme-free**
+        fallback, which is a TSD §6.7 decision and is recorded, not taken.
+      */}
+      <ErrorBoundary>
+        <PhasedNavigation fontsReady={fontsReady} />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

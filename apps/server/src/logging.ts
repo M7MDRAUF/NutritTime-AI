@@ -120,8 +120,33 @@ export function framesOf(error: unknown): readonly string[] {
   if (!(error instanceof Error) || typeof error.stack !== 'string') {
     return [];
   }
-  return error.stack
+
+  /**
+   * **The header is removed by POSITION, not by pattern — and it used to be by pattern.**
+   *
+   * This filtered `/^\s+at\s/` over the whole stack, which is a claim about *shape*: any line
+   * that happens to look like a frame survives, **including a line of the error's own message**.
+   * V8 formats a stack as `Name: message` followed by the frames, and a message may be
+   * multi-line — `config.ts`'s boot failures are, by design, because they name a variable and
+   * then explain it. So a message containing a line like `    at ...` would have been logged
+   * verbatim, and TSD §5.8 / PRD §10.3 forbid exactly that: an exception message can quote a
+   * payload, and a payload here can be a name or an allergy list.
+   *
+   * Found at P28 by a probe that put a word from a user's data into a log line. **It was a guard
+   * gap rather than a demonstrated leak** — no message in the tree takes frame shape today — which
+   * is precisely why it had to be closed on the shape of the guarantee and not on the current
+   * contents of the tree.
+   *
+   * So: slice the known `${name}: ${message}` prefix off first, then filter what remains. The
+   * backstop after it is belt-and-braces for engines that format the header differently — a frame
+   * that appears inside the message is dropped whatever the prefix looked like.
+   */
+  const header = `${error.name}: ${error.message}`;
+  const body = error.stack.startsWith(header) ? error.stack.slice(header.length) : error.stack;
+
+  return body
     .split('\n')
     .filter((line) => /^\s+at\s/.test(line))
-    .map((line) => line.trim());
+    .map((line) => line.trim())
+    .filter((frame) => frame !== '' && !error.message.includes(frame));
 }

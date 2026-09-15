@@ -1,10 +1,15 @@
 /**
- * T-12-12's linking config.
+ * T-12-12's linking config, and T-22-03's **deep-linkable set**.
  *
- * Two things are worth a test here. The **scheme**, because a mismatch between `app.json` and the
- * prefix produces no error anywhere — links simply never arrive, on a device, months later. And
- * the **paths**, because a config that mirrors the navigator tree incorrectly also fails silently:
- * React Navigation returns `undefined` rather than complaining.
+ * Three things are worth a test here. The **scheme**, because a mismatch between `app.json` and
+ * the prefix produces no error anywhere — links simply never arrive, on a device, months later.
+ * The **paths**, because a config mirroring the navigator tree incorrectly also fails silently:
+ * React Navigation returns `undefined` rather than complaining. And the **membership** of the
+ * linkable set, which is what T-22-03 was about — ten paths declared, nine with a route.
+ *
+ * **What this file does NOT claim.** It proves what `getStateFromPath` resolves — the parse
+ * alone. That the container applies it is `RootNavigator.dom.test.tsx`'s claim, and what a browser
+ * does is `e2e/specs/explore.spec.ts`'. All three are needed: R-44 passed every parse test.
  *
  * `.dom.test.ts` and not a plain one: `getStateFromPath` comes from the real package, which
  * imports `react-native`, and only the `dom` project aliases that to `react-native-web`. No render
@@ -15,7 +20,14 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { getActionFromState, getPathFromState, getStateFromPath } from '@react-navigation/native';
-import { LINKING_PREFIX, LINKING_SCHEME, ROUTE_PATHS, linking } from './linking.js';
+import {
+  LINKING_PREFIX,
+  LINKING_SCHEME,
+  NON_LINKABLE_SCREENS,
+  ROUTE_PATHS,
+  linking,
+} from './linking.js';
+import type { LinkableScreenName } from './linking.js';
 import { SCREEN_ROUTE_NAMES, readStringParam } from './routes.js';
 
 /** `app.json` is the source of truth for the scheme; this reads it rather than restating it. */
@@ -115,6 +127,110 @@ describe('the route paths', () => {
       expect(ROUTE_PATHS[name]).toMatch(/^[a-z][a-z-]*(\/:[a-zA-Z]+)?$/);
     }
   });
+});
+
+/**
+ * Which screens a URL may name at all — T-22-03's row, and the disagreement it stood on:
+ * `config.screens` carried all ten while `RootNavigator` declared `Splash` in the `hydrating`
+ * phase alone, which `App.tsx` does not pass. `NON_LINKABLE_SCREENS` records the decision and the
+ * measurement; these cases pin it.
+ */
+describe('the deep-linkable set', () => {
+  /**
+   * Every leaf screen `config.screens` can resolve. An entry is either a path string (a leaf) or an
+   * object carrying its own `screens`, so the walk follows the config's shape rather than a list of
+   * container names maintained beside it.
+   */
+  function linkableLeaves(screens: unknown, found: string[] = []): readonly string[] {
+    if (typeof screens !== 'object' || screens === null) {
+      return found;
+    }
+    for (const [name, entry] of Object.entries(screens)) {
+      if (typeof entry === 'string') {
+        found.push(name);
+      } else if (typeof entry === 'object' && entry !== null && 'screens' in entry) {
+        linkableLeaves(entry.screens, found);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * **The leaf set, against a different authority** (BRIEF §6.1g): `routes.ts`'
+   * `SCREEN_ROUTE_NAMES` less the exclusion list. A screen added to the route table and forgotten
+   * here fails, one dropped from the config fails, and neither side comes from the other.
+   */
+  it('resolves exactly the screens that are not deliberately excluded', () => {
+    const isExcluded = (name: string): boolean => NON_LINKABLE_SCREENS.some((x) => x === name);
+    const expected = SCREEN_ROUTE_NAMES.filter((name) => !isExcluded(name));
+    expect([...linkableLeaves(linking.config?.screens)].sort()).toEqual([...expected].sort());
+  });
+
+  /**
+   * **The exclusion list, hand-transcribed** — because it is half of its own expectation above.
+   * Widening it *and* dropping the matching screen from the config would satisfy both halves at
+   * once and quietly shrink the linkable set. A second exclusion has to change this line.
+   */
+  it('excludes exactly one screen, and it is Splash', () => {
+    expect([...NON_LINKABLE_SCREENS]).toEqual(['Splash']);
+  });
+
+  /**
+   * **`/splash` resolves to nothing — T-22-03's tenth row closed by decision**, on the measurement
+   * `NON_LINKABLE_SCREENS` records: restored, it strands the user on a boot surface with no way
+   * out. `e2e/specs/explore.spec.ts` asserts the degradation, in the case named *"/splash degrades
+   * to the app rather than stranding the user on a boot surface"*. The nine cases below are the
+   * control this needs: a config resolving **nothing** would pass here and fail every one of them,
+   * so "the set shrank to zero" cannot hide behind this.
+   */
+  it('resolves /splash to nothing, because Splash is not a destination', () => {
+    expect(getStateFromPath(ROUTE_PATHS.Splash, config)).toBeUndefined();
+    // The route NAME too: unconfigured, `getPathFromState` prints `/Splash` for a `hydrating`
+    // state, and that spelling must not be a way back in either.
+    expect(getStateFromPath('Splash', config)).toBeUndefined();
+  });
+
+  /**
+   * The nine paths a URL may name, and the leaf screen each must reach. **Typed out rather than
+   * read from `ROUTE_PATHS`**, for the reason `RootNavigator.dom.test.tsx`'s table records: a URL
+   * built from the subject answers to whatever the subject holds, so renaming a slug would move
+   * input and expectation together and fail nothing. `satisfies Record<LinkableScreenName,
+   * string>` makes a newly linkable screen with no row a compile error.
+   */
+  const LINKABLE_PATHS = {
+    Onboarding: 'onboarding',
+    DietarySetup: 'dietary-setup',
+    Home: 'home',
+    Explore: 'explore',
+    Assistant: 'assistant',
+    Saved: 'saved',
+    MealForm: 'meal-form',
+    MealDetails: 'meal-details/dessert-42',
+    Settings: 'settings',
+  } as const satisfies Record<LinkableScreenName, string>;
+
+  /** The deepest route a parsed state names — the screen the user actually arrives on. */
+  function deepestRouteName(state: unknown): string | undefined {
+    const routes: unknown =
+      typeof state === 'object' && state !== null && 'routes' in state ? state.routes : undefined;
+    if (!Array.isArray(routes)) {
+      return undefined;
+    }
+    const last: unknown = routes[routes.length - 1];
+    if (typeof last !== 'object' || last === null || !('name' in last)) {
+      return undefined;
+    }
+    const name = typeof last.name === 'string' ? last.name : undefined;
+    return 'state' in last ? (deepestRouteName(last.state) ?? name) : name;
+  }
+
+  // One case per path rather than one loop inside one `it`, so a single broken entry reddens only
+  // its own row and names the screen in the report.
+  for (const [screen, urlPath] of Object.entries(LINKABLE_PATHS)) {
+    it(`resolves /${urlPath} onto ${screen}`, () => {
+      expect(deepestRouteName(getStateFromPath(urlPath, config)), urlPath).toBe(screen);
+    });
+  }
 });
 
 describe('parsing a link', () => {

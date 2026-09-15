@@ -7,12 +7,32 @@ import type { Locator, Page } from '@playwright/test';
 /**
  * The route into the Assistant screen, shared by TSD §8.4's cases 5 and 6 (T-21-09).
  *
- * **Shared because both specs have to agree on how the screen is reached, and one of the two ways
- * in is broken.** R-44: a cold `goto` of a path is rewritten to `/home` on the web export, so
- * `page.goto('/assistant')` would land on Home and fail for a reason that has nothing to do with
- * the assistant — `explore.spec.ts` pins that with a live `test.fail`. Tapping the tab is the path
- * every user takes and the only one that works, so it lives here rather than being retyped, where
- * the second copy could quietly be a `goto`.
+ * **Shared because both specs have to agree on how the screen is reached.** Tapping the tab is the
+ * path every user takes, and both of TSD §8.4's cases are journeys through the app, so it lives
+ * here rather than being retyped — where the second copy could drift from the first.
+ *
+ * **R-44 is CLOSED, and the reason recorded here before is retracted.** This docblock used to say
+ * *"one of the two ways in is broken"* — that a cold `page.goto('/assistant')` is rewritten to
+ * `/home` on the web export, *"pinned with a live `test.fail`"*. Neither half holds:
+ *
+ *  - `explore.spec.ts` now asserts the opposite, in a `test.describe` titled
+ *    **`'a cold URL loads its own screen (T-22-03)'`**, and its docblock above that block reads
+ *    *"**R-44, closed — and `test.fail` is gone, which is exactly what it was kept for** (T-22-03)"*.
+ *    The cause was never in `linking.ts`: `NavigationContainer` resolved the URL once, at a first
+ *    mount that held only `Splash`, and the font gate now holds that mount.
+ *  - There is no `test.fail` in `explore.spec.ts`. `grep -rn "test\.fail(" e2e/specs/` returns
+ *    exactly one hit in the whole suite and it is `text-clipping.spec.ts` (R-72).
+ *
+ * So a cold `goto` into a route is **not** broken, and nobody should route around it. The one
+ * narrower fact that survives is about a single path: `/splash` cannot restore, because `Splash` is
+ * in the navigator only during `hydrating` and the hydration gate renders instead of the navigator
+ * — `explore.spec.ts` asserts that as the degradation it is, in
+ * `'/splash degrades to the app rather than stranding the user on a boot surface'`. Quoting those
+ * titles rather than citing their lines, per §6.1q.
+ *
+ * (Cited by quoted text because the old sentence is why this matters: a support module telling the
+ * next author that `page.goto` is broken would have had them building around a defect that was
+ * closed at P22.)
  *
  * Nothing in here seeds storage: `enterApp` owns the phase gate, and the AI switch these specs
  * turn is reached through Settings rather than through `localStorage`, because a journey through

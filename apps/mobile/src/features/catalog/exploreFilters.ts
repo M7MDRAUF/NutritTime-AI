@@ -102,6 +102,43 @@ export function queryFrom(search: string, filters: ExploreFilters, page = 1): Me
   };
 }
 
+/**
+ * The identity of a result set: the trimmed search text and the three filters, and nothing else.
+ *
+ * **Paging needs a name for "the same query", and this is it (R-73).** A page is only ever a page
+ * *of something*, so appending page 2 to a list requires knowing that the list it is appended to
+ * came from the same request parameters. Without such a name the only available check is "is this
+ * the newest request", which is true of a page-2 response that arrives after a filter change.
+ *
+ * `JSON.stringify` of a fixed-order tuple rather than a joined string, because a delimiter can
+ * appear in the search text: `search = 'a|b'` with no filters and `search = 'a'` with a filter
+ * spelled `b` would collide under `'|'`. `JSON.stringify` escapes the quote and the separator, so
+ * two different inputs cannot produce one key — which is asserted, including on adversarial text.
+ *
+ * The search text is **trimmed**, so `'rice '` and `'rice'` are one query. That is what stops a
+ * trailing space re-issuing the request for the page already loaded and appending it twice.
+ */
+export function exploreQueryKey(search: string, filters: ExploreFilters): string {
+  return JSON.stringify([search.trim(), filters.period, filters.diet, filters.budget]);
+}
+
+/**
+ * Was that the last page? **Two independent conditions, and both are needed.**
+ *
+ * `loadedAfter >= total` is the server's own answer — `meals.ts`'s `total` is the count after
+ * filtering and before paging, so it is the size of the set being walked.
+ *
+ * `received < EXPLORE_PAGE_SIZE` is the answer that does not trust it. A `total` larger than the
+ * catalogue can actually deliver would leave `loadedAfter < total` true forever, and a list that
+ * asks for the next page forever is a request loop, not a bug a user can wait out. A short page —
+ * an empty one included — has no successor whatever `total` claims.
+ *
+ * Neither condition alone is satisfied by a constant, which is why both are asserted separately.
+ */
+export function isLastPage(received: number, loadedAfter: number, total: number): boolean {
+  return received < EXPLORE_PAGE_SIZE || loadedAfter >= total;
+}
+
 /** Tapping the chip that is already on turns it off — a filter must be removable by the same tap. */
 export function toggleChip(filters: ExploreFilters, chip: ExploreChip): ExploreFilters {
   const current: string | null = filters[chip.group];

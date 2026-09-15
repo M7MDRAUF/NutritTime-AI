@@ -120,14 +120,17 @@ construction and containment all execute exactly as in production. That is what 
 it evidence rather than theatre, and it is why the E2E suite and CI — neither of which has a model —
 use it.
 
-Start it (two terminals on Windows, because `npm run dev`'s `&` is a POSIX backgrounding operator
-and `cmd.exe` treats it as a sequential separator):
+Start it — one command, every platform:
 
 ```bash
-npm run dev            # macOS and Linux: API + Expo dev server
-npm run dev:server     # Windows, terminal 1
-npm run dev:mobile     # Windows, terminal 2
+npm run dev            # API + Expo dev server
 ```
+
+<sub>This said "two terminals on Windows" until P28, because `npm run dev` used to be
+`dev:server & dev:mobile` and `cmd.exe` treats `&` as a _sequential_ separator, so the Expo server
+never started. `package.json` has run `node scripts/dev.mjs` since P26, which spawns both children
+itself; only the prose was left behind. `dev:server` and `dev:mobile` still exist if you want them
+in separate terminals.</sub>
 
 For Full mode only:
 

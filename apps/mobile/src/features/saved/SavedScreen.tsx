@@ -4,7 +4,7 @@
  * TSD §6.8 gives this screen two data sources and one state: "favorites + customMeals stores", and
  * "empty (per section)". **Per section is the whole design.** One empty state for both halves would
  * answer neither question they ask: a user with three recipes and no favourites would be told the
- * screen is empty while looking at three recipes. So both sections are always mounted, each renders
+ * screen is empty while looking at three recipes. So both sections are always rendered, each renders
  * its own state, and `SavedParams.section` decides only which of them comes FIRST. A switcher was
  * the alternative and was rejected — with one section on screen at a time, "empty per section" and
  * "empty per screen" are indistinguishable, to the user and to a test alike.
@@ -34,7 +34,7 @@
  * already chosen these, the form told them that declaring an allergen keeps conflicting meals away
  * from them, and a favourited catalog meal and a recipe they wrote themselves are equally capable of
  * conflicting — a user can tick "peanut" on their own recipe. Both are checked with the domain's
- * `conflictingAllergens` against the declared allergy list; `SavedSections.tsx` renders it.
+ * `conflictingAllergens` against the declared allergy list; `SavedMealRow.tsx` renders it.
  *
  * **The two stores' `entryStatus` is read, and `unavailable` is not `recovered`.** `unavailable`
  * means the key could not be read, so `createStore` refuses to write over it (TSD §6.3) — silently,
@@ -47,16 +47,47 @@
  * snapshot exists — so there is no request to wait on and no server to be unreachable from. A
  * spinner there would be a control that can never be observed, guarded by a test that cannot fail.
  *
- * **Rows are mapped, not virtualised.** Both sections must be on screen at once for their empty
- * states to be independent, and two `FlatList`s in one scroll container is the nested-virtualised-
- * list breakage React Native warns about. TSD §6.4 bounds each list at 200, so the worst case is
- * bounded; a single `SectionList` is the proposed follow-up if that bound proves slow on a device.
+ * **One `SectionList`, and the rows are windowed (T-22-08).** This screen used to map every row into
+ * one `ScrollView`, and the rationale that stood here — two `FlatList`s in one scroll container is
+ * the nested-virtualised-list breakage, TSD §6.4 bounds each list at 200, "so the worst case is
+ * bounded" — was right about the hazard and wrong about the conclusion. **Bounded is not small:**
+ * every favourite is a catalog meal, so twenty favourites mounted twenty remote TheMealDB
+ * photographs at once against a bound of 200, and `loading="lazy"` cannot help — react-native-web
+ * 0.21.2 requests the bytes from a detached `new window.Image()` the moment an `<Image>` mounts, so
+ * mounting the row *is* the request and the only deferral available is not building the row.
+ *
+ * The nesting hazard is real and is the reason the list is at the ROOT rather than one per section:
+ *
+ *  - a `FlatList` inside each section is the nested case, and react-native-web 0.21.2 ships the
+ *    warning about it **commented out** (`vendor/react-native/VirtualizedList/index.js`, pending
+ *    necolas/react-native-web#2239), so it would arrive with no diagnostic at all;
+ *  - `_isNestedWithSameOrientation()` tests a context a plain `ScrollView` does not provide, so the
+ *    inner list would believe it is top-level and keep its own `_scrollMetrics`;
+ *  - `Saved.dom.test.tsx` asserts that the scrolling element is **this** one, by identity.
+ *
+ * A `SectionList` is React Native's own recommended "another VirtualizedList-backed container" and
+ * a framework primitive rather than a seventeenth TSD §6.7 component. The `Sheet` is its sibling
+ * inside a plain `View`, which provides no scroll context and therefore adds no nesting.
+ *
+ * **No `initialNumToRender` is set here, deliberately.** No document sets a render budget for Saved,
+ * and Explore's eight has its own reasoning in its own file for rows of a different height. So the
+ * library's own default applies — `initialNumToRenderOrDefault` in
+ * `vendor/react-native/VirtualizedList/index.js` returns 10 — a figure read from the code rather
+ * than a threshold this project invented.
+ *
+ * **What windowing costs, stated rather than buried.** A section header is a cell, so a header far
+ * down a long first section is not mounted at the first paint; in a browser it mounts as the user
+ * scrolls to it. T-17-02's four combinations cannot be bitten by that — an empty, loading or failed
+ * section contributes two cells, so the other header is always inside the first window — but a
+ * `recovered` notice in the SECOND section of a user with nine or more favourites is now spoken
+ * when they reach it rather than on arrival.
  */
 
 import { useCallback, useState } from 'react';
-import type { ReactNode } from 'react';
-import { ScrollView } from 'react-native';
-import { AppText } from '../../shared/components/index.js';
+import type { ReactElement, ReactNode } from 'react';
+import { SectionList, View } from 'react-native';
+import type { SectionListData, SectionListRenderItemInfo } from 'react-native';
+import { AccessibleButton, AppText, Sheet } from '../../shared/components/index.js';
 import { useApiClient } from '../../infrastructure/api/ApiProvider.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
 import type { ScreenProps } from '../../navigation/registry.js';
@@ -73,8 +104,32 @@ import {
 } from '../../state/customMeals/index.js';
 import { preferencesStore, selectPreferences } from '../../state/preferences/index.js';
 import { useFavoriteMeals } from './favoritesFeed.js';
-import { CustomSection } from './CustomSection.js';
-import { FavoritesSection } from './FavoritesSection.js';
+import { CustomRowView, CustomSectionHeader, customRowKey, customRows } from './CustomSection.js';
+import type { CustomRow } from './CustomSection.js';
+import {
+  FavoriteRowView,
+  FavoritesSectionFooter,
+  FavoritesSectionHeader,
+  favoriteRowKey,
+  favoriteRows,
+} from './FavoritesSection.js';
+import type { FavoriteRow } from './FavoritesSection.js';
+
+/**
+ * One row of either section.
+ *
+ * A single `SectionList` means one `renderItem` and one `keyExtractor` for both kinds of row, so the
+ * two are a tagged union rather than two shapes to tell apart by their fields. Each arm's key and
+ * its renderer stay in the section's own file; only the dispatch is here.
+ */
+type SavedRow = FavoriteRow | CustomRow;
+
+/** `SectionT` — the discriminator the three render callbacks switch on. */
+interface SavedSection {
+  readonly key: 'favorites' | 'custom';
+}
+
+type SavedSectionData = SectionListData<SavedRow, SavedSection>;
 
 export function SavedScreen({ route, navigation }: ScreenProps<'Saved'>): ReactNode {
   const client = useApiClient();
@@ -113,6 +168,21 @@ export function SavedScreen({ route, navigation }: ScreenProps<'Saved'>): ReactN
   const [nonce, setNonce] = useState(0);
   const feed = useFavoriteMeals(client, ids, nonce);
 
+  /**
+   * Which orphan the user has asked to remove, pending confirmation.
+   *
+   * **An orphan removal is confirmed, and it is the most irreversible removal in the app.** PRD
+   * FR-014 requires destructive actions to confirm first, and un-favouriting an ordinary meal is
+   * cheap to undo — open it again and tap the heart. This one cannot be undone at all: the catalog
+   * no longer has the record, so there is no screen anywhere in the app that can reach it to
+   * re-favourite it, and only a hand-run reseed could bring it back. A single id is still the
+   * user's choice, and "small" is not the same as "reversible".
+   *
+   * It lives here rather than in `FavoritesSection` because the button that sets it and the list it
+   * removes from are now two different render callbacks of one `SectionList`.
+   */
+  const [pendingForget, setPendingForget] = useState<string | null>(null);
+
   const openFavorite = useCallback(
     (mealId: string) => {
       navigation.navigate('MealDetails', { mealId, origin: 'saved' });
@@ -142,61 +212,138 @@ export function SavedScreen({ route, navigation }: ScreenProps<'Saved'>): ReactN
     setNonce((current) => current + 1);
   }, []);
 
-  const forget = useCallback(
-    (mealId: string) => {
-      favoritesDispatch(favoritesActions.remove(mealId));
-    },
-    [favoritesDispatch],
-  );
+  const closeSheet = useCallback(() => {
+    setPendingForget(null);
+  }, []);
+
+  const confirmForget = useCallback(() => {
+    if (pendingForget !== null) {
+      favoritesDispatch(favoritesActions.remove(pendingForget));
+    }
+    setPendingForget(null);
+  }, [pendingForget, favoritesDispatch]);
 
   const section = readUnionParam(route.params, 'section', SAVED_SECTIONS) ?? 'favorites';
 
+  const recipes = selectCustomMeals(customMeals);
+  const favoritesSection: SavedSectionData = { key: 'favorites', data: favoriteRows(feed) };
+  const customSection: SavedSectionData = { key: 'custom', data: customRows(recipes) };
+
   /**
-   * **`key` on both sections, because the two render POSITIONS swap and React reconciles by index.**
+   * **The section `key`s carry the identity the two elements used to carry.**
    *
-   * `section` decides which of the two comes first, so changing it puts a different component type
-   * at each position. Without a stable key React unmounts and remounts **both** — and since P23
-   * both carry live-region notices, a remount **re-speaks** them. Measured at P23: a `section`
-   * change re-announced both reset notices, which is a screen reader interrupting the user to
-   * repeat something they already heard because they navigated.
-   *
-   * The keys are on the ELEMENTS rather than on the positions on purpose: a key at the position
-   * would still be index-based and would reconcile a `FavoritesSection` into a `CustomSection`.
+   * `section` decides which of the two comes first, so a swap reorders the list's children. The
+   * flattened cells are keyed `'<section key>:header'`, `'<section key>:footer'` and
+   * `'<section key>:<row key>'` (`VirtualizedSectionList`'s `_subExtractor`), so React reorders
+   * keyed children and moves the DOM nodes rather than rebuilding them. That matters for more than
+   * churn: since P23 both sections carry `role="alert"` notices, and an alert is re-spoken every
+   * time its node is inserted — a screen-reader user who switches section would otherwise be
+   * interrupted to hear a recovery they have already heard. `Saved.dom.test.tsx` asserts the
+   * notice's node identity across a swap.
    */
-  const favoritesSection = (
-    <FavoritesSection
-      key="favorites"
-      feed={feed}
-      entryStatus={favoritesStatus.entryStatus}
-      allergies={allergies}
-      onOpen={openFavorite}
-      onRetry={retryFavorites}
-      onForget={forget}
-    />
-  );
-  const customSection = (
-    <CustomSection
-      key="custom"
-      meals={selectCustomMeals(customMeals)}
-      atBound={selectAtCustomMealsBound(customMeals)}
-      entryStatus={customStatus.entryStatus}
-      allergies={allergies}
-      onOpen={openCustom}
-      onCreate={createMeal}
-    />
+  const sections: readonly SavedSectionData[] =
+    section === 'custom' ? [customSection, favoritesSection] : [favoritesSection, customSection];
+
+  const keyExtractor = useCallback(
+    (item: SavedRow): string =>
+      item.kind === 'favorite' ? favoriteRowKey(item) : customRowKey(item),
+    [],
   );
 
+  const renderRow = useCallback(
+    ({ item }: SectionListRenderItemInfo<SavedRow, SavedSection>): ReactElement =>
+      item.kind === 'favorite' ? (
+        <FavoriteRowView row={item} allergies={allergies} onOpen={openFavorite} />
+      ) : (
+        <CustomRowView row={item} allergies={allergies} onOpen={openCustom} />
+      ),
+    [allergies, openFavorite, openCustom],
+  );
+
+  const renderSectionHeader = ({ section: data }: { section: SavedSectionData }): ReactElement =>
+    data.key === 'favorites' ? (
+      <FavoritesSectionHeader
+        feed={feed}
+        entryStatus={favoritesStatus.entryStatus}
+        onRetry={retryFavorites}
+      />
+    ) : (
+      <CustomSectionHeader
+        count={recipes.length}
+        atBound={selectAtCustomMealsBound(customMeals)}
+        entryStatus={customStatus.entryStatus}
+        onCreate={createMeal}
+      />
+    );
+
+  /**
+   * Only the favourites section has a footer, and the custom section returning `null` is not a stub.
+   *
+   * The three things that belong after the rows — the `missing` notice, the orphan rows and the
+   * `unresolved` notice — all come from a fetch, and the custom section makes none.
+   */
+  const renderSectionFooter = ({
+    section: data,
+  }: {
+    section: SavedSectionData;
+  }): ReactElement | null =>
+    data.key === 'favorites' ? (
+      <FavoritesSectionFooter
+        feed={feed}
+        onRetry={retryFavorites}
+        onRequestForget={setPendingForget}
+      />
+    ) : null;
+
   return (
-    <ScrollView
-      testID="saved-screen"
-      style={{ backgroundColor: colors.surface.canvas }}
-      contentContainerStyle={{ gap: components.card.gap, padding: components.card.padding }}
-    >
-      <AppText variant="title" level={1} testID="saved-heading">
-        Saved
-      </AppText>
-      {section === 'custom' ? customSection : favoritesSection}
-      {section === 'custom' ? favoritesSection : customSection}
-    </ScrollView>
+    <View style={{ flex: 1, backgroundColor: colors.surface.canvas }}>
+      <SectionList<SavedRow, SavedSection>
+        testID="saved-screen"
+        sections={sections}
+        keyExtractor={keyExtractor}
+        renderItem={renderRow}
+        renderSectionHeader={renderSectionHeader}
+        renderSectionFooter={renderSectionFooter}
+        ListHeaderComponent={
+          <AppText variant="title" level={1} testID="saved-heading">
+            Saved
+          </AppText>
+        }
+        // Both are explicit because their defaults are platform-dependent and this screen must
+        // behave the same on the web surface as on a device: sticky headers default to true on iOS
+        // and would overlay the rows this design puts under them, and `removeClippedSubviews`
+        // defaults to true on Android, where React Native's own documentation warns it can produce
+        // missing content. Neither was reachable from a `ScrollView`, so neither is a change.
+        stickySectionHeadersEnabled={false}
+        removeClippedSubviews={false}
+        style={{ backgroundColor: colors.surface.canvas }}
+        contentContainerStyle={{ gap: components.card.gap, padding: components.card.padding }}
+      />
+      <Sheet
+        testID="saved-forget-sheet"
+        visible={pendingForget !== null}
+        onClose={closeSheet}
+        title="Remove this favourite?"
+      >
+        <View style={{ gap: components.card.gap }}>
+          <AppText variant="body" tone="secondary">
+            This meal is no longer in the catalog, so it cannot be added back later. Removing it
+            clears it from your list and changes nothing else.
+          </AppText>
+          <AccessibleButton
+            testID="saved-forget-confirm"
+            label="Remove"
+            variant="destructive"
+            onPress={confirmForget}
+          />
+          <AccessibleButton
+            testID="saved-forget-cancel"
+            label="Keep it"
+            variant="ghost"
+            onPress={closeSheet}
+          />
+        </View>
+      </Sheet>
+    </View>
   );
 }

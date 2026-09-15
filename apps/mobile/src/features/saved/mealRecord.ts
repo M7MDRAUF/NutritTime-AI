@@ -12,6 +12,12 @@
  * only way to reach a `CustomMeal` is still interpret-then-compose inside one function, which is
  * the property the acceptance test rests on. Nothing here can be called with a draft that was
  * never validated, because nothing here takes a draft.
+ *
+ * **And the seam is one-directional in the SOURCE graph, not only after erasure.** This module
+ * used to take `MealFormErrors` back from `mealFormValidation.ts` as a type, which was the back
+ * edge of the only import cycle in the tree (`docs/final-audit.md` part 5, P28's architecture
+ * audit; `Plan.md` §12.2 rule 6 and `TSD.md` §2.3 rule 5 both forbid one). `ComposeOutcome` takes
+ * the caller's error map as a type parameter instead, so there is no edge left to erase.
  */
 
 import type { CustomMeal } from '@nutritime/contracts';
@@ -19,9 +25,6 @@ import { money } from '@nutritime/domain';
 import { customMealSchema } from '../../infrastructure/storage/definitions.js';
 import type { DietTag, Ingredient, MealPeriod, NutritionSummary } from '@nutritime/contracts';
 import { MEAL_FORM_MESSAGES } from './mealFormFields.js';
-// Type-only, and that matters: `verbatimModuleSyntax` erases it, so there is no runtime edge back
-// to `mealFormValidation.js` — which imports this module's functions as values. One direction.
-import type { MealFormErrors } from './mealFormValidation.js';
 
 const M = MEAL_FORM_MESSAGES;
 
@@ -67,9 +70,33 @@ export interface ComposeContext {
   readonly existingIds: readonly string[];
 }
 
-export type ComposeResult =
-  | { readonly ok: true; readonly meal: CustomMeal }
-  | { readonly ok: false; readonly errors: MealFormErrors };
+/**
+ * The only key this module ever reports a failure under.
+ *
+ * Both of its failures — an id it could not make unique, and a record `customMealSchema` refused —
+ * are about the record as a whole rather than about something somebody typed, and `name` is the
+ * field a whole-record message is shown against. So this module has no use for the form's full
+ * error map, which is what made importing one a cycle bought for nothing.
+ */
+export type RecordErrors = { readonly name: string };
+
+/**
+ * A compose outcome, **parameterised by the error map the caller reports errors in** (`E`).
+ *
+ * The parameter is the cycle break, not a generality for its own sake. This module's producer is
+ * `mealFormValidation.ts`, which imports `createRecord` and `updateRecord` as values; taking
+ * `MealFormErrors` back from it closed a loop that only `verbatimModuleSyntax` kept out of the
+ * runtime graph. **Nothing would have noticed if that stopped being true** — the audit measured a
+ * value import in its place failing 0 of 292 tests — so the honest fix removes the edge rather
+ * than commenting that it is safe.
+ *
+ * `MealFormErrors` is derived from `MealFormDraft`'s keys and belongs beside the pass that
+ * produces both; a type parameter is how this module stays ignorant of it. `ComposeOutcome<E>` is
+ * covariant in `E`, so `ComposeOutcome<RecordErrors>` is assignable to the composers'
+ * `ComposeResult` and a screen still sees one type.
+ */
+export type ComposeOutcome<E> =
+  { readonly ok: true; readonly meal: CustomMeal } | { readonly ok: false; readonly errors: E };
 
 /** Attempts before a create gives up. Five is enough that a working generator never reaches it. */
 const ID_ATTEMPTS = 5;
@@ -111,7 +138,7 @@ function buildRecord(v: DraftValues, id: string, createdAt: string, updatedAt: s
  * It is a backstop and not the primary guard: the field-bound rules in `mealFormValidation.ts` are
  * what a user can act on, and a record only this function rejects means a rule there is missing.
  */
-function finalise(record: CustomMeal): ComposeResult {
+function finalise(record: CustomMeal): ComposeOutcome<RecordErrors> {
   const parsed = customMealSchema.safeParse(record);
   return parsed.success
     ? { ok: true, meal: parsed.data }
@@ -135,7 +162,10 @@ function pickId(context: ComposeContext): string | null {
 }
 
 /** Create: a generated id and both timestamps at the same instant. */
-export function createRecord(values: DraftValues, context: ComposeContext): ComposeResult {
+export function createRecord(
+  values: DraftValues,
+  context: ComposeContext,
+): ComposeOutcome<RecordErrors> {
   const id = pickId(context);
   if (id === null) return { ok: false, errors: { name: M.idCollision } };
   const timestamp = context.now();
@@ -147,6 +177,6 @@ export function updateRecord(
   values: DraftValues,
   existing: CustomMeal,
   context: Pick<ComposeContext, 'now'>,
-): ComposeResult {
+): ComposeOutcome<RecordErrors> {
   return finalise(buildRecord(values, existing.id, existing.createdAt, context.now()));
 }

@@ -209,9 +209,42 @@ export function AssistantScreen({ route, navigation }: ScreenProps<'Assistant'>)
 
       {/*
         A live region, so an answer that arrives after the user has moved on is announced rather
-        than discovered. Both spellings, for the reason `Chip` and `StatusMessage` give: Android
-        reads `accessibilityLiveRegion`, the web export and this suite read `aria-live`, and
-        react-native-web 0.21 maps neither from the other.
+        than discovered.
+
+        **Both spellings, and the reason recorded here before was false — RETRACTED.** The old note
+        read *"react-native-web 0.21 maps neither from the other"*. It does map one from the other.
+        Read from the shipped source at the pinned version, `react-native-web` **0.21.2**
+        (version from `node_modules/react-native-web/package.json`),
+        `node_modules/react-native-web/dist/modules/createDOMProps/index.js:460-462`:
+
+            var _ariaLive = ariaLive != null ? ariaLive : accessibilityLiveRegion;
+            if (_ariaLive != null) {
+              domProps['aria-live'] = _ariaLive === 'none' ? 'off' : _ariaLive;
+            }
+
+        So on the web export `accessibilityLiveRegion="polite"` alone would have produced
+        `aria-live="polite"`, with `'none'` rewritten to `'off'`. The deprecation `warnOnce` for the
+        RN spelling is itself commented out at :452-459, so setting both is silent.
+
+        **Both are still set, for the reason that is true:** `accessibilityLiveRegion` is the
+        Android API and `aria-live` is a no-op on native, so native needs the RN spelling; on the
+        web the explicit `aria-live` simply wins the `!=` test above. The props are right — only the
+        rationale was wrong.
+
+        **And the attribution was wrong too.** `StatusMessage.tsx` says the OPPOSITE of what this
+        comment credited it with (*"`accessibilityLiveRegion` IS mapped to `aria-live` there, with
+        `'none'` rewritten to `'off'`"*), and `Chip.tsx`'s *"maps none of it"* is about a DIFFERENT
+        prop, `accessibilityState`, where it is true — `grep -c accessibilityState` over
+        `createDOMProps/index.js` is **0** at 0.21.2, and in `dist/` the token appears only in
+        `TouchableWithoutFeedback` and `AccessibilityUtil/isDisabled.js`.
+
+        Recorded rather than quietly reworded. That sentence was copied into **six** files, and this
+        one held the **last surviving assertion** of it: the round that corrected the other five ran
+        before this screen existed (P21, the newest production file in the tree), and the sentence
+        was copied forward into it afterwards. So the tree carried the refutation twice
+        (`ErrorState.tsx`, `FormField.tsx`) and the assertion once — in the file a reader of this
+        lane opens first. A rationale that silently changes its story leaves nothing behind saying it
+        was ever wrong, which is exactly how a copy survives five corrections; §6.1j.
       */}
       <View
         testID="assistant-transcript"

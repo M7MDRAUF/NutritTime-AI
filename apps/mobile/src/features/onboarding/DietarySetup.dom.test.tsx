@@ -99,6 +99,37 @@ function inputIn(container: HTMLElement): HTMLElement {
   return found;
 }
 
+/** A keystroke into a field, by testID - `fireEvent.change` is what the rest of this suite uses. */
+function typeInto(view: Harness, testID: string, value: string): void {
+  const input = inputIn(view.must(testID));
+  act(() => {
+    fireEvent.change(input, { target: { value } });
+  });
+}
+
+/**
+ * The four fields a rule can report on THROUGH THIS UI, each broken a different way.
+ *
+ * `FieldErrors`' fifth member, `allergies`, is deliberately absent: the screen offers a fixed
+ * checkbox list and every write path canonicalises, so it cannot fail from here - and
+ * `dietaryValidation.ts` says so in as many words. Four is therefore the real worst case, and it is
+ * the number the summary has to be able to name.
+ */
+async function breakEveryReachableField(view: Harness): Promise<void> {
+  typeInto(
+    view,
+    'field-dislikes',
+    Array.from({ length: 31 }, (_one, index) => `x${String(index)}`).join(', '),
+  );
+  typeInto(view, 'field-breakfast', 'nope');
+  typeInto(view, 'field-lunch', '99:99');
+  typeInto(view, 'field-dinner', '');
+  // Drains the write queue inside `act`. Without it the coalesced write for 31 dislikes resolves
+  // after the test has returned, and BRIEF 6.2 rule 4 is the reason that matters: an update
+  // escaping `act` here silently stops the NEXT test's effects from running.
+  await view.settle();
+}
+
 /**
  * A real focus then a real blur, which is what `FormField`'s own suite does.
  *
@@ -477,7 +508,7 @@ describe('DietarySetupScreen', () => {
     ).toHaveLength(0);
   });
 
-  it('does not mount any of the three announced notices for a validation failure', async () => {
+  it('does not mount any of the three STORE-STATE notices for a validation failure', async () => {
     /**
      * **T-23-05, and the reason the three `announceOnMount` notices do not make this screen's
      * worst case worse.** A failed Save on this form mounts one `aria-live="assertive"` region per
@@ -495,8 +526,14 @@ describe('DietarySetupScreen', () => {
      *
      * A mutant that drove any of the three off the validation state would redden here. The
      * assertive count itself is deliberately NOT pinned: the flood is a known `FormField` defect
-     * with an adopted fix recorded in `design-system/DECISIONS.md:377`, and a test that fixed its
-     * magnitude in place would have to be deleted before anyone could repair it.
+     * with an adopted fix recorded in the `dietary-setup` row of `design-system/DECISIONS.md`, and
+     * a test that fixed its magnitude in place would have to be deleted before anyone could repair
+     * it.
+     *
+     * **X-47's summary has since landed and it IS driven by `submitted`, so the polite count is
+     * one rather than zero.** That is why the assertion below names the region it expects instead
+     * of counting to zero — a bare count would have been satisfied by the summary arriving in
+     * place of a store notice, which is the substitution this test exists to catch.
      */
     const view = await render(memoryDriver({}));
     const set = (testID: string, value: string): void => {
@@ -517,9 +554,213 @@ describe('DietarySetupScreen', () => {
     expect(view.find('dietary-setup-save-error')).toBeNull();
     expect(view.find('dietary-setup-recovered')).toBeNull();
     expect(view.find('dietary-setup-unavailable')).toBeNull();
-    // And nothing on the screen is announcing politely, so there is nothing for the field alerts
-    // to collide with. This is the assertion that fails if a notice is ever driven off `submitted`.
-    expect(view.host.querySelectorAll('[aria-live="polite"]')).toHaveLength(0);
+    // Exactly one polite region, and it is the summary. The three store notices are asserted null
+    // by testID above, so a fourth polite region arriving from anywhere reddens this.
+    const polite = view.host.querySelectorAll('[aria-live="polite"]');
+    expect(polite).toHaveLength(1);
+    expect(polite[0]?.getAttribute('data-testid')).toBe('dietary-setup-invalid');
+  });
+
+  /**
+   * **X-47 and T-23-05, on the form the adopted summary was never built on.**
+   *
+   * Before this landed, a refused Save mounted **four** `aria-live="assertive"` regions with no
+   * lede - measured, `[assertive 4, role=alert 4, polite 0, summary 0]`. Assertive means each
+   * interrupts the last, so four arriving on one event is a collision, and this is the onboarding
+   * form: it is the first thing a screen-reader user meets. `design-system/DECISIONS.md`'s
+   * `dietary-setup` row adopted an error summary at the top of the form, and it was built on
+   * `MealFormScreen` and not here.
+   *
+   * The summary is measured at **one** region, `role="alert"` with `aria-live="polite"`, and the
+   * assertive count is **unchanged at four** - it is a lede, not a fifth interruption.
+   */
+  it('mounts one error summary naming every field that failed, and keeps the inline messages', async () => {
+    const view = await render(memoryDriver({}));
+    await breakEveryReachableField(view);
+
+    expect(view.find('dietary-setup-invalid')).toBeNull();
+
+    press(view.must('dietary-setup-save'));
+
+    const summaries = view.host.querySelectorAll('[data-testid="dietary-setup-invalid"]');
+    // ONE region. Four alerts became five, not nine: the summary is a summary and not a per-field
+    // repeat, and a mutant rendering one per invalid field reddens here.
+    expect(summaries).toHaveLength(1);
+    const summary = view.must('dietary-setup-invalid');
+
+    // The count, and every one of the four labels. A summary that named three would be worse than
+    // none: a user would fix what it listed, press again, and be refused again.
+    expect(summary.textContent ?? '').toContain('4 answers need a different value');
+    for (const label of [
+      'Ingredients you would rather avoid',
+      'Breakfast time',
+      'Lunch time',
+      'Dinner time',
+    ]) {
+      expect(summary.textContent ?? '').toContain(label);
+    }
+    // PRD 12's third clause, and the one place this screen must word it differently from
+    // `MealFormScreen`: preferences here are dispatched on the CHANGE, so "not saved" would be
+    // false. What is true is that nothing was lost.
+    expect(summary.textContent ?? '').toContain('Nothing you have chosen here is lost');
+    expect(summary.textContent ?? '').not.toContain('not saved');
+
+    // "Inline errors retained" - `design-system/pages/dietary-setup.md`'s own words. The summary is
+    // a lede for the per-field messages, never a replacement, so every one is still rendered inside
+    // its own field.
+    expect(view.must('field-breakfast').textContent ?? '').toContain(
+      VALIDATION_MESSAGES.clockFormat,
+    );
+    expect(view.must('field-dinner').textContent ?? '').toContain(VALIDATION_MESSAGES.clockEmpty);
+    expect(view.must('field-dislikes').textContent ?? '').toContain(
+      VALIDATION_MESSAGES.dislikesTooMany,
+    );
+  });
+
+  it('names fields by the words the form itself shows, in the order the form draws them', async () => {
+    /**
+     * **The single-label-table assertion.** The summary and the three meal-time `FormField`s read
+     * one `FIELD_LABELS` map, so the summary cannot name a field by words the field does not show.
+     * A second, summary-only label map - R-58's shape, and this file is already one of its three
+     * copies - would redden here the first time one of the two was edited.
+     *
+     * Asserted against each field's OWN rendered label rather than a list retyped here, which
+     * would just be a third copy of the same table (`BRIEF.md` 6.1g).
+     *
+     * And the order: a summary is a set of directions down the page, so it has to name `dislikes`
+     * before the meal times. Object-key order would have put the meal times first, because
+     * `validateMealTimes` spreads in ahead of them.
+     */
+    const view = await render(memoryDriver({}));
+    await breakEveryReachableField(view);
+    press(view.must('dietary-setup-save'));
+
+    const summaryText = view.must('dietary-setup-invalid').textContent ?? '';
+    for (const testID of ['field-dislikes', 'field-breakfast', 'field-lunch', 'field-dinner']) {
+      // The label row's FIRST child, not the row: a required field's row also carries the
+      // "Required" marker, and the summary names the field, not its required state.
+      const label = view.must(testID).querySelector('div')?.firstElementChild?.textContent ?? '';
+      expect(label).not.toBe('');
+      expect(summaryText).toContain(label);
+    }
+
+    const at = (label: string): number => summaryText.indexOf(label);
+    expect(at('Ingredients you would rather avoid')).toBeGreaterThan(-1);
+    expect(at('Ingredients you would rather avoid')).toBeLessThan(at('Breakfast time'));
+    expect(at('Breakfast time')).toBeLessThan(at('Lunch time'));
+    expect(at('Lunch time')).toBeLessThan(at('Dinner time'));
+  });
+
+  it('adds no assertive region: the summary is the lede, not a fifth interruption', async () => {
+    /**
+     * **The property this screen owns, and the reason the magnitude is still not pinned.**
+     *
+     * `FormField` makes **every** field error `assertive` with `role="alert"`. That is a shared
+     * component TSD 6.7 fixes, so the flood is not this screen's to repair and the change it needs
+     * is recorded rather than made. What IS this screen's is not making it worse: the summary
+     * carries `announceOnMount`, which is `role="alert"` with `aria-live="polite"` - the spelling
+     * that downgrades the assertive the role implies.
+     *
+     * So the assertion is a containment, not a magnitude. It reddens if the summary is ever
+     * spelled assertive or if a second announced region joins the press, and it survives
+     * `FormField` being repaired to `polite`, which a hard count of four would have blocked.
+     */
+    const view = await render(memoryDriver({}));
+    await breakEveryReachableField(view);
+    press(view.must('dietary-setup-save'));
+
+    const summary = view.must('dietary-setup-invalid');
+    expect(summary.getAttribute('role')).toBe('alert');
+    expect(summary.getAttribute('aria-live')).toBe('polite');
+
+    // Four fields failed, so four assertive regions are `FormField`'s. Every assertive region on
+    // screen belongs to a field; none of them is inside the summary.
+    const assertive = [...view.host.querySelectorAll('[aria-live="assertive"]')];
+    expect(assertive).toHaveLength(4);
+    for (const region of assertive) {
+      expect(summary.contains(region)).toBe(false);
+    }
+  });
+
+  it('announces again on a second press, and says nothing while the user is editing', async () => {
+    /**
+     * **`StatusMessage` announces on MOUNT**, so a second press on an unchanged form would render
+     * identical copy, never remount, and say nothing - the dead button the summary exists to end.
+     * The summary is keyed by an attempt counter, and the assertion is DOM node IDENTITY, because
+     * that is what "it remounted" means and no text comparison can see it.
+     *
+     * The other half is the control, and `Plan.md` 20 is why: announcements are "moved
+     * deliberately, never on every blur". Correcting a field narrows the summary's list and must
+     * **not** remount it, or every keystroke would interrupt the user.
+     */
+    const view = await render(memoryDriver({}));
+    typeInto(view, 'field-breakfast', 'nope');
+    typeInto(view, 'field-lunch', 'also nope');
+
+    press(view.must('dietary-setup-save'));
+    const first = view.must('dietary-setup-invalid');
+    expect(first.textContent ?? '').toContain('2 answers need a different value');
+
+    press(view.must('dietary-setup-save'));
+    const second = view.must('dietary-setup-invalid');
+    expect(second).not.toBe(first);
+
+    // A correction: the list narrows in place and the node is the SAME one, so nothing speaks.
+    typeInto(view, 'field-lunch', DEFAULT_PREFERENCES.mealTimes.lunch);
+    const third = view.must('dietary-setup-invalid');
+    expect(third).toBe(second);
+    expect(third.textContent ?? '').toContain('One answer needs a different value');
+    expect(third.textContent ?? '').toContain('Breakfast time');
+    expect(third.textContent ?? '').not.toContain('Lunch time');
+  });
+
+  it('keeps focus where the user left it on a validation failure, and moves it nowhere', async () => {
+    /**
+     * **T-23-05's first half, and the assertion that forbids the "improvement" X-47's original
+     * premise asked for.** `Plan.md` 20: focus is "Preserved on validation failure; moved
+     * deliberately, never on every blur".
+     *
+     * X-47 first claimed the two forms differ on a focus move. Measured at P28, `.focus(` has
+     * **zero** occurrences in any production file under `apps/mobile/src` - neither form moves
+     * focus - and `MealForm.dom.test.tsx` names a `.focus()` on its own summary as the mutation it
+     * probes *against*, because it "would have dumped the focused box". Whether a summary should
+     * ever take focus is an open user decision, so this pins the answer the code gives today: a
+     * refused Save mounts the summary above the fields and leaves the caret alone.
+     */
+    const view = await render(memoryDriver({}));
+    typeInto(view, 'field-lunch', '99:99');
+    const input = inputIn(view.must('field-lunch'));
+    act(() => {
+      input.focus();
+    });
+    expect(document.activeElement).toBe(input);
+
+    press(view.must('dietary-setup-save'));
+
+    // The refusal really happened - otherwise this would pass on a screen that did nothing at all.
+    expect(view.find('dietary-setup-invalid')).not.toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('shows no summary before Save, and drops it once every answer is valid', async () => {
+    /**
+     * Two controls for the tests above, and the first is the one a constant would beat: the summary
+     * is driven by a PRESS, not by validity, so a form that is invalid and untouched announces
+     * nothing. A mutant rendering it whenever `invalidFields` is non-empty would shout at a user
+     * who has not done anything yet - `Plan.md` 20's "never on every blur", one step earlier.
+     *
+     * The second is the pair no single constant satisfies (`BRIEF.md` 6.2 rule 2): a summary that
+     * always rendered passes the middle assertion and fails both the others.
+     */
+    const view = await render(memoryDriver({}));
+    typeInto(view, 'field-breakfast', 'nope');
+    expect(view.find('dietary-setup-invalid')).toBeNull();
+
+    press(view.must('dietary-setup-save'));
+    expect(view.find('dietary-setup-invalid')).not.toBeNull();
+
+    typeInto(view, 'field-breakfast', DEFAULT_PREFERENCES.mealTimes.breakfast);
+    expect(view.find('dietary-setup-invalid')).toBeNull();
   });
 
   it('announces a refused write, which is the one failure here that arrives after the user acts', async () => {

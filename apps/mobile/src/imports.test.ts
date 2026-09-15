@@ -72,17 +72,84 @@ function relativeImports(file: string): { readonly specifier: string; readonly l
   return found;
 }
 
-/** The substitution `metro.config.js` performs, and the one tsc and Vitest already perform. */
-function resolves(fromFile: string, specifier: string): boolean {
+/**
+ * The file a specifier resolves to, or `null`. The substitution `metro.config.js` performs, and the
+ * one tsc and Vitest already perform.
+ *
+ * Returns the PATH rather than a boolean because the cycle check below needs the graph's edges and
+ * not merely the fact that each one lands somewhere. `resolves` is derived from it, so the two
+ * cannot come to disagree about what resolves — which is the whole of R-78's lesson in miniature.
+ */
+function resolvedTarget(fromFile: string, specifier: string): string | null {
   const directory = path.dirname(fromFile);
   const base = specifier.endsWith(JS_SUFFIX) ? specifier.slice(0, -JS_SUFFIX.length) : specifier;
   const candidates = specifier.endsWith(JS_SUFFIX)
     ? [specifier, `${base}.tsx`, `${base}.ts`]
     : [`${specifier}.ts`, `${specifier}.tsx`, path.join(specifier, 'index.ts')];
-  return candidates.some((candidate) => {
+  for (const candidate of candidates) {
     const target = path.resolve(directory, candidate);
-    return fs.existsSync(target) && fs.statSync(target).isFile();
-  });
+    if (fs.existsSync(target) && fs.statSync(target).isFile()) return target;
+  }
+  return null;
+}
+
+/**
+ * Every import cycle, each reported once, as a sorted strongly-connected component.
+ *
+ * **Tarjan rather than the path-wise walk `features/saved/mealRecord.test.ts` uses**, because that
+ * one is exponential in a dense graph and this graph is the whole app: 174 files and 724 edges
+ * against that file's nine modules. The output shape differs as a result — an SCC
+ * (`a <-> b`), not a rotation (`a -> b -> a`) — and the control below is written against THIS
+ * detector's output for that reason rather than copied from the other one.
+ *
+ * **Known limit, asserted rather than left to be found: a self-loop is not reported.** An SCC of
+ * one node is not a cycle to Tarjan even when the node points at itself, and a file importing
+ * itself is a real mistake. It is out of reach here for a different reason — `noImportSelf` in
+ * `eslint.config.mjs` has no equivalent, but a self-import cannot resolve to a different file and
+ * TypeScript reports the circular reference — so the limit is documented and pinned, not fixed.
+ */
+function cyclesIn(graph: ReadonlyMap<string, readonly string[]>): readonly string[] {
+  let counter = 0;
+  const index = new Map<string, number>();
+  const low = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const cycles: string[] = [];
+  const visit = (node: string): void => {
+    index.set(node, counter);
+    low.set(node, counter);
+    counter += 1;
+    stack.push(node);
+    onStack.add(node);
+    for (const next of graph.get(node) ?? []) {
+      if (!index.has(next)) {
+        visit(next);
+        low.set(node, Math.min(low.get(node) ?? 0, low.get(next) ?? 0));
+      } else if (onStack.has(next)) {
+        low.set(node, Math.min(low.get(node) ?? 0, index.get(next) ?? 0));
+      }
+    }
+    if (low.get(node) === index.get(node)) {
+      const component: string[] = [];
+      for (;;) {
+        const popped = stack.pop();
+        if (popped === undefined) break;
+        onStack.delete(popped);
+        component.push(popped);
+        if (popped === node) break;
+      }
+      if (component.length > 1) cycles.push(component.sort().join(' <-> '));
+    }
+  };
+  for (const node of graph.keys()) {
+    if (!index.has(node)) visit(node);
+  }
+  return cycles.sort();
+}
+
+/** The existing boolean form, now DERIVED, so the two cannot disagree. */
+function resolves(fromFile: string, specifier: string): boolean {
+  return resolvedTarget(fromFile, specifier) !== null;
 }
 
 const FILES = [...sourceFilesUnder(path.join(APP_ROOT, 'src'))];
@@ -149,5 +216,95 @@ describe('relative imports in apps/mobile', () => {
     expect(stripped.split('\n')).toHaveLength(3);
     expect(stripped).not.toContain('ghost');
     expect(stripped).toContain("'./real.js'");
+  });
+  it('has no import cycle anywhere in the app, type-only edges included', () => {
+    /**
+     * `Plan.md` §12.2 rule 6 and `TSD.md` §2.3 rule 5 — "no cyclic imports between modules" —
+     * which had **no executable guard anywhere** until P28. The audit found the tree's only cycle
+     * with a bespoke script, and it was invisible to a value-edge-only scan because one side was
+     * `import type`: making it a value import failed **0 of 292** tests.
+     *
+     * **Every edge counts, type-only included, because the rule is about the SOURCE graph.** The
+     * cycle that existed — `saved/mealRecord.ts` ↔ `mealFormValidation.ts` — was harmless at
+     * runtime solely because `verbatimModuleSyntax` erases a type import, which is a property of
+     * the compiler and not of the architecture.
+     *
+     * **No plugin.** `eslint-plugin-import` is present only as `eslint-config-expo`'s floating
+     * transitive and `TSD.md` §2.1 pins neither (X-10), so importing it would be the dependency
+     * stop condition. The walk is already paid for by the three tests above; Tarjan over its graph
+     * measured 0.4–0.8 ms.
+     *
+     * `features/saved` keeps its own narrower check: a failure there names the exact edge, which
+     * this one cannot.
+     */
+    // Keyed on paths RELATIVE to `apps/mobile`, so a failure names `src/features/saved/…` rather
+    // than one contributor's home directory. The message is the whole value of this assertion —
+    // "some cycle exists" is not actionable — and a machine-local absolute path in it is noise at
+    // best. Relativising both ends keeps the graph closed: an edge must land on a node.
+    const nodeOf = (file: string): string =>
+      path.relative(APP_ROOT, file).split(path.sep).join('/');
+    const graph = new Map<string, readonly string[]>(
+      FILES.map((file) => [
+        nodeOf(file),
+        relativeImports(file)
+          .map(({ specifier }) => resolvedTarget(file, specifier))
+          .filter((target): target is string => target !== null)
+          .map(nodeOf),
+      ]),
+    );
+    const edges = [...graph.values()].reduce((total, list) => total + list.length, 0);
+
+    // Non-vacuity, because an empty graph is acyclic: the floors are low enough not to need
+    // maintenance and high enough that a walk which collected nothing fails here first.
+    expect(graph.size).toBeGreaterThanOrEqual(100);
+    expect(edges).toBeGreaterThanOrEqual(400);
+
+    const cycles = cyclesIn(graph);
+    expect(cycles, `import cycles:\n  ${cycles.join('\n  ')}`).toStrictEqual([]);
+  });
+
+  it('detects a cycle when there is one, reports none when there is not, and misses a self-loop', () => {
+    /**
+     * **The detector's own control**, without which a `cyclesIn` returning `[]` for every input
+     * would satisfy the assertion above forever — which is precisely how the cycle it replaces
+     * survived nine phases of green gates.
+     *
+     * Written against **this** detector's output rather than copied from
+     * `features/saved/mealRecord.test.ts`: that one walks paths and reports rotations
+     * (`a -> b -> a`), this one reports strongly-connected components (`a <-> b`). A verbatim copy
+     * would have been a green test asserting the wrong shape.
+     *
+     * The third case pins the **limit** rather than the behaviour, so the gap is checked instead of
+     * described: an SCC of one node is not a cycle to Tarjan, so `a -> a` is not reported.
+     */
+    const twoCycle = new Map([
+      ['a', ['b']],
+      ['b', ['a']],
+    ]);
+    const threeCycle = new Map([
+      ['a', ['b']],
+      ['b', ['c']],
+      ['c', ['a']],
+    ]);
+    const acyclic = new Map([
+      ['a', ['b', 'c']],
+      ['b', ['c']],
+      ['c', []],
+    ]);
+    const selfLoop = new Map([['a', ['a']]]);
+    const twoComponents = new Map([
+      ['a', ['b']],
+      ['b', ['a']],
+      ['c', ['d']],
+      ['d', ['c']],
+    ]);
+
+    expect(cyclesIn(twoCycle)).toStrictEqual(['a <-> b']);
+    expect(cyclesIn(threeCycle)).toStrictEqual(['a <-> b <-> c']);
+    expect(cyclesIn(acyclic)).toStrictEqual([]);
+    // Documented limit, not a passing case dressed up: see the docstring on `cyclesIn`.
+    expect(cyclesIn(selfLoop)).toStrictEqual([]);
+    // Two disjoint cycles are two findings, not one - a reporter that merged them would hide one.
+    expect(cyclesIn(twoComponents)).toStrictEqual(['a <-> b', 'c <-> d']);
   });
 });

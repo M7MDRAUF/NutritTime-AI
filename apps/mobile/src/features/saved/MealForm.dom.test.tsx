@@ -737,8 +737,9 @@ describe('MealFormScreen — the refusal a screen reader can hear (V7)', () => {
 });
 
 /**
- * T-23-05's **focus** half — `Plan.md:2515` ("focus preserved on validation failure") and §20's
- * row, which adds the constraint: "moved deliberately, **never on every blur**".
+ * T-23-05's **focus** half — "Focus preserved on validation failure" (§17's and §18's P23 rows for
+ * T-23-05; the `Plan.md:2515` this cited had EXPIRED and is retracted, §6.1q) and §20's row, which
+ * adds the constraint: "moved deliberately, **never on every blur**".
  *
  * **Nothing in `apps/` or `e2e/` read `document.activeElement` before this block.** The property
  * held by construction — the invalid summary is the only thing remounted, by its `key`, and the

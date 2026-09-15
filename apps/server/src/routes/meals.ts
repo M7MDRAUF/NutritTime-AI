@@ -12,7 +12,7 @@
 
 import { Router } from 'express';
 import type { Request, Response, Router as ExpressRouter } from 'express';
-import { DIET_TAGS, MEAL_PERIODS } from '@nutritime/contracts';
+import { DIET_TAGS, MEAL_PERIODS, MEAL_QUERY_MAX_LENGTH } from '@nutritime/contracts';
 import type { Meal, MealListResponse } from '@nutritime/contracts';
 import { compareIds, isDietCompatible, normalizeText, queryMeals } from '@nutritime/domain';
 import { z } from 'zod';
@@ -50,7 +50,10 @@ const querySchema = z.strictObject({
   period: z.enum(MEAL_PERIODS).optional(),
   diet: z.enum(DIET_TAGS).optional(),
   maxPriceCents: positiveInteger(0).optional(),
-  query: z.string().trim().min(1).max(100).optional(),
+  // The ceiling is `packages/contracts`'s, not a literal: `TSD.md` §5.4 documents 1-100 and
+  // the figure used to be repeated here, in `SearchField.tsx` and in the document. One
+  // declaration now, so server and app cannot disagree about what the wire accepts.
+  query: z.string().trim().min(1).max(MEAL_QUERY_MAX_LENGTH).optional(),
 });
 
 export type MealQuery = z.infer<typeof querySchema>;

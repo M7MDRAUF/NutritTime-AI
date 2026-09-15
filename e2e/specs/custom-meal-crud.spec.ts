@@ -179,7 +179,11 @@ function mealForm(page: Page): Locator {
 
 /** One custom meal's row, scoped to the custom section and addressed by id — never by position. */
 function recipeRow(page: Page, mealId: string): Locator {
-  return page.getByTestId('saved-custom').getByTestId(`saved-recipe-${mealId}`);
+  // **Scoped to the screen, not to `saved-custom`, since P28's `SectionList` root.** The rows
+  // are cells of the ROOT list now, so the section container cannot contain them — the old
+  // scope matched nothing. `saved-recipe-` is the custom section's own prefix, so nothing else
+  // matches.
+  return page.getByTestId('saved-screen').getByTestId(`saved-recipe-${mealId}`);
 }
 
 /**
@@ -192,7 +196,12 @@ function recipeRow(page: Page, mealId: string): Locator {
  * own markers, in the same screen.
  */
 function conflictMarker(page: Page, mealId: string): Locator {
-  return page.getByTestId('saved-custom').getByTestId(`saved-conflict-${mealId}`);
+  // **Same rescope, and this one is a WEAKER guarantee than it was — say so rather than let a
+  // reader assume otherwise.** `saved-conflict-<id>` is rendered by BOTH sections
+  // (`SavedMealRow.tsx`), so the container was what disambiguated them; after P28's
+  // `SectionList` root it is the id alone. A custom meal's UUID cannot collide with a catalog
+  // slug, so it holds — but it holds on the id space, not on the DOM.
+  return page.getByTestId('saved-screen').getByTestId(`saved-conflict-${mealId}`);
 }
 
 /**
@@ -202,7 +211,7 @@ function conflictMarker(page: Page, mealId: string): Locator {
  */
 async function customRowIds(page: Page): Promise<readonly string[]> {
   const rows = await page
-    .getByTestId('saved-custom')
+    .getByTestId('saved-screen')
     .locator('[data-testid^="saved-recipe-"]')
     .all();
   const ids: string[] = [];

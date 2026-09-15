@@ -6,7 +6,9 @@ import {
   EXPLORE_PAGE_SIZE,
   NO_FILTERS,
   activeFilterCount,
+  exploreQueryKey,
   isChipSelected,
+  isLastPage,
   queryFrom,
   toggleChip,
 } from './exploreFilters.js';
@@ -106,6 +108,83 @@ describe('queryFrom', () => {
     // its own, and `initialNumToRender` is chosen against this figure.
     expect(queryFrom('x', NO_FILTERS).pageSize).toBe(EXPLORE_PAGE_SIZE);
     expect(queryFrom('x', NO_FILTERS, 3).page).toBe(3);
+  });
+});
+
+describe('exploreQueryKey', () => {
+  /**
+   * The key is what makes "append page 2 to *this* list" a checkable instruction (R-73), so a
+   * collision is not a tidy-up issue — it is two queries' meals in one list.
+   */
+  it('gives every distinct search-and-filter combination its own key', () => {
+    const keys = new Set<string>();
+    let combinations = 0;
+    for (const period of [...MEAL_PERIODS, null] as const) {
+      for (const diet of [...DIET_TAGS, null] as const) {
+        for (const budget of [...BUDGET_BANDS, null] as const) {
+          for (const search of ['', 'rice', 'ricotta']) {
+            keys.add(exploreQueryKey(search, { period, diet, budget }));
+            combinations += 1;
+          }
+        }
+      }
+    }
+    // 5 periods x 6 diets x 4 budgets x 3 searches, all distinct. A key that ignored one of its
+    // four inputs would collapse this count and fail here.
+    expect(combinations).toBe(
+      (MEAL_PERIODS.length + 1) * (DIET_TAGS.length + 1) * (BUDGET_BANDS.length + 1) * 3,
+    );
+    expect(keys.size).toBe(combinations);
+  });
+
+  it('cannot be collided by a separator in the search text', () => {
+    /**
+     * The adversarial case, and the reason the key is `JSON.stringify` of a tuple rather than a
+     * joined string: under `'|'` the search `'a|b'` with no filters and the search `'a'` with a
+     * filter spelled `'b'` produce the same characters. The inputs below are written to that
+     * attack shape rather than sampled from what the chips happen to produce (BRIEF §6.3).
+     */
+    const hostile = ['a|b', 'a', 'a"', '","', '],[', 'null', ''];
+    const keys = hostile.map((search) => exploreQueryKey(search, NO_FILTERS));
+    expect(new Set(keys).size).toBe(hostile.length);
+    // And a value that looks like a filter in the text is not one.
+    expect(exploreQueryKey('a|b', NO_FILTERS)).not.toBe(
+      exploreQueryKey('a', { ...NO_FILTERS, diet: DIET_TAGS[0] ?? 'vegan' }),
+    );
+  });
+
+  it('treats a trailing space as the same query, because `queryFrom` does', () => {
+    // Otherwise `'rice '` is a new query whose page-2 request is issued a second time and folded
+    // into the same list. `queryFrom` has always trimmed; only the key had to agree.
+    expect(exploreQueryKey('rice ', NO_FILTERS)).toBe(exploreQueryKey('rice', NO_FILTERS));
+    expect(exploreQueryKey('  rice  ', NO_FILTERS)).toBe(exploreQueryKey('rice', NO_FILTERS));
+    expect(exploreQueryKey('rice', NO_FILTERS)).not.toBe(exploreQueryKey('rico', NO_FILTERS));
+  });
+});
+
+describe('isLastPage', () => {
+  /**
+   * Two independent conditions, asserted independently — a single `||` where one side is never
+   * exercised is the "control that passes under the mutation" shape (BRIEF §6.2).
+   */
+  it('says yes on a short page even when the total claims more', () => {
+    // The condition that does not trust `total`. A `total` larger than the catalogue can deliver
+    // would otherwise leave `loaded < total` true forever, and a list that asks for the next page
+    // forever is a request loop rather than a bug a user can wait out.
+    expect(isLastPage(EXPLORE_PAGE_SIZE - 1, 19, 999)).toBe(true);
+    expect(isLastPage(0, 20, 999)).toBe(true);
+  });
+
+  it('says yes on a full page once the total is reached', () => {
+    // The server's own answer: 60 records, 20 per page, the third page is the last.
+    expect(isLastPage(EXPLORE_PAGE_SIZE, 60, 60)).toBe(true);
+    expect(isLastPage(EXPLORE_PAGE_SIZE, 61, 60)).toBe(true);
+  });
+
+  it('says no while a full page has been delivered and the total is not reached', () => {
+    // The case both conditions have to leave open, or nothing pages at all.
+    expect(isLastPage(EXPLORE_PAGE_SIZE, 20, 60)).toBe(false);
+    expect(isLastPage(EXPLORE_PAGE_SIZE, 40, 60)).toBe(false);
   });
 });
 

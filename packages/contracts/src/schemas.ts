@@ -60,6 +60,27 @@ export const nutritionProvenanceSchema = z.strictObject({
   reason: z.string().max(200).nullable(),
 });
 
+/**
+ * **The meal-search query's ceiling, declared once because it had been declared three times.**
+ *
+ * `TSD.md` §5.4 documents it — `| \`query\` | string | 1–100 chars |` — and until P28 the figure
+ * lived separately in `apps/server/src/routes/meals.ts`'s Zod bound and again in
+ * `apps/mobile/src/shared/components/SearchField.tsx`, where it was deliberately unexported. Three
+ * copies that could not see each other, which is R-78's shape: the denied-claim list came to differ
+ * by three phrases the same way, and the failure-to-outcome mapping by two arms.
+ *
+ * It lives here because `packages/contracts` is the one package **both** the server and the app may
+ * import, so a drift between the two is now unrepresentable rather than merely untested. That was
+ * the unblocker two separate P28 agents filed after each hit the boundary from its own side.
+ *
+ * **It is a ceiling on the WIRE, so both doors have to honour it.** The field bounds what a user
+ * types; a route param — `readStringParam(route.params, 'query')` on Explore — bypasses the field
+ * entirely, and a 101-character deep link answered `400 invalid_request`, rendered as an error state
+ * with a retry that repeated the rejected request. The assistant already carries this two-door shape
+ * for the same reason (`AssistantParams.seedQuestion` past a field's `maxLength`).
+ */
+export const MEAL_QUERY_MAX_LENGTH = 100;
+
 export const kebabIdSchema = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/);
 
 /** The object half, exported so a test can inspect its key set. */

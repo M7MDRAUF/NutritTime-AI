@@ -8,23 +8,22 @@
  * the user's data was gone with no message. Nothing downstream would catch it here either —
  * `repository.set` checks `definition.bound` and never `definition.schema`, and the `customMeals`
  * reducer deliberately takes a complete `CustomMeal` without validating it. The only place a
- * malformed custom meal can be stopped is before it is composed, which is here.
+ * malformed custom meal can be stopped is before it is composed, which is here. Three decisions
+ * make that structural rather than hopeful:
  *
- * Three decisions make that structural rather than hopeful:
- *
- *  - `MealFormDraft` is all strings, because that is what a text input holds. A half-typed price
- *    is not a wrong price, it is an unfinished one, and `composeCustomMeal` is the only thing in
- *    the app that produces a `CustomMeal`.
+ *  - `MealFormDraft` is all strings, because that is what a text input holds: a half-typed price
+ *    is unfinished, not wrong. `composeCustomMeal` is the app's only producer of a `CustomMeal`.
  *  - `validateMealForm` and the composers are **one pass** (`interpret`). Two passes could
  *    disagree, and a disagreement between "the form said this was fine" and "what we stored" is
- *    exactly the defect above. **This is why `interpret` was not split** when the file was broken
- *    up under SQG-09: `mealFormFields.ts` holds what one typed string *means*, `mealIdentity.ts`
- *    holds how an id is assembled, and `mealRecord.ts` holds what becomes of values the pass has
- *    already proved. Every rule that records a field-bound error stays in this one pass —
- *    including the all-or-nothing nutrition rule, which reads five fields at once — and so do the
- *    two `compose*` functions, so the only route to a `CustomMeal` is still interpret-then-compose
- *    inside one function. All three extracted modules are re-exported below, so CONTRACTS §7's
- *    surface is unchanged for the screens coding against it.
+ *    exactly the defect above. **This is why `interpret` was not split** under SQG-09, which moved
+ *    what a typed string means to `mealFormFields.ts`, id assembly to `mealIdentity.ts`, and what
+ *    becomes of already-proved values to `mealRecord.ts`, all three re-exported below. Every rule
+ *    that records a field-bound error stays in this one pass — including the all-or-nothing
+ *    nutrition rule, which reads five fields at once — and so do both `compose*` functions, so the
+ *    only route to a `CustomMeal` is interpret-then-compose inside one function. `MealFormErrors`
+ *    stays here too, beside the draft its keys come from; `mealRecord.ts` takes it as a type
+ *    parameter rather than importing it, which is what removed the tree's one source-level import
+ *    cycle (see `ComposeOutcome` there).
  *  - The composed record is checked against `customMealSchema` — the schema storage itself
  *    applies — before it is returned. That is a **backstop, not the primary guard**: the
  *    field-bound rules are what a user can act on, and the suite's job is to prove the two agree
@@ -60,13 +59,14 @@ import {
 } from './mealFormFields.js';
 import type { NutrientField } from './mealFormFields.js';
 import { createRecord, updateRecord } from './mealRecord.js';
-import type { ComposeContext, ComposeResult, DraftValues } from './mealRecord.js';
+import type { ComposeContext, ComposeOutcome, DraftValues } from './mealRecord.js';
 
-// CONTRACTS §7's published surface, unchanged by the SQG-09 split: a screen imports everything
-// from this module and never needs to know the rule set lives in three files.
+// CONTRACTS §7's published surface, unchanged by the SQG-09 split and by the cycle break below: a
+// screen imports everything here and never needs to know the rule set lives in three files.
 export { MEAL_FORM_MESSAGES, nutrientRangeMessage } from './mealFormFields.js';
 export { MEAL_ID_PATTERN, generateMealId } from './mealIdentity.js';
-export type { ComposeContext, ComposeResult } from './mealRecord.js';
+export type { ComposeContext } from './mealRecord.js';
+export type ComposeResult = ComposeOutcome<MealFormErrors>;
 
 const M = MEAL_FORM_MESSAGES;
 

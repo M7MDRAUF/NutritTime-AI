@@ -36,3 +36,8 @@ tmp/
 # USDA dataset. The archive lives outside the repository and is read via USDA_DATASET_PATH;
 # this rule is defence against a future copy-paste dropping a 16 MB CSV into the tree.
 *.csv
+
+# TypeScript incremental build state. Produced by `tsc -b`, never an input: regenerated on
+# demand and machine-specific, so committing it would put one machine every other machine must
+# agree with into the tree. Added at P28 after `npx tsc -b` left one untracked.
+*.tsbuildinfo

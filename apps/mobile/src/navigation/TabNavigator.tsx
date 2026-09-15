@@ -17,6 +17,7 @@
 import type { ReactNode } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../shared/theme/ThemeProvider.js';
 import { Icon } from '../shared/components/Icon.js';
 import type { IconName } from '../shared/components/Icon.js';
@@ -135,6 +136,19 @@ function tabIcon(tab: UiTab) {
 }
 
 /**
+ * The two metrics `@react-navigation/bottom-tabs` 7.18.18 spends on a stacked tab, read from its
+ * source (`views/BottomTabItem.tsx`'s `tabVerticalUiKit` padding, `views/TabBarIcon.tsx`'s
+ * `ICON_SIZE_TALL`) so R-72's arithmetic is checkable here rather than asserted.
+ *
+ * With its `TABBAR_HEIGHT_UIKIT = 49`, those leave `49 - 1 - 10 - 28 = 10` px for a label styled
+ * `labelBeneath: { fontSize: 10 }`, whose line box needs 14. **The library's own figures do not add
+ * up, and that is the whole of R-72.** Transcribed rather than imported because they are private to
+ * it; if an upgrade moves one, `e2e/specs/text-clipping.spec.ts` reddens.
+ */
+const TAB_ITEM_PADDING = 5;
+const TAB_ICON_HEIGHT = 28;
+
+/**
  * The logical tab id each container carries (T-18-01).
  *
  * Written out rather than derived from the route name, so the compiler checks every value against
@@ -173,7 +187,45 @@ function tabIdFor(routeName: string): UiTab | undefined {
 
 export function TabNavigator(): ReactNode {
   const theme = useTheme();
-  const { colors, components } = theme;
+  const { colors, components, typography } = theme;
+
+  /**
+   * **R-72's fix is ROOM, not a label style — which is why both attempts on `tabBarLabelStyle`
+   * failed, and why this file now sets none.**
+   *
+   * The label is a flex item with `flex: 0 1 auto` in the tab's column and the icon above it is
+   * `flex: 0 0 auto`, so the label was not merely unstyled: it was **compressed from the 14 px it
+   * needs to the 10 px the column could spare** (see `TAB_ICON_HEIGHT`), and `numberOfLines={1}` on
+   * `@react-navigation/elements`' `Label` gives it react-native-web 0.21.2's `overflow: hidden`,
+   * which cuts the four pixels instead of spilling them. A line height or a height on the label
+   * therefore could not win: flex shrinking sizes that box, and both attempts were arguing with the
+   * wrong layout pass. `e2e/specs/text-clipping.spec.ts` carries the measurement and the correction
+   * to the reason those two reverts were recorded for.
+   *
+   * So the bar is made tall enough to hold what the library already wants to put in it, and the
+   * label is then never compressed, so it needs no style at all. **A `minHeight` floor was tried
+   * alongside this and measured REDUNDANT** — with the room provisioned there is no deficit for
+   * `min-height` to resist — and it is left out rather than kept as belt-and-braces, for the reason
+   * `text-clipping.spec.ts`'s containment test records.
+   *
+   * `typography.label.lineHeight` supplies the label's share because it is the project's smallest
+   * published step (`primitive.ts` 12/16, TSD §6.6): 16 clears the 14 with slack, and it carries the
+   * OS font scale, so on native — where the library leaves `allowFontScaling` unset and the label
+   * really does grow — the bar grows with it and PRD §10.5's "text scales without clipping" holds at
+   * 2x instead of breaking there.
+   *
+   * `insets.bottom` is in the sum because a numeric `height` makes `getTabBarHeight` return that
+   * value VERBATIM — skipping the `+ inset` the library adds to its own 49 — while the bar still
+   * lays out `paddingBottom: insets.bottom` inside it. Omitting the term would eat a notched phone's
+   * 34 px home indicator out of the content: the defect made worse rather than fixed.
+   */
+  const insets = useSafeAreaInsets();
+  const tabBarHeight =
+    TAB_ITEM_PADDING * 2 +
+    TAB_ICON_HEIGHT +
+    typography.label.lineHeight +
+    components.divider.thickness +
+    insets.bottom;
 
   /**
    * **`useDispatch`, never `useValue`** — and that is the whole reason `createStore` publishes
@@ -291,7 +343,10 @@ export function TabNavigator(): ReactNode {
         // fill below back out of this file and re-measures the pair.
         tabBarActiveTintColor: colors.content.link,
         tabBarInactiveTintColor: colors.content.tertiary,
+        // **No `tabBarLabelStyle`, deliberately** — R-72 is closed by the height below, and a
+        // label style was measured to add nothing. See `tabBarHeight` above before adding one.
         tabBarStyle: {
+          height: tabBarHeight,
           backgroundColor: colors.surface.raised,
           borderTopColor: colors.border.subtle,
           borderTopWidth: components.divider.thickness,

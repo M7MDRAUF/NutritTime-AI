@@ -16,7 +16,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { ReactNode } from 'react';
 import { ScrollView, View } from 'react-native';
-import { formatMoney } from '@nutritime/domain';
+import { formatMoney, MAX_RECOMMENDATIONS } from '@nutritime/domain';
 import type { MealPeriod, Recommendation } from '@nutritime/contracts';
 import {
   AppText,
@@ -32,9 +32,6 @@ import type { ScreenProps } from '../../navigation/registry.js';
 import { preferencesStore } from '../../state/preferences/index.js';
 import { uiActions, uiStore } from '../../state/ui/index.js';
 import { useRecommendations } from './useRecommendations.js';
-
-/** §11.5: "fixed at three". Restated here so the screen cannot render a fourth. */
-const MAX_RECOMMENDATIONS = 3;
 
 /** How the period reads in a greeting. Not `titleCase`: "Snack" is not a time of day. */
 const PERIOD_HEADING: Readonly<Record<MealPeriod, string>> = {
@@ -194,9 +191,21 @@ export function HomeScreen({
       {state.kind === 'loaded' && state.recommendations.length > 0 ? (
         <View testID="home-recommendations" style={{ gap: components.card.gap }}>
           {/*
-            Sliced to `MAX_RECOMMENDATIONS`, although §11.5 fixes the response at three: the screen
-            should not paint a fourth card if a future response carries one. PRD §13 says three, and
-            a screen that renders whatever it is handed makes the contract the server's alone.
+            **`MAX_RECOMMENDATIONS` is IMPORTED from the domain, where it used to be a second copy
+            declared in this file.** PRD §7.1 — "Return the top three." — is the authority for the
+            number; `packages/domain/src/scoring.ts` implements it and slices `recommend()` with
+            it, and `Plan.md` §11.5's recommendations block fixes the response at three on the same
+            grounds. A local copy could disagree with all three *upward* and nothing would say so:
+            moving it 3 → 4 failed **0 of `Home.dom.test.tsx`'s 27** tests, because no fixture had
+            ever supplied a fourth recommendation — and the copy also **masked the domain's own
+            drift**, since moving `scoring.ts` to 4 while this file said 3 failed those same 27
+            tests 0 times as well. One copy makes the divergence unrepresentable, which is worth
+            more than a test that notices it after the fact; the same mutation now reddens 5 of 29.
+
+            The slice is still doing work and is not decoration: `decodeRecommendationResponse`
+            imposes no length bound, so a response carrying four would decode cleanly and this cap
+            is the only thing standing between it and a fourth card. That is the case no fixture
+            used to reach, and it now has its own test.
           */}
           {state.recommendations.slice(0, MAX_RECOMMENDATIONS).map((recommendation) => (
             <RecommendationRow

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { fireEvent } from '@testing-library/dom';
 import { seededCatalog } from '@nutritime/catalog';
-import { mealSchema } from '@nutritime/contracts';
+import { MEAL_QUERY_MAX_LENGTH, mealSchema } from '@nutritime/contracts';
 import type { Meal, MealListResponse, MealPeriod } from '@nutritime/contracts';
 import { ThemeProvider } from '../../shared/theme/ThemeProvider.js';
 import { ApiProvider } from '../../infrastructure/api/ApiProvider.js';
@@ -28,8 +28,45 @@ import { ExploreScreen } from './ExploreScreen.js';
 
 const CATALOG = (seededCatalog as unknown[]).map((record) => mealSchema.parse(record));
 
-function page(meals: readonly Meal[]): MealListResponse {
-  return { meals: [...meals], page: 1, pageSize: 20, total: meals.length };
+/**
+ * One page of a `GET /meals` answer.
+ *
+ * **`total` is a second parameter now, and that is R-73's other half.** `apps/server`'s
+ * `paginate` documents `total` as "the count AFTER filtering and BEFORE paging", so it is
+ * independent of how many meals the page in hand carries: the real server answers `total: 60`
+ * with twenty meals on every unfiltered first page. This helper used to compute it as
+ * `meals.length`, so **the fixture could not express the disagreement** — and the screen
+ * announcing `state.total` over a twenty-row list was therefore invisible to all nineteen tests
+ * here. The audit measured the mutation `state.total` → `state.meals.length` at **0 of 19** for
+ * exactly that reason: a fixture drawn from the same shape as the code tests nothing (BRIEF §6.3).
+ *
+ * The default is kept for the tests whose subject is not the count, and it is a **trap** for any
+ * new one — an assertion about the announced count has to pass a `total` that differs, or it is
+ * decoration. `catalogPage` below always differs, because the server always does.
+ */
+function page(meals: readonly Meal[], total = meals.length): MealListResponse {
+  return { meals: [...meals], page: 1, pageSize: 20, total };
+}
+
+/**
+ * Page `n` of the WHOLE catalogue, sliced the way `apps/server`'s `paginate` slices it.
+ *
+ * Twenty per page across sixty records, so `total` (60) and `meals.length` (20) disagree on every
+ * page — which is what the server sends and what the helper above could not say.
+ *
+ * The twenty is written out rather than imported: slicing by `EXPLORE_PAGE_SIZE` and then
+ * asserting the screen's behaviour against the same constant would compare it to itself and pass
+ * at any value (BRIEF §6.1g). Each paging test asserts `CATALOG` is sixty as the other end of the
+ * pin, and a page size that moved would make these pages short and fail them — which is the point.
+ */
+function catalogPage(pageNumber: number): MealListResponse {
+  const start = (pageNumber - 1) * 20;
+  return {
+    meals: CATALOG.slice(start, start + 20),
+    page: pageNumber,
+    pageSize: 20,
+    total: CATALOG.length,
+  };
 }
 
 /** A client whose every call is a promise this test completes when it chooses. */
@@ -175,6 +212,38 @@ async function tick(): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1));
   });
+}
+
+/** Press a control and let whatever request it starts go out. */
+async function press(view: Rendered, testID: string): Promise<void> {
+  act(() => {
+    view.must(testID).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await tick();
+}
+
+/**
+ * A button found by the label the user reads, because `ErrorState` gives its retry no `testID`.
+ * Its props are fixed by TSD §6.7 and adding one is another agent's decision, not this file's.
+ */
+function buttonLabelled(host: HTMLElement, label: string): HTMLElement {
+  const found = [...host.querySelectorAll('[role="button"]')].find((node) =>
+    (node.textContent ?? '').includes(label),
+  );
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`no button labelled ${label}`);
+  }
+  return found;
+}
+
+/** What the list tells a screen-reader user its size is. */
+function announced(view: Rendered): string | null {
+  return view.must('explore-list').getAttribute('aria-label');
+}
+
+/** The rows actually MOUNTED, which is the render budget and never the result-set size (R-45). */
+function mountedRows(view: Rendered): number {
+  return view.host.querySelectorAll('[data-testid^="meal-"]').length;
 }
 
 describe('ExploreScreen', () => {
@@ -466,6 +535,45 @@ describe('ExploreScreen', () => {
     expect(honoured.calls[0]).toMatchObject({ query: 'rice' });
   });
 
+  it('bounds an over-long `query` param at the length the field enforces (R-74)', async () => {
+    /**
+     * **R-74's second door, and the door is the URL rather than the field.**
+     *
+     * A user cannot type past `MEAL_QUERY_MAX_LENGTH` — `SearchField` slices `onChangeText` — so
+     * every earlier assertion about this bound was made against the one path that could not break
+     * it. A deep link carries whatever it likes: `param=101` was measured arriving as `sent=101`,
+     * earning a `400 invalid_request` and an error state whose retry repeated the rejected
+     * request. The user met a server error for a length the interface never let them reach.
+     *
+     * **Asserted on the REQUEST, not on the input's `value`.** A test that only checked the box
+     * would be decoration here: the box was already bounded, and what was wrong was what left the
+     * screen. `stub.calls[0]` is the same seam the array-param refusal above uses.
+     *
+     * **The control is the half that makes this a test.** Truncating to 99 would satisfy the
+     * over-length assertion and fail the control; not truncating at all would satisfy the control
+     * and fail the over-length assertion. No single constant satisfies both — which is the shape
+     * Plan §10.3 names, "a control that passes under the mutation is not a control".
+     */
+    const overLong = 'a'.repeat(MEAL_QUERY_MAX_LENGTH + 1);
+    const tooLong = deferredClient();
+    const tooLongView = renderExplore(tooLong.client, { query: overLong });
+    await tick();
+
+    expect(tooLong.calls[0]?.query).toHaveLength(MEAL_QUERY_MAX_LENGTH);
+    expect(tooLong.calls[0]?.query).toBe(overLong.slice(0, MEAL_QUERY_MAX_LENGTH));
+    // What the user sees agrees with what was sent, or the box would offer to re-submit a length
+    // the request already refused.
+    expect(searchInput(tooLongView.host).getAttribute('value')).toHaveLength(MEAL_QUERY_MAX_LENGTH);
+
+    // The control: a param at exactly the ceiling arrives untouched, character for character.
+    const atLimit = 'b'.repeat(MEAL_QUERY_MAX_LENGTH);
+    const exact = deferredClient();
+    renderExplore(exact.client, { query: atLimit });
+    await tick();
+
+    expect(exact.calls[0]?.query).toBe(atLimit);
+  });
+
   it('refuses an array-valued AND an unrecognised `period` (T-22-05)', async () => {
     /**
      * `period` is a union, so `readUnionParam` against `MEAL_PERIODS` is the right reader and the
@@ -597,12 +705,17 @@ describe('ExploreScreen', () => {
     /**
      * The render budget, and **this is the one place a DOM row count is the thing being measured
      * rather than a proxy for a result-set size** — R-45 forbids the latter, and names this
-     * distinction. The response below carries twenty meals and says so in `total`; the assertion
-     * is that the screen built eight.
+     * distinction. The response below carries twenty meals out of a stated sixty; the assertion is
+     * that the screen built eight.
      *
      * Eight is `INITIAL_ROWS`, chosen because a card is tall and twenty is more than any phone
      * shows. `initialNumToRender={state.meals.length}` — the mutation that removes the bound —
      * renders twenty here and fails.
+     *
+     * **`total` is 60 and the page is 20, deliberately** (R-73). This assertion used to run against
+     * `page(meals)`, whose `total` was `meals.length`, so `'20 meals'` was true of the loaded count
+     * and of the catalogue's size at once and could not tell them apart. Now only the loaded count
+     * produces it.
      */
     const meals = CATALOG.slice(0, 20);
     expect(
@@ -613,12 +726,331 @@ describe('ExploreScreen', () => {
     const stub = deferredClient();
     const view = renderExplore(stub.client);
     await tick();
-    await stub.settle(0, page(meals));
+    await stub.settle(0, page(meals, CATALOG.length));
 
-    expect(view.host.querySelectorAll('[data-testid^="meal-"]')).toHaveLength(8);
-    // And the list still announces the real size, so the bound is a rendering budget and not a
-    // silently truncated result.
-    expect(view.must('explore-list').getAttribute('aria-label')).toBe('20 meals');
+    expect(mountedRows(view)).toBe(8);
+    // And the list still announces the size of the RESULT SET it holds — eight would be the same
+    // defect in the other direction, a rendering budget reported as a result.
+    expect(announced(view)).toBe('20 meals');
+  });
+
+  it('reaches all sixty meals by paging, and still mounts only eight rows (R-73, FR-010)', async () => {
+    /**
+     * **FR-010: "Results page locally."** The clause R-73 found had no implementation and no test.
+     *
+     * Before this, `useMealSearch` never passed `queryFrom`'s third argument, so every request was
+     * page 1 and a browsing user reached **twenty of sixty** — the meals were not lost, because
+     * search and the chips re-query and surface other records, but the *browse* path stopped.
+     *
+     * Asserted on the requests and on the announced size, not on the row count: the row count is
+     * `INITIAL_ROWS` at every result-set size, which is why R-45 calls it a rendering budget. The
+     * last assertion is the other half of that — sixty loaded and still eight mounted, so paging
+     * has not been bought by mounting sixty rows and sixty remote images (R-45, T-22-08).
+     */
+    expect(CATALOG, 'the sixty records R-73 counted').toHaveLength(60);
+
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, catalogPage(1));
+
+    expect(stub.calls[0]).toStrictEqual({ page: 1, pageSize: 20 });
+    expect(announced(view)).toBe('20 meals');
+
+    await press(view, 'explore-more');
+    expect(stub.calls[1]).toStrictEqual({ page: 2, pageSize: 20 });
+    // While the page is in flight the control stays, keeps its name, and says it is working.
+    expect(view.must('explore-more').getAttribute('aria-busy')).toBe('true');
+    expect(view.must('explore-more').textContent).toContain('Show more meals');
+    await stub.settle(1, catalogPage(2));
+    expect(announced(view)).toBe('40 meals');
+
+    await press(view, 'explore-more');
+    expect(stub.calls[2]).toStrictEqual({ page: 3, pageSize: 20 });
+    await stub.settle(2, catalogPage(3));
+    expect(announced(view)).toBe('60 meals');
+
+    // Every record, in the order the server sent them, with nothing dropped or repeated.
+    expect(
+      [...stub.calls].every((call) => call.pageSize === 20),
+      'the screen sends its own page size on every page',
+    ).toBe(true);
+
+    // Exhausted: the affordance goes away rather than asking for a fourth page that does not exist.
+    expect(view.find('explore-more')).toBeNull();
+    await tick();
+    expect(stub.calls, 'no fourth request once the catalogue is exhausted').toHaveLength(3);
+
+    expect(mountedRows(view)).toBe(8);
+    expect(
+      view.host.querySelectorAll('img').length,
+      'sixty loaded meals must not mean sixty remote images',
+    ).toBeLessThanOrEqual(8);
+  });
+
+  it('announces the meals in the LIST, never the size of the catalogue (R-73)', async () => {
+    /**
+     * **The false announcement, and the fixture that could not disagree with it.**
+     *
+     * `accessibilityLabel={`${state.total} meals`}` announced the server's unfiltered count — sixty
+     * — over a twenty-row list. To the one user who cannot see the list's length for themselves
+     * that is a statement of fact, and it was false by forty.
+     *
+     * The two assertions below are the control pair: the response must DISAGREE with the rendered
+     * count, or `state.total` and `state.meals.length` are the same number and the assertion is
+     * decoration. That is what `page`'s old `total: meals.length` made impossible.
+     */
+    const first = catalogPage(1);
+    expect(first.meals, 'a page is twenty meals').toHaveLength(20);
+    expect(first.total, 'and the catalogue is sixty — the fixture disagrees with the page').toBe(
+      60,
+    );
+
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, first);
+
+    expect(announced(view)).toBe('20 meals');
+
+    // And it follows the list as the list grows, rather than being a constant that happened to be
+    // right once: a label pinned only at the first page is satisfied by `'20 meals'` hard-coded.
+    await press(view, 'explore-more');
+    await stub.settle(1, catalogPage(2));
+    expect(announced(view)).toBe('40 meals');
+  });
+
+  it('refuses a page that lands after a filter change, and restarts at page one (R-73)', async () => {
+    /**
+     * **The stale-request guard under paging.**
+     *
+     * A page-2 response *appends*, so a superseded one would not replace a result set — it would
+     * mix two, leaving twenty meals of one query underneath twenty of another with nothing on
+     * screen saying so. Two guards are exercised here at once:
+     *
+     *  - the chip tap must request **page 1** of the new query, not page 2. The requested page is
+     *    derived from the query key during render, so it cannot survive the change;
+     *  - the in-flight page 2 then answers and must commit **nothing**.
+     *
+     * Asserted by identity as well as by size, because a *replace* by the stale page would also
+     * leave twenty meals on screen. `CATALOG[0]` is page 1's first record and `CATALOG[20]` is page
+     * 2's, so the pair separates "refused" from "replaced" and from "appended".
+     */
+    const firstOfPageOne = CATALOG[0];
+    const firstOfPageTwo = CATALOG[20];
+    if (firstOfPageOne === undefined || firstOfPageTwo === undefined) {
+      throw new Error('the catalogue is too small for two pages');
+    }
+
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, catalogPage(1));
+
+    await press(view, 'explore-more');
+    expect(stub.calls[1]).toStrictEqual({ page: 2, pageSize: 20 });
+
+    await press(view, 'chip-diet-vegan');
+    expect(stub.calls[2]).toStrictEqual({ page: 1, pageSize: 20, diet: 'vegan' });
+    expect(stub.signals[1]?.aborted, 'the superseded page is aborted too').toBe(true);
+
+    // Now the superseded page 2 answers. Nothing may change.
+    await stub.settle(1, catalogPage(2));
+    expect(announced(view), 'a refused page appends nothing').toBe('20 meals');
+    expect(view.find(`meal-${firstOfPageOne.id}`), 'page 1 must survive').not.toBeNull();
+    expect(view.find(`meal-${firstOfPageTwo.id}`), 'page 2 must not arrive').toBeNull();
+
+    // And the new query's own first page replaces cleanly.
+    await stub.settle(2, page(CATALOG.slice(0, 3), 3));
+    expect(announced(view)).toBe('3 meals');
+  });
+
+  it('starts a query it had already paged over again from page one', async () => {
+    /**
+     * The other half of the page reset, and the half a derivation alone does not cover.
+     *
+     * Deriving the page from the query key makes the CURRENT render right. It does not forget:
+     * leaving `{ key: unfiltered, page: 2 }` stored while the user browses a filtered query means
+     * that coming back asks for page 2 of a list holding nothing — twenty records skipped, with no
+     * gap a reader would see. So the record is reset once the render has settled, and the last
+     * assertion below is what says so.
+     */
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, catalogPage(1));
+    await press(view, 'explore-more');
+    await stub.settle(1, catalogPage(2));
+    expect(announced(view)).toBe('40 meals');
+
+    await press(view, 'chip-diet-vegan');
+    await stub.settle(2, page(CATALOG.slice(0, 3), 3));
+
+    // The same chip again withdraws the filter, so this is the query that had reached page 2.
+    await press(view, 'chip-diet-vegan');
+    expect(stub.calls[3]).toStrictEqual({ page: 1, pageSize: 20 });
+    await stub.settle(3, catalogPage(1));
+    expect(announced(view)).toBe('20 meals');
+  });
+
+  it('folds a record the server sent twice only once', async () => {
+    /**
+     * `keyExtractor` returns `meal.id`, so one id twice is one React key twice — T-13-04's lesson
+     * arriving by a new route. The guards make a repeated page unrequestable, so this asserts the
+     * append itself is by id rather than a blind concatenation.
+     *
+     * The overlap is deliberate: page 2 here starts one record early, so nineteen of its twenty are
+     * new. `39 meals`, not `40`. **The screen folds by the page it ASKED for, not the one the
+     * response echoes** — which is why the fixture's own `page` field is left at 1 and changes
+     * nothing; the generation counter is what ties a response to its request.
+     */
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, catalogPage(1));
+    await press(view, 'explore-more');
+    await stub.settle(1, page(CATALOG.slice(19, 39), CATALOG.length));
+
+    expect(announced(view)).toBe('39 meals');
+    // Still more to come, so an overlap has not been read as the end of the catalogue.
+    expect(view.find('explore-more')).not.toBeNull();
+  });
+
+  it("carries FR-007's disclaimer, above the results and in every state (T-24-03)", async () => {
+    /**
+     * **PRD FR-007: "The UI carries a general safety disclaimer."**
+     *
+     * T-24-03's acceptance reads "peanut allergy excludes meals from Home **and** Explore", and
+     * Explore excludes nothing — by design. PRD FR-010 gives this screen period, diet and price and
+     * no allergen clause, FR-007 scopes allergen rejection to *recommendations*, and FR-011 puts
+     * the allergen notices on the detail screen; `TSD.md` §8.4 case 2's "off Home and out of
+     * Explore" contradicts all three, and PRD outranks TSD. What was genuinely unmet is the
+     * **disclaimer** — one occurrence in the PRD, none in SDD or TSD, and `Plan.md` scopes it to
+     * T-15-06, which is Home.
+     *
+     * Asserted before any response, because it is a property of the screen rather than of a result.
+     * And asserted as NOT an alert, which is `HomeScreen`'s treatment for the same requirement: it
+     * is present before the user is, so it reads in normal document order.
+     */
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+
+    const disclaimer = view.must('explore-disclaimer');
+    expect(view.find('explore-list'), 'asserted before any response has arrived').toBeNull();
+    expect(disclaimer.textContent).toContain('Check the label if it matters');
+    expect(disclaimer.textContent).toContain('not filtered by the allergies you set');
+    expect(disclaimer.textContent).toContain('This is not medical advice');
+    expect(disclaimer.getAttribute('role')).not.toBe('alert');
+    // react-native-web maps `accessibilityLiveRegion: 'none'` to `aria-live="off"`, so "not a live
+    // region" is an attribute with a value here rather than an absent one.
+    expect(disclaimer.getAttribute('aria-live')).toBe('off');
+
+    /**
+     * **And the sentence is TRUE of the screen, which is the half copy cannot assert by itself.**
+     *
+     * The record is taken from the catalogue by its own `allergenTags` rather than hand-named,
+     * because the subject here is the screen and the screen has never heard of `allergenTags` — so
+     * the catalogue is a different source from the code under test (BRIEF §6.3), not the same one.
+     * Any future "fix" that made Explore filter — Amendment 15 ruling 2's stop condition — fails
+     * here.
+     */
+    const withPeanut = CATALOG.find((meal) => meal.allergenTags.includes('peanut'));
+    if (withPeanut === undefined) {
+      throw new Error('no catalogue record carries a peanut tag');
+    }
+    await tick();
+    await stub.settle(0, page([withPeanut], CATALOG.length));
+
+    expect(view.find(`meal-${withPeanut.id}`), 'Explore excludes nothing').not.toBeNull();
+    expect(announced(view)).toBe('1 meals');
+
+    // Above the results: a qualification below them qualifies nothing.
+    const list = view.must('explore-list');
+    expect(
+      view.must('explore-disclaimer').compareDocumentPosition(list) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
+  it('retries from the first page, and the retry really re-requests', async () => {
+    /**
+     * **This control did nothing, and its comment argued for it** (BRIEF §6.1j).
+     *
+     * `onRetry` read `setSearch((current) => current); setFilters((current) => ({ ...current }))`
+     * under a comment saying the retry "re-mounts the list by identity". `useMealSearch`'s effect
+     * never depended on that object — only on the search text and the three filter primitives, and
+     * the retry changed neither — so pressing it re-rendered the screen and re-requested nothing.
+     *
+     * From page ONE, and that is the second half: the failure below happens on page 3, which leaves
+     * nothing loaded, so re-requesting page 3 would show records 41-60 as the whole catalogue.
+     */
+    const stub = deferredClient();
+    const view = renderExplore(stub.client);
+    await tick();
+    await stub.settle(0, catalogPage(1));
+    await press(view, 'explore-more');
+    await stub.settle(1, catalogPage(2));
+    await press(view, 'explore-more');
+    expect(stub.calls[2]).toStrictEqual({ page: 3, pageSize: 20 });
+
+    await stub.reject(
+      2,
+      new ApiClientError({
+        kind: 'server',
+        status: 500,
+        code: 'internal_error',
+        retryable: false,
+        wire: null,
+        route: 'listMeals',
+      }),
+    );
+    expect(view.find('explore-error')).not.toBeNull();
+
+    act(() => {
+      buttonLabelled(view.host, 'Try again').dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+    });
+    await tick();
+
+    expect(stub.calls, 'the retry issues a request').toHaveLength(4);
+    expect(stub.calls[3]).toStrictEqual({ page: 1, pageSize: 20 });
+    await stub.settle(3, catalogPage(1));
+    expect(announced(view)).toBe('20 meals');
+
+    /**
+     * **And again from a failure on page ONE, which is the half a page reset cannot cover.**
+     *
+     * Above, the retry changed the requested page from 3 to 1, and a changed page is itself an
+     * effect dependency — so that case would pass even if the retry did nothing else. A probe
+     * measured exactly that: neutralising the reload counter changed **0 of 44** until this second
+     * phase existed. Here the page is 1 before the press and 1 after, so the counter is the only
+     * input that moves and the only reason a request goes out at all.
+     */
+    await press(view, 'chip-diet-vegan');
+    expect(stub.calls[4]).toStrictEqual({ page: 1, pageSize: 20, diet: 'vegan' });
+    await stub.reject(
+      4,
+      new ApiClientError({
+        kind: 'server',
+        status: 500,
+        code: 'internal_error',
+        retryable: false,
+        wire: null,
+        route: 'listMeals',
+      }),
+    );
+    expect(view.find('explore-error')).not.toBeNull();
+
+    act(() => {
+      buttonLabelled(view.host, 'Try again').dispatchEvent(
+        new MouseEvent('click', { bubbles: true }),
+      );
+    });
+    await tick();
+
+    expect(stub.calls, 'a retry on page one still has to re-request').toHaveLength(6);
+    expect(stub.calls[5]).toStrictEqual({ page: 1, pageSize: 20, diet: 'vegan' });
   });
 
   it("waits the screen's own default before searching, and that default is 300 ms", async () => {
@@ -662,6 +1094,69 @@ describe('ExploreScreen', () => {
       });
       expect(stub.calls.length).toBe(beforeTyping + 1);
       expect(stub.calls[stub.calls.length - 1]?.query).toBe('rice');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not make a chip tap wait for the text debounce (P28, F-6)', async () => {
+    /**
+     * **The rule `useMealSearch.ts` stated for two phases while doing something else.**
+     *
+     * Its docstring said "a filter change fires immediately and a text change waits". The
+     * expression was `trimmed === '' || page > 1 ? 0 : debounceMs`, which asks *is the box empty*
+     * rather than *what did the user just do* — so a chip tap with text in the box paid the whole
+     * debounce. Measured through Playwright at P28: **30.8 ms** for the same tap with an empty box
+     * against **333.9 ms** with text in it, on a 150 ms target.
+     *
+     * **Asserted on the clock rather than on the wall**, because a 303 ms gap in a performance
+     * report is a number somebody has to read, and this is a yes/no question: with text in the box
+     * and the debounce **not yet elapsed**, does the chip's request reach the client at all?
+     *
+     * **Its control is the test directly above.** That one proves typing still waits the full
+     * 300 ms, so a "fix" that deleted the debounce outright would redden it. Neither test alone
+     * separates "keyed off what changed" from "not debounced"; together they pin the rule.
+     */
+    vi.useFakeTimers();
+    try {
+      const stub = deferredClient();
+      const view = renderExplore(stub.client, undefined, null);
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      await stub.settle(0, page(CATALOG.slice(0, 2)));
+
+      // Put text in the box and let its own debounce run out, so the state under test is "the box
+      // holds text", not "a keystroke is still pending".
+      act(() => {
+        fireEvent.change(searchInput(view.host), { target: { value: 'rice' } });
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(300);
+      });
+      await stub.settle(stub.calls.length - 1, page(CATALOG.slice(0, 1)));
+      const beforeTap = stub.calls.length;
+
+      // Now the deliberate action, and only ONE millisecond of clock afterwards: far inside the
+      // 300 ms a text change would have cost.
+      // The click is dispatched inline rather than through this file's `press` helper, which
+      // awaits a REAL `setTimeout` and would never resolve while the clock is faked.
+      act(() => {
+        view.must('chip-period-lunch').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+
+      expect(stub.calls.length, 'a chip tap must not wait for the text debounce').toBe(
+        beforeTap + 1,
+      );
+      // And it carries both the filter and the text already in the box - firing early must not
+      // mean firing without the query.
+      expect(stub.calls[stub.calls.length - 1]).toMatchObject({
+        period: 'lunch',
+        query: 'rice',
+      });
     } finally {
       vi.useRealTimers();
     }

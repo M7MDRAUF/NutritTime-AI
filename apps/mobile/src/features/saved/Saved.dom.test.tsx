@@ -14,7 +14,9 @@
  *     that only ever renders the both-empty case.
  *
  * **Rendered ids are compared, never row counts** (R-45). A count is a statement about the
- * rendering budget; the ids are a statement about the data.
+ * rendering budget; the ids are a statement about the data. The one exception is
+ * `SavedScreen — the render budget (T-22-08)`, whose subject IS the rendering budget — it says so,
+ * and it compares ids as well.
  *
  * The favourites store is seeded through the storage driver rather than by dispatching, so the
  * screen is exercised on a list that came off the "device" — which is where an orphan comes from.
@@ -593,25 +595,30 @@ describe('SavedScreen — two independent sections (T-17-02)', () => {
 
   it('has exactly one scroll container, and it is the screen (T-22-08)', async () => {
     /**
-     * **The other half of "rows are mapped, not virtualised"** (`SavedScreen.tsx:50-53`), and the
-     * half nothing asserted.
+     * **Written against the mapped `ScrollView` this screen used to be, and kept unchanged through
+     * the `SectionList` that replaced it.** That is the point of it: the assertion was the guard
+     * that the fix had to satisfy rather than delete, and it did.
      *
-     * Both sections must be mounted at once for their empty states to be independent, which is why
-     * this screen is one `ScrollView` over mapped rows rather than a list per section. T-22-08
-     * measured what that costs — twenty favourites mount twenty remote photographs — and measured
-     * the obvious fix: putting a `FlatList` inside `FavoritesSection` does drop the render to
-     * `initialNumToRender`, and it also puts a **second** scroll container inside the first. React
-     * Native's own `VirtualizedList` says why that is wrong — "never be nested inside plain
-     * ScrollViews with the same orientation because it can break windowing and other
-     * functionality" — and react-native-web 0.21.2 ships that warning **commented out**
+     * Both sections must be rendered at once for their empty states to be independent, which is why
+     * the list is at the ROOT and not one per section. A `FlatList` inside each section dropped the
+     * render to `initialNumToRender` **and** put a second scroll container inside the first, with
+     * no diagnostic: react-native-web 0.21.2 ships React Native's own warning about nesting a
+     * virtualised list in a plain `ScrollView` **commented out**
      * (`vendor/react-native/VirtualizedList/index.js`, above the `__DEV__` block, pending
-     * necolas/react-native-web#2239), so on the web surface it would arrive with no diagnostic at
-     * all. The whole suite stayed green under that mutation; this is the assertion that would not.
+     * necolas/react-native-web#2239). The whole suite stayed green under that mutation; this was
+     * the only assertion that did not.
      *
-     * It is deliberately NOT an assertion that every row renders. That would pin the current
-     * eager list in place and forbid the fix. A `SectionList` replacing the `ScrollView` — RN's own
-     * recommended "another VirtualizedList-backed container" — keeps exactly one scroll container
-     * and passes this unchanged.
+     * **What changed, and why this is still a live guard rather than a tautology.** Nesting a
+     * `FlatList` in a section no longer adds a DOM scroller at all — with a `SectionList` root
+     * there IS a `VirtualizedListContext`, so `_isNestedWithSameOrientation()` is true and
+     * `_defaultRenderScrollComponent` returns a plain `View` instead of a `ScrollView`
+     * (`VirtualizedList/index.js`, `_defaultRenderScrollComponent`). The library now prevents by
+     * construction what this test was written to catch. What it still catches, measured: replacing
+     * either section's wrapping `View` with a `ScrollView` reddens exactly this test and nothing
+     * else — `expected [ 'saved-screen', 'saved-favorites' ] to strictly equal [ 'saved-screen' ]`.
+     *
+     * It is deliberately NOT an assertion that every row renders — that would forbid the
+     * windowing. The render budget is asserted on its own, below.
      *
      * The selector is react-native-web's atomic class convention (`r-<property>-<hash>`), which is
      * what a `ScrollView` actually carries in the DOM; an upgrade that renamed it would fail here
@@ -635,6 +642,67 @@ describe('SavedScreen — two independent sections (T-17-02)', () => {
     ]);
     // And both sections are inside it, which is the reason there is only one.
     expect(view.sectionOrder()).toStrictEqual(['saved-favorites', 'saved-custom']);
+  });
+});
+
+describe('SavedScreen — the render budget (T-22-08)', () => {
+  /**
+   * **A favourite that is not built requests no photograph, and that is the whole of T-22-08 on
+   * this screen.**
+   *
+   * Every favourite is a catalog meal, so every favourite row carries a `www.themealdb.com`
+   * photograph; the user's own recipes carry none (`mealRecord.ts` stores `imageUrl: null`). Before
+   * the `SectionList` root, twenty favourites mounted twenty of them at once, against
+   * `STORAGE_BOUNDS.favorites` of 200 — and `loading="lazy"` cannot help, because
+   * react-native-web 0.21.2 fetches through a detached `new window.Image()` the moment an `<Image>`
+   * mounts (`modules/ImageLoader/index.js`), so mounting the row *is* the request.
+   *
+   * **The ids are compared, never only a count** (R-45) — the count is asserted as well, and only
+   * here, because this row's subject IS the render budget. That is the same exception T-13-04's
+   * Explore test takes, and R-45's own wording is the reason it has to be said out loud: a count is
+   * normally a statement about the rendering budget masquerading as one about the data.
+   *
+   * **Both directions, with a control no constant satisfies.** A screen that built nothing would
+   * pass the first case and fail the second; a screen that built everything fails the first. And
+   * `<img>` is counted rather than rows alone, because "fewer rows" is only worth anything if the
+   * bytes go with them.
+   */
+  const PHOTOGRAPHED = 20;
+
+  function imageCount(view: View): number {
+    return view.host.querySelectorAll('img').length;
+  }
+
+  it('builds a prefix of a long favourites list, and one photograph per row it builds', async () => {
+    if (CATALOG.length < PHOTOGRAPHED) {
+      throw new Error('the seeded catalog is too small for this fixture');
+    }
+    const meals = CATALOG.slice(0, PHOTOGRAPHED);
+    const view = await renderSaved({
+      client: catalogClient(meals).client,
+      favorites: meals.map((meal) => meal.id),
+    });
+
+    const stored = meals.map((meal) => meal.id);
+    const rendered = view.favoriteIds();
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered.length).toBeLessThan(PHOTOGRAPHED);
+    // A PREFIX of the stored order: the window starts at the top and stops, rather than the screen
+    // dropping ids it dislikes or sorting its own list.
+    expect(rendered).toStrictEqual(stored.slice(0, rendered.length));
+    // The photographs go with the rows, which is the byte cost this row is about.
+    expect(imageCount(view)).toBe(rendered.length);
+  });
+
+  it('builds a short favourites list whole — the control', async () => {
+    const meals = CATALOG.slice(0, 3);
+    const view = await renderSaved({
+      client: catalogClient(meals).client,
+      favorites: meals.map((meal) => meal.id),
+    });
+
+    expect(view.favoriteIds()).toStrictEqual(meals.map((meal) => meal.id));
+    expect(imageCount(view)).toBe(3);
   });
 });
 

@@ -459,7 +459,23 @@ describe('recommend', () => {
     const many = Array.from({ length: 10 }, (_unused, index) =>
       meal({ id: `meal-${String(index).padStart(2, '0')}`, dietTags: ['vegetarian'] }),
     );
-    expect(recommend(context(), many).selected).toHaveLength(MAX_RECOMMENDATIONS);
+
+    /**
+     * **Three, hand-transcribed from PRD §7.1's "Return the top three" — NOT read from
+     * `MAX_RECOMMENDATIONS`.**
+     *
+     * This assertion was `toHaveLength(MAX_RECOMMENDATIONS)` until P28, which let the subject
+     * define its own expectation: changing the constant to four would have kept it green, and
+     * there was no literal cap anywhere in this file. BRIEF §6.1g — reading a bound out of the
+     * module under test restates the implementation in test syntax, and it is the same shape as
+     * `fellBack(outcomeForFailure(error))`, which was once praised as discipline and was its
+     * opposite.
+     *
+     * The second assertion pins the constant to the document, so a drift in EITHER direction
+     * fails: the behaviour against the requirement, and the constant against the requirement.
+     */
+    expect(recommend(context(), many).selected).toHaveLength(3);
+    expect(MAX_RECOMMENDATIONS).toBe(3);
   });
 
   it('breaks a tie by meal id ascending', () => {

@@ -98,6 +98,30 @@ const NO_CLOCK = [
 ];
 
 /**
+ * The colour ban, documented and until now unenforced. SDD §14 and TSD §6.6 both say "feature
+ * code contains no colour literals", and the premise is that colour comes from the token layer -
+ * so the theme directory is the only place a literal belongs. The P28 audit measured what that
+ * was worth without a gate: adding `'#FF00FF'` to a screen changed **0 of 1048** tests
+ * (`docs/final-audit.md` §9).
+ *
+ * Three choices in the pattern, each measured rather than assumed:
+ * - **Unanchored**, because an anchored `^#...$` let `'border: 1px solid #FF00FF'` through, and
+ *   unanchored costs nothing: 0 hits in `apps/mobile/**` outside the theme directory, and its
+ *   only hits anywhere are the token files and `e2e/specs/settings-reset.spec.ts` - neither of
+ *   which this rule covers.
+ * - **`TemplateElement` as well**, because `` `#FF00FF` `` is a colour literal that the `Literal`
+ *   selector cannot see.
+ * - **`[(]` and not `\(`**, which needs no backslash to survive esquery's attribute lexer.
+ */
+const COLOR_PATTERN = '/#[0-9a-fA-F]{3,8}|(rgb|hsl)a?[(]/';
+const COLOR_MESSAGE =
+  'No colour literal outside apps/mobile/src/shared/theme (SDD §14, TSD §6.6): import a semantic or component token.';
+const NO_COLOR_LITERAL = [
+  { selector: `Literal[value=${COLOR_PATTERN}]`, message: COLOR_MESSAGE },
+  { selector: `TemplateElement[value.raw=${COLOR_PATTERN}]`, message: COLOR_MESSAGE },
+];
+
+/**
  * `primitive.ts` is private to the theme directory (TSD §6.6).
  *
  * Broad on purpose: `**\/theme/primitive.js` does NOT match the real specifier
@@ -277,6 +301,24 @@ export default tseslint.config(
     },
   },
 
+  // The colour ban, enforced. The token layer is exempted **by non-inclusion**, not by a second
+  // block restating the rule: an overlapping glob REPLACES `no-restricted-syntax`, so `ignores`
+  // here is the one form of exemption with no way to get it wrong — the same shape Rule 5 above
+  // uses for `config.ts`. All 168 hex literals in the tree live under this directory
+  // (`primitive.ts`, `semantic.ts` and the four contrast tests) and that is where they belong.
+  //
+  // Scope is `apps/mobile/**` and not the repository, because SDD §14 and TSD §6.6 both scope the
+  // ban to feature code and this is the widest glob that still says only what they say. `e2e/**`
+  // is deliberately out: `settings-reset.spec.ts` compares `getComputedStyle` output, which the
+  // browser serialises as `rgb(...)`, and reading that expectation out of a token would be the
+  // circularity the spec exists to avoid. `design-system/` needs no exemption at all — its
+  // prettier-ignored generator artefacts are `.md`, which this config never lints.
+  {
+    files: ['apps/mobile/**/*.{ts,tsx}'],
+    ignores: ['apps/mobile/src/shared/theme/**'],
+    rules: { 'no-restricted-syntax': ['error', ...NO_COLOR_LITERAL] },
+  },
+
   // The theme directory itself may import it - that is the whole point of the directory. The
   // rule is RESTATED minus the primitive pattern rather than switched off, so Rules 4 and 5
   // survive here. An `'off'` exemption would drop all three.
@@ -306,9 +348,61 @@ export default tseslint.config(
   // Tests may use devDependencies and console, but the architecture rules still apply:
   // a domain test importing express or reaching into apps/ is the coupling Rule 3 exists
   // to prevent, and test files are where it would first appear.
+  //
+  // **`no-console` is RESTATED minus `log`. It WAS an actual `'off'` here** - the exact mistake
+  // the blocks below forbid in bold, and the one P01 recorded: `'off'` drops `console.debug` and
+  // `console.trace` along with the clause you meant to relax. Found by the P28 audit
+  // (`docs/final-audit.md` §12), where it was costless only because the tree contains neither
+  // method; a `console.debug` left behind by a future probe would have been invisible to
+  // `eslint 0`. The four `console.log` and two `console.error` calls the tests actually make are
+  // allowed, so the restatement is behaviour-identical today and a gate tomorrow.
   {
     files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
-    rules: { 'no-console': 'off' },
+    rules: { 'no-console': ['error', { allow: ['log', 'warn', 'error'] }] },
+  },
+
+  // `!` was entirely unlinted. The strict-TypeScript convention forbids a non-null assertion and
+  // the P28 audit found three of them that `eslint 0` could not see (`docs/final-audit.md` §12).
+  //
+  // The two files below hold those three sites and are exempted **by non-inclusion**. That is a
+  // stop condition rather than a judgement: `packages/**` is finished and neither file is writable
+  // in the wave that added this rule, so neither can be given the documented per-site reason it
+  // needs. Landing a bare `error` would have turned the shared gate red for every concurrent
+  // agent over three lines in two test files. Deleting these two paths is the follow-up; every
+  // other file in the tree is covered from here.
+  // `.mts` and `.cts` are in the glob because `!` is TypeScript syntax wherever TypeScript is
+  // parsed: `vitest.config.mts` is a real file that `--print-config` showed uncovered by a
+  // `{ts,tsx}`-only glob. `.mjs`/`.js` are out - a non-null assertion is a syntax error there.
+  {
+    files: ['**/*.{ts,tsx,mts,cts}'],
+    ignores: [
+      'apps/server/src/routes/recommendations.integration.test.ts',
+      'packages/catalog/src/seed/derive.test.ts',
+    ],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'error' },
+  },
+
+  // `camelCase` for functions, enforced for every file that cannot contain JSX.
+  //
+  // Measured before landing rather than asserted. The `function` selector inspects 775 names in
+  // this tree; `format: ['camelCase']` flags **95**, and all 95 are in `.tsx` - PascalCase React
+  // components and test probes, every one of them correct. `naming-convention` has no
+  // "returns JSX" modifier, so the `.tsx` half is not expressible, and widening the format to
+  // `['camelCase', 'PascalCase']` to get a green would permit PascalCase everywhere - a rule that
+  // cannot fail for the thing it claims to check. So the `.tsx` half is DECLINED and recorded,
+  // and the 563 names that are not in `.tsx` - 73% of the total, 0 violations - are enforced.
+  //
+  // Only the `function` selector. `typeLike`, `variable` and the property selectors are
+  // deliberately absent: PascalCase types, SCREAMING_CASE constants and kebab-case string ids are
+  // all legitimate here, and no document states a convention for them to enforce.
+  {
+    files: ['**/*.{ts,mts,mjs,js}'],
+    rules: {
+      '@typescript-eslint/naming-convention': [
+        'error',
+        { selector: 'function', format: ['camelCase'] },
+      ],
+    },
   },
 
   // `e2e/serveExport.mjs` is a Node script, not app code: a dependency-free static server that
@@ -317,17 +411,18 @@ export default tseslint.config(
   // this config cost five lines rather than a second config.
   //
   // Node globals are declared rather than assumed, and `console.log` is allowed by RESTATING the
-  // rule without that one clause. `'off'` would drop `console.debug` and `console.trace` with it,
-  // which is the mistake P01 recorded and this file has now avoided four times.
+  // rule without that one clause, because `'off'` would drop `console.debug` and `console.trace`
+  // with it — the mistake P01 recorded, and one that every `no-console` exemption in this file now
+  // avoids. **This paragraph claimed "four times" and a second copy of it claimed "the fifth
+  // time"; the P28 audit counted THREE restatements and both numbers were wrong.** A tally in a
+  // comment is a claim that rots, so it is deleted rather than corrected: `grep -n no-console` is
+  // the count, and the duplicate paragraph is folded into this one.
+  //
   // `scripts/dev.mjs` is the same shape as `e2e/serveExport.mjs` below and is here for the same
   // reason: a hand-run Node tool at the repository root, outside every tsconfig `include`, whose
   // entire interface is its console output. It exists because `npm run dev`'s `&` is SEQUENTIAL
   // under Windows `cmd.exe`, so SDD §2.3's documented one-command procedure did not hold on this
   // project's own platform (measured at P26: 2598 ms, strictly ordered).
-  //
-  // `no-console` is RESTATED minus the allowed methods rather than switched off — the fifth time
-  // this file has done that deliberately, because P01 learned that `'off'` silently drops
-  // `console.debug` and `console.trace` along with the clause you meant to relax.
   {
     files: ['**/scripts/*.mjs'],
     languageOptions: {

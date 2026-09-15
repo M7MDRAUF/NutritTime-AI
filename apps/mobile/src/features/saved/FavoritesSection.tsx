@@ -10,6 +10,28 @@
  * a loading nor a local-only state; `SavedScreen.tsx`'s docstring says why inventing one there would
  * be a control that can never be observed.
  *
+ * **This file no longer renders a section; it renders one section's three parts** (T-22-08).
+ * `SavedScreen` owns a single `SectionList`, so the eleven-element sequence this section used to
+ * render as one subtree is now split along the only line the list offers — header, rows, footer —
+ * and the split is where it is for a reason in each case:
+ *
+ *  - **header**: the heading and every whole-section state (`recovered`, `unavailable`, loading,
+ *    offline, error, empty). These are the things whose entire job is to be seen, and a windowed
+ *    list renders its header first and always.
+ *  - **rows**: the resolved favourites, and only those. Each row mounts a remote TheMealDB
+ *    photograph, so a row the list does not build is a request it does not make — which is the
+ *    whole of T-22-08 on this screen.
+ *  - **footer**: the `missing` notice, the orphan rows and the `unresolved` notice, in that order,
+ *    because the notice says the ids are listed "below" and the copy has to stay true.
+ *
+ * **The orphan rows are a second list and they are NOT windowed.** They sit in the footer, which a
+ * list renders whole. That is a deliberate, measured choice rather than an oversight: an orphan row
+ * is a raw id and a button, and it mounts **no photograph at all** — the record that carried one is
+ * the thing that is gone — so the cost this task exists to remove is not there. Moving them into
+ * the section's `data` would window them, and would also force the `missing` notice above them to
+ * become a row in the same list; that is a bigger change than the bytes justify, and it is recorded
+ * as a follow-up rather than taken.
+ *
  * **`entryStatus` has two bad values and they mean different things.** `recovered` is "the stored
  * list was corrupt and has been reset"; `unavailable` is "the key could not be read at all, so what
  * is on disk is unknown **and nothing can be saved over it**" (TSD §6.3 — `createStore` skips the
@@ -29,22 +51,24 @@
  * `missing` and `unresolved` are re-derived from the feed instead, so they unmount and remount on
  * every `onRetry` - announcing them would re-read "3 favourites could not be found" after a retry
  * that changed nothing about them, and a region that speaks on an unrelated change is the
- * interruption Plan 20's focus row exists to prevent. One caveat, recorded rather than papered
- * over: `SavedScreen` renders this section and `CustomSection` at two sibling positions whose
- * order the `section` route param chooses, with no `key`, so a URL that changes `section` remounts
- * both and re-announces.
+ * interruption Plan 20's focus row exists to prevent.
+ *
+ * **The caveat that used to be here is gone.** It said that `SavedScreen` renders the two sections
+ * at unkeyed sibling positions, so a `section` param change remounts both and re-announces. That
+ * has been untrue since the two `key`s were added, and it is doubly untrue now: the header is a
+ * keyed cell of the `SectionList` (`'favorites:header'`), so a swap reorders keyed children and
+ * React moves the node. `Saved.dom.test.tsx` asserts that node's identity across a swap.
  */
 
-import { useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
+import type { Meal } from '@nutritime/contracts';
 import {
   AccessibleButton,
   AppText,
   EmptyState,
   ErrorState,
   OfflineState,
-  Sheet,
   StatusMessage,
 } from '../../shared/components/index.js';
 import { useTheme } from '../../shared/theme/ThemeProvider.js';
@@ -57,47 +81,42 @@ function countLabel(count: number, tail: string): string {
   return `${String(count)} favourite${count === 1 ? '' : 's'} ${tail}`;
 }
 
-export interface FavoritesSectionProps {
-  readonly feed: FavoritesFeed;
-  readonly entryStatus: EntryStatus;
-  /** The user's declared allergies, straight from the `preferences` store. */
-  readonly allergies: readonly string[];
-  readonly onOpen: (mealId: string) => void;
-  readonly onRetry: () => void;
-  readonly onForget: (mealId: string) => void;
+/**
+ * One resolved favourite, as the list sees it.
+ *
+ * Tagged for the same reason `CustomRow` is: both sections feed ONE `SectionList`, so the two row
+ * types meet in a single `renderItem`. The **id is kept beside the meal** rather than read back off
+ * it, which is `FavoriteEntry`'s own reasoning — rows key off the store's list, and the id the store
+ * holds is the one a row has to be identified by.
+ */
+export interface FavoriteRow {
+  readonly kind: 'favorite';
+  readonly id: string;
+  readonly meal: Meal;
 }
 
-export function FavoritesSection({
+export function favoriteRows(feed: FavoritesFeed): readonly FavoriteRow[] {
+  return feed.kind === 'loaded'
+    ? feed.resolved.map((entry) => ({ kind: 'favorite', id: entry.id, meal: entry.meal }))
+    : [];
+}
+
+export function favoriteRowKey(row: FavoriteRow): string {
+  return row.id;
+}
+
+export interface FavoritesSectionHeaderProps {
+  readonly feed: FavoritesFeed;
+  readonly entryStatus: EntryStatus;
+  readonly onRetry: () => void;
+}
+
+export function FavoritesSectionHeader({
   feed,
   entryStatus,
-  allergies,
-  onOpen,
   onRetry,
-  onForget,
-}: FavoritesSectionProps): ReactNode {
+}: FavoritesSectionHeaderProps): ReactNode {
   const { components } = useTheme();
-
-  /**
-   * Which orphan the user has asked to remove, pending confirmation.
-   *
-   * **An orphan removal is confirmed, and it is the most irreversible removal in the app.** PRD
-   * FR-014 requires destructive actions to confirm first, and un-favouriting an ordinary meal is
-   * cheap to undo — open it again and tap the heart. This one cannot be undone at all: the catalog
-   * no longer has the record, so there is no screen anywhere in the app that can reach it to
-   * re-favourite it, and only a hand-run reseed could bring it back. A single id is still the
-   * user's choice, and "small" is not the same as "reversible".
-   */
-  const [pendingForget, setPendingForget] = useState<string | null>(null);
-  const closeSheet = useCallback(() => {
-    setPendingForget(null);
-  }, []);
-  const confirmForget = useCallback(() => {
-    if (pendingForget !== null) {
-      onForget(pendingForget);
-    }
-    setPendingForget(null);
-  }, [pendingForget, onForget]);
-
   const unreadable = entryStatus === 'unavailable';
 
   return (
@@ -183,20 +202,56 @@ export function FavoritesSection({
           description="Open a meal from Home or Explore and tap the heart to keep it here."
         />
       ) : null}
+    </View>
+  );
+}
 
-      {feed.kind === 'loaded'
-        ? feed.resolved.map((entry) => (
-            <SavedMealRow
-              key={entry.id}
-              meal={entry.meal}
-              allergies={allergies}
-              testID={`saved-favorite-${entry.id}`}
-              onOpen={onOpen}
-            />
-          ))
-        : null}
+export interface FavoriteRowViewProps {
+  readonly row: FavoriteRow;
+  readonly allergies: readonly string[];
+  readonly onOpen: (mealId: string) => void;
+}
 
-      {feed.kind === 'loaded' && feed.missing.length > 0 ? (
+export function FavoriteRowView({ row, allergies, onOpen }: FavoriteRowViewProps): ReactNode {
+  return (
+    <SavedMealRow
+      meal={row.meal}
+      allergies={allergies}
+      testID={`saved-favorite-${row.id}`}
+      onOpen={onOpen}
+    />
+  );
+}
+
+export interface FavoritesSectionFooterProps {
+  readonly feed: FavoritesFeed;
+  readonly onRetry: () => void;
+  /**
+   * Ask the screen to confirm removing an orphan.
+   *
+   * The confirmation sheet and its pending id live in `SavedScreen` rather than here: the button
+   * that opens it is in this footer, the list it removes from is the section's `data`, and a
+   * `SectionList` renders those through two different callbacks. State shared by two render
+   * callbacks belongs to whoever owns both.
+   */
+  readonly onRequestForget: (mealId: string) => void;
+}
+
+export function FavoritesSectionFooter({
+  feed,
+  onRetry,
+  onRequestForget,
+}: FavoritesSectionFooterProps): ReactNode {
+  const { components } = useTheme();
+  // Nothing rather than an empty box: the list puts its own gap between cells, so a footer that
+  // renders an empty `View` when there is nothing to say leaves a hole under the last row.
+  if (feed.kind !== 'loaded' || (feed.missing.length === 0 && feed.unresolved.length === 0)) {
+    return null;
+  }
+
+  return (
+    <View style={{ alignSelf: 'stretch', gap: components.card.gap }}>
+      {feed.missing.length > 0 ? (
         <>
           {/*
             Said plainly, and NOT dropped: the id is still a choice the user made, so it gets a way
@@ -229,7 +284,7 @@ export function FavoritesSection({
                 variant="secondary"
                 accessibilityLabel={`Remove the missing meal ${mealId} from favourites`}
                 onPress={() => {
-                  setPendingForget(mealId);
+                  onRequestForget(mealId);
                 }}
               />
             </View>
@@ -237,7 +292,7 @@ export function FavoritesSection({
         </>
       ) : null}
 
-      {feed.kind === 'loaded' && feed.unresolved.length > 0 ? (
+      {feed.unresolved.length > 0 ? (
         // Retryable, unlike the bound refusal in the other section: these meals may well still
         // exist and the next request may well reach them. Distinct from `missing` on purpose — a
         // failure that is not a 404 says nothing about whether the record is still there, so
@@ -253,32 +308,6 @@ export function FavoritesSection({
           onAction={onRetry}
         />
       ) : null}
-
-      <Sheet
-        testID="saved-forget-sheet"
-        visible={pendingForget !== null}
-        onClose={closeSheet}
-        title="Remove this favourite?"
-      >
-        <View style={{ gap: components.card.gap }}>
-          <AppText variant="body" tone="secondary">
-            This meal is no longer in the catalog, so it cannot be added back later. Removing it
-            clears it from your list and changes nothing else.
-          </AppText>
-          <AccessibleButton
-            testID="saved-forget-confirm"
-            label="Remove"
-            variant="destructive"
-            onPress={confirmForget}
-          />
-          <AccessibleButton
-            testID="saved-forget-cancel"
-            label="Keep it"
-            variant="ghost"
-            onPress={closeSheet}
-          />
-        </View>
-      </Sheet>
     </View>
   );
 }

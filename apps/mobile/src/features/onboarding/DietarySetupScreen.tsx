@@ -45,16 +45,98 @@ import {
   validateDislikes,
   validateMealTimes,
 } from './dietaryValidation.js';
-import type { MealTimeField } from './dietaryValidation.js';
+import type { FieldErrors, MealTimeField } from './dietaryValidation.js';
 import { ChipRow, chipLabel } from './ChipRow.js';
 
 const MEAL_TIME_FIELDS: readonly MealTimeField[] = ['breakfast', 'lunch', 'dinner'];
 
-const MEAL_TIME_LABELS: Readonly<Record<MealTimeField, string>> = {
+/** Every field a rule in `dietaryValidation.ts` can report on. */
+type ValidatedField = keyof FieldErrors;
+
+/**
+ * The visible label of every field a rule can report on — **one table, two readers.**
+ *
+ * The three meal-time `FormField`s take their label from here and so does the error summary, so
+ * the summary can only ever name a field by the words that field actually shows. The alternative
+ * was a second, summary-only label map, and `Plan.md`'s R-58 — "Three copies of 'how a store's
+ * failure is presented to a user'", one of them this very file — is what that becomes.
+ *
+ * Keyed by `keyof FieldErrors`, so a new rule in `dietaryValidation.ts` is a **compile error here**
+ * rather than a failure the summary silently cannot name.
+ */
+const FIELD_LABELS: Readonly<Record<ValidatedField, string>> = {
+  allergies: 'Allergies',
+  dislikes: 'Ingredients you would rather avoid',
   breakfast: 'Breakfast time',
   lunch: 'Lunch time',
   dinner: 'Dinner time',
 };
+
+/**
+ * Form order, not the order the validator builds its object in: a summary is a set of directions
+ * down the page, and naming `lunch` before `dislikes` sends a user back up past a field they had
+ * already passed.
+ *
+ * `allergies` is listed even though it **cannot fail through this UI** — every write path
+ * canonicalises, which is why the chips render no inline error (see the note at the chip row).
+ * It costs nothing and is the only surface that failure would have, because `isDietarySetupValid`
+ * counts it and would otherwise refuse a Save with nothing at all on screen.
+ */
+const SUMMARY_ORDER: readonly ValidatedField[] = [
+  'allergies',
+  'dislikes',
+  'breakfast',
+  'lunch',
+  'dinner',
+];
+
+/**
+ * `a` · `a and b` · `a, b and c`. Local rather than imported: `MealFormScreen`'s `namedList` is
+ * under `features/saved`, and a cross-feature coupling for four lines of string joining costs more
+ * than the four lines. Recorded as a duplication rather than hidden.
+ */
+function namedList(items: readonly string[]): string {
+  const last = items.at(-1);
+  if (last === undefined) {
+    return '';
+  }
+  return items.length === 1 ? last : `${items.slice(0, -1).join(', ')} and ${last}`;
+}
+
+interface InvalidSummary {
+  readonly title: string;
+  readonly description: string;
+  readonly stillAvailable: string;
+}
+
+/**
+ * The summary's copy, in PRD §12's shape: what happened, what still works, what to do next — the
+ * fields it names *are* the what-to-do-next.
+ *
+ * **It never says "not saved", which is the one place it must differ from `MealFormScreen`'s.**
+ * That form dispatches once, on Save, so a refused press there wrote nothing. This one dispatches
+ * on every change and Save only says "I am finished" (see the header note), so the choices already
+ * made are held whatever this press did — "This meal is not saved yet", copied across, would have
+ * told the user something false about their own allergy list.
+ *
+ * Fixed local copy interpolating nothing but this screen's label table and a count (PRD §12), and
+ * every string run through `deniedClaimIn`: R-70's lesson is that a guard aimed at one source of
+ * text does not cover another, and this is new user-facing text.
+ */
+function invalidSummary(fields: readonly ValidatedField[]): InvalidSummary {
+  const named = namedList(fields.map((field) => FIELD_LABELS[field]));
+  return {
+    title: 'This form is not finished yet',
+    description:
+      fields.length === 1
+        ? `One answer needs a different value: ${named}.`
+        : `${String(fields.length)} answers need a different value: ${named}.`,
+    // True in every storage state, which "your choices are saved" would not be: an `unavailable`
+    // key or a refused write is reported by its own notice below and this sentence must not
+    // contradict it.
+    stillAvailable: 'Nothing you have chosen here is lost — every other answer is still set.',
+  };
+}
 
 export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySetup'>): ReactNode {
   const { colors, components } = useTheme();
@@ -79,6 +161,17 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
    */
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
   const [submitted, setSubmitted] = useState(false);
+
+  /**
+   * Presses of Save, and the only thing it is for is keying the error summary.
+   *
+   * `StatusMessage`'s `announceOnMount` is `role="alert"`, and an alert's **insertion** is the
+   * announcement — so a second press on an unchanged form would render identical copy, never
+   * remount, and say nothing. To a screen-reader user that is the dead button all over again.
+   * Keying the summary by attempt remounts it, which is what makes the announcement repeat.
+   * `MealFormScreen` keys its own outcome message the same way and for the same reason.
+   */
+  const [attempts, setAttempts] = useState(0);
 
   /**
    * The half-typed meal times, held HERE rather than in the store.
@@ -150,12 +243,36 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
 
   const valid = isDietarySetupValid(allErrors);
 
+  /**
+   * What the summary names, recomputed every render rather than latched at the press.
+   *
+   * It has to be: the per-field messages already clear on the next keystroke (S-43), and a summary
+   * frozen at the press would go on naming a field the user had just fixed. Because the summary is
+   * keyed by `attempts` and not by this list, shrinking it does **not** remount and therefore does
+   * not re-announce — the list quietly narrows while the user works, and only a new press speaks.
+   */
+  const invalidFields = SUMMARY_ORDER.filter((field) => allErrors[field] !== undefined);
+
   const onSave = (): void => {
     setSubmitted(true);
+    // Before the validity branch, because both branches are an attempt and only the summary reads
+    // it. A press that succeeds mounts no summary, so the increment is inert there.
+    setAttempts((current) => current + 1);
     if (!valid) {
-      // Nothing to save and nothing to navigate to: the errors are already on screen, because
-      // `submitted` now un-filters them. Leaving the user here with the messages visible is the
-      // whole point of the flag.
+      /**
+       * Nothing to save and nothing to navigate to. `submitted` un-filters the per-field messages
+       * and they stay exactly where they are, which is what `dietary-setup.md`'s "retain inline
+       * errors" asks for.
+       *
+       * **The earlier version of this comment said that was the whole point of the flag, and that
+       * is how this gap survived to P28 wearing a rationale** (`BRIEF.md` §6.1j). The messages
+       * being on screen is what a sighted user needs and it is not an announcement: a refused
+       * press mounted four `aria-live="assertive"` regions at once with no lede, and assertive
+       * means each interrupts the last. `design-system/DECISIONS.md`'s `dietary-setup` row adopted
+       * an error summary for this screen — "error summary at the top of the form … inline errors
+       * retained" — and X-47 records that it was built on `MealFormScreen` and not here. The
+       * summary above the fields is the other half of this branch.
+       */
       return;
     }
     if (fromOnboarding) {
@@ -177,6 +294,44 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
       <AppText variant="title" tone="primary" level={1}>
         {fromOnboarding ? 'Set up your preferences' : 'Edit your preferences'}
       </AppText>
+
+      {/*
+        **X-47's summary: the lede a refused Save had none of.** Measured before this landed, four
+        `aria-live="assertive"` regions mounted together — `dislikes` plus the three meal times —
+        with nothing above them. Assertive means each interrupts the last, so that is a collision
+        rather than an announcement, on the first form a screen-reader user meets.
+
+        **At the top, which is a deliberate divergence from `MealFormScreen`.** Its mechanism is
+        copied exactly (`StatusMessage` + `announceOnMount`, keyed by attempt); its *placement* is
+        not, because that form argues from its own length — "a summary at the top of a form this
+        long is a summary a sighted user never sees" — while `design-system/pages/dietary-setup.md`
+        adopts "Place it at the top of the form" for THIS screen by name.
+
+        **It is not a fifth assertive region.** `announceOnMount` is `role="alert"` with
+        `aria-live="polite"`, which downgrades the assertive the role implies: it speaks once on
+        insertion and adds nothing to the flood. The flood is `FormField`'s — every field error
+        there is `assertive` — and that is a shared component TSD §6.7 fixes, so the change it
+        needs is recorded, not made here.
+
+        **And no focus move.** X-47 measured zero focus calls in every production file under
+        `apps/mobile/src` — the literal call is spelled out nowhere here on purpose, so that search
+        keeps returning zero — `Plan.md` §20 requires focus "preserved on validation failure", and
+        whether a summary should ever take it is an open user decision.
+      */}
+      {invalidFields.length === 0 || !submitted ? null : (
+        <StatusMessage
+          key={`dietary-setup-invalid-${String(attempts)}`}
+          testID="dietary-setup-invalid"
+          tone="warning"
+          // `alertCircle`, not `warning`: the user is mid-correction and nothing has failed —
+          // the same distinction `FormField` draws for its own inline errors.
+          icon="alertCircle"
+          title={invalidSummary(invalidFields).title}
+          description={invalidSummary(invalidFields).description}
+          stillAvailable={invalidSummary(invalidFields).stillAvailable}
+          announceOnMount
+        />
+      )}
 
       {/*
         The save state, when there is one to report. `saveBlocked` is a different message from
@@ -360,7 +515,7 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
 
       <FormField
         testID="field-dislikes"
-        label="Ingredients you would rather avoid"
+        label={FIELD_LABELS.dislikes}
         value={dislikesText}
         onChangeText={(value) => {
           // The draft takes the keystroke so the user keeps their own characters (and their
@@ -392,7 +547,7 @@ export function DietarySetupScreen({ route, navigation }: ScreenProps<'DietarySe
         <FormField
           key={field}
           testID={`field-${field}`}
-          label={MEAL_TIME_LABELS[field]}
+          label={FIELD_LABELS[field]}
           value={draftTimes[field]}
           onChangeText={(value) => {
             // The draft always takes the keystroke, so the user sees their own characters. The

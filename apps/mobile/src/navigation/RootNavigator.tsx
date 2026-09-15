@@ -17,9 +17,14 @@
  * §6.1 calls the `app` phase "the tab navigator plus the stack screens", and the params corroborate
  * it: `MealDetailsParams.origin` exists precisely because one `MealDetails` is reached from four
  * tabs. Copies inside each tab's stack would make the origin implicit and the param dead.
+ *
+ * **The `main` landmark lives here too (R-77).** `ScreenLandmark` below says why it is this file
+ * and why it is gated on focus.
  */
 
 import type { ReactNode } from 'react';
+import { StyleSheet, View } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../shared/theme/ThemeProvider.js';
 import { screenFor } from './registry.js';
@@ -27,6 +32,64 @@ import { TabNavigator } from './TabNavigator.js';
 import type { BootPhase, RootParamList } from './routes.js';
 
 const Stack = createNativeStackNavigator<RootParamList>();
+
+const styles = StyleSheet.create({
+  /**
+   * `screenLayout` inserts this box between native-stack's screen container and the screen, so it
+   * has to fill its parent the way the screen it replaces did. `flex: 1` and nothing else: any
+   * padding, background or margin here would be a visual change rather than a semantic one.
+   */
+  landmark: { flex: 1 },
+});
+
+/**
+ * The one `main` landmark the web export exposes — `Plan.md` §20's `Semantic HTML` row asks for
+ * exactly that wording, "the app exposes one `main` landmark", and the P28 audit ruled it NOT MET
+ * because the built export contained zero `role="main"`.
+ *
+ * **`role`, not `accessibilityRole`, and that is a type constraint rather than a preference.**
+ * React Native 0.86.3's `AccessibilityRole` union
+ * (`react-native/Libraries/Components/View/ViewAccessibility.d.ts`) has thirty members and `main`
+ * is not among them; the `Role` union in the same file does list it, and `ViewProps.role` takes
+ * `Role`. So `accessibilityRole="main"` — which is how R-77's own resolution column proposes the
+ * fix — does not typecheck, and react-native-web reads `role` first anyway:
+ * `propsToAriaRole.js`'s `var _role = role || accessibilityRole`.
+ *
+ * **What react-native-web 0.21.2 actually does with it, read from the shipped source rather than
+ * assumed** — BRIEF §6.1j, because three claims about this library were false in one window.
+ * `modules/AccessibilityUtil/propsToAriaRole.js` holds `accessibilityRoleToWebRole`, and that map
+ * is a **rename-and-suppress table, not an allow-list**: line 29 looks the role up, line 30 lets
+ * anything through that is not explicitly `null`, and line 32 returns `inferredRole || _role`, so
+ * a role the map has never heard of passes through verbatim. `main` is not in the map and reaches
+ * the DOM unchanged. `modules/AccessibilityUtil/propsToAccessibilityComponent.js` then maps the
+ * resolved role to an element — `main: 'main'` on line 26 — and `exports/createElement/index.js`
+ * line 20 uses that in place of the `div` `View` asked for. The measured output is
+ * `<main role="main">`: the element and the attribute, not one or the other.
+ *
+ * **Why it is gated on `useIsFocused`, which is the part a presence assertion would miss.** A
+ * native stack keeps every screen below the top one mounted. An ungated `screenLayout` therefore
+ * emits one landmark per *mounted* route, and the measured counts are 1 at rest, **2** with
+ * `MealDetails` pushed over the tabs and **3** with `MealForm` above that — several `main`s, which
+ * is a worse document than none. Gated, the count is 1 in every state measured.
+ *
+ * **What it encloses, and the one thing it does not exclude.** On every stack route except `Tabs`
+ * it wraps exactly the screen. On `Tabs` it also encloses the tab bar, because
+ * `@react-navigation/bottom-tabs` renders the tab bar and the screen area as siblings *inside*
+ * the `Tabs` screen — so no wrapper reachable from this file can separate them. Excluding the tab
+ * bar as well needs a second `screenLayout` on `Tabs.Navigator` in `TabNavigator.tsx`, which is
+ * recorded rather than done here.
+ */
+function ScreenLandmark({ children }: { readonly children: ReactNode }): ReactNode {
+  const focused = useIsFocused();
+
+  // `undefined` rather than a second element shape: `View` is the same component in both cases, so
+  // React changes a prop instead of unmounting and remounting the screen underneath it.
+  return (
+    <View role={focused ? 'main' : undefined} style={styles.landmark}>
+      {children}
+    </View>
+  );
+}
 
 export interface RootNavigatorProps {
   readonly phase: BootPhase;
@@ -37,6 +100,10 @@ export function RootNavigator({ phase }: RootNavigatorProps): ReactNode {
 
   return (
     <Stack.Navigator
+      // One landmark per screen rather than one around the navigator: a wrapper outside
+      // `Stack.Navigator` is a single `main` too, but it is the whole viewport in every state and
+      // never names the screen the user is on, which is not a skip target. See `ScreenLandmark`.
+      screenLayout={({ children }) => <ScreenLandmark>{children}</ScreenLandmark>}
       screenOptions={{
         headerShown: false,
         // The canvas behind a screen mid-transition. Without it React Navigation's own default

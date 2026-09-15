@@ -1233,3 +1233,123 @@ describe('the explanation-source marker (T-20-04)', () => {
     }
   });
 });
+
+/**
+ * A response carrying MORE recommendations than the screen may paint.
+ *
+ * `recommend()` returns `candidates` — the whole eligible list, with allergen-conflicting,
+ * diet-incompatible and unavailable meals already rejected — alongside the `selected` three it
+ * slices out of them. So the top `count` of `candidates` is `count` REAL recommendations, with the
+ * domain's own scores, reasons and order, whose fourth member is precisely the meal
+ * `MAX_RECOMMENDATIONS` excluded. Nothing here is hand-made except the two fields the AI lane owns.
+ *
+ * **It bypasses the domain's slice, and that is the point rather than a weakness.** `Plan.md`
+ * §11.5's recommendations block fixes the response at three, so no server this project ships sends
+ * four — but `decodeRecommendationResponse` imposes **no length bound**, so a server that did
+ * would decode cleanly and land four in this screen's state. What the fixture therefore cannot
+ * claim is that today's server produces this; what it does claim is that the screen does not
+ * *trust* the server's cap, which is the entire reason the cap is applied on this side too.
+ *
+ * `offered()` reports what the fixture actually handed over, so an assertion about a fourth card
+ * can first establish that a fourth was on offer.
+ */
+function overflowingClient(count: number): {
+  readonly client: ApiClient;
+  readonly offered: () => readonly string[];
+} {
+  let offered: readonly string[] = [];
+  const client: ApiClient = {
+    listMeals: () => Promise.reject(new Error('not used')),
+    getMeal: () => Promise.reject(new Error('not used')),
+    recommend: (request) => {
+      const result = recommend(
+        {
+          period: request.mealPeriod,
+          preferences: request.preferences,
+          favoriteMealIds: request.favoriteMealIds,
+        },
+        CATALOG,
+      );
+      const recommendations: Recommendation[] = result.candidates.slice(0, count).map((scored) => ({
+        meal: scored.meal,
+        score: scored.score,
+        scoreReasons: scored.scoreReasons,
+        explanation: explanationFor('fallback', scored.meal.id),
+        explanationSource: 'fallback',
+      }));
+      offered = recommendations.map((recommendation) => recommendation.meal.id);
+      const response: RecommendationResponse = { mealPeriod: request.mealPeriod, recommendations };
+      return Promise.resolve(response);
+    },
+    ask: () => Promise.reject(new Error('not used')),
+  };
+  return { client, offered: () => offered };
+}
+
+/**
+ * T-28-03 — "no duplicated domain logic", and the case that had never run.
+ *
+ * `HomeScreen.tsx` used to declare its own `MAX_RECOMMENDATIONS = 3`, unimported and equal to
+ * `packages/domain/src/scoring.ts`'s by coincidence rather than by construction. The final audit
+ * measured what that cost: **3 → 4 in the screen's copy failed 0 of this file's tests**, because
+ * every fixture answered through `recommend().selected` and so **no fixture had ever supplied a
+ * fourth recommendation** — the "no fourth card" guard's own case never ran. The copy also masked
+ * the drift in the other direction: moving the **domain's** constant to 4 while the screen said 3
+ * failed nothing either, because the screen's slice quietly absorbed it.
+ *
+ * The duplication is gone — the screen imports the domain's constant — so a divergence between the
+ * two is no longer representable. These two tests close what the import does not: that the cap is
+ * **applied at all**. Removing `.slice(...)` leaves one copy of one constant and still paints a
+ * fourth card, and nothing in the repository used to notice.
+ */
+describe('the cap on cards (T-28-03)', () => {
+  /**
+   * **Three, hand-transcribed from PRD §7.1 — "Return the top three." — and deliberately NOT read
+   * from `MAX_RECOMMENDATIONS`.** BRIEF §6.1g: an expectation computed from the constant under
+   * test pins nothing, because a drift moves both sides together and the assertion stays true of
+   * whatever the implementation happens to be. Written out, it pins the screen against the
+   * *product requirement*, which is a different authority from the module — so the domain's
+   * constant moving to 4 reddens here instead of passing quietly.
+   */
+  const PRD_TOP_THREE = 3;
+
+  it('paints three cards when a response offers four, and the fourth appears nowhere', async () => {
+    const { client, offered } = overflowingClient(4);
+    const view = await render(client);
+
+    // Vacuous otherwise: every assertion below is about a fourth that had to have been on offer.
+    const fixture = offered();
+    expect(fixture, 'the fixture must offer a fourth eligible recommendation').toHaveLength(4);
+    expect(new Set(fixture).size, 'four DISTINCT meals, or "absent" means nothing').toBe(4);
+
+    const ids = view.mealIds();
+    expect(ids).toHaveLength(PRD_TOP_THREE);
+    // The FIRST three, in the domain's order — not merely three of the four. A screen that kept
+    // the fourth and dropped the first has the right count and the wrong cards.
+    expect(ids).toStrictEqual([...fixture].slice(0, PRD_TOP_THREE));
+
+    const fourth = fixture[PRD_TOP_THREE];
+    expect(fourth, 'the fourth id').toBeDefined();
+    expect(view.find(`recommendation-${fourth ?? ''}`), 'no fourth row').toBeNull();
+    expect(view.find(`meal-${fourth ?? ''}`), 'no fourth MealCard').toBeNull();
+    // Not only the testIDs: a fourth card rendered without them would still put its sentence on
+    // screen, and `explanationFor` carries the meal id exactly so this can tell the cards apart.
+    expect(view.text()).not.toContain(explanationFor('fallback', fourth ?? ''));
+  });
+
+  it('paints all three when a response offers exactly three — the control', async () => {
+    /**
+     * The half no single constant satisfies with the test above. `slice(0, 0)` satisfies "the
+     * fourth appears nowhere"; a screen hard-wired to two cards satisfies neither; a screen that
+     * renders whatever it is handed passes this one and fails the other. Only a cap of three
+     * passes both.
+     */
+    const { client, offered } = overflowingClient(PRD_TOP_THREE);
+    const view = await render(client);
+
+    const fixture = offered();
+    expect(fixture, 'the control must offer exactly three').toHaveLength(PRD_TOP_THREE);
+    expect(view.mealIds()).toStrictEqual([...fixture]);
+    expect(view.find('home-recommendations'), 'the list itself').not.toBeNull();
+  });
+});

@@ -111,7 +111,7 @@ describe('Sheet', () => {
    * The titles the three destructive-action confirmation sheets are opened with.
    *
    * **Hand-transcribed from the call sites, which are a different authority than the subject**
-   * (BRIEF 6.1g) - `FavoritesSection.tsx`, `MealFormScreen.tsx` and `settingsCopy.ts`'s
+   * (BRIEF 6.1g) - `SavedScreen.tsx`, `MealFormScreen.tsx` and `settingsCopy.ts`'s
    * `confirmationFor`. Importing them would pin this file to those modules; retyping them states
    * the value intended. They are also the control that no single constant can satisfy (BRIEF 6.2
    * shape 2): a `Sheet` that named every dialog the same word would pass a test that only asked

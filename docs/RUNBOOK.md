@@ -17,13 +17,14 @@ the repository by design (TSD §7.4). Both are described below by variable name 
 
 ## 1. Prerequisites
 
-| Thing            | Requirement                             | Where the requirement is written                            |
-| ---------------- | --------------------------------------- | ----------------------------------------------------------- |
-| Node.js          | `>=22.13.0 <25`                         | `package.json` → `engines.node`; TSD §2.1                   |
-| npm              | Whatever ships with that Node           | —                                                           |
-| Ollama + a model | **Optional.** `gemma3:4b`               | SDD §2.2 — "Gemma 3:4B is optional at runtime"              |
-| Chromium         | Installed by the E2E suite, not by hand | `e2e/package.json` → `install:browsers`                     |
-| Expo CLI         | **Nothing to install globally**         | `expo` is a dependency of `apps/mobile`; see the note below |
+| Thing            | Requirement                             | Where the requirement is written                                                  |
+| ---------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
+| Node.js          | `>=22.13.0 <25`                         | `package.json` → `engines.node`; TSD §2.1                                         |
+| npm              | Whatever ships with that Node           | —                                                                                 |
+| Ollama + a model | **Optional.** `gemma3:4b`               | SDD §2.2 — "Gemma 3:4B is optional at runtime"                                    |
+| Chromium         | Installed by the E2E suite, not by hand | `e2e/package.json` → `install:browsers`                                           |
+| Expo CLI         | **Nothing to install globally**         | `expo` is a dependency of `apps/mobile`; see the note below                       |
+| Python 3         | Only for §19.5's design-system row      | `python3` — absent from this table until P28, when a clean-checkout run needed it |
 
 **Do not install Expo globally.** SDD §2.3 lists "Expo CLI" as a prerequisite, but
 `apps/mobile/package.json` declares `expo` as a dependency and its `start` script is plain
@@ -43,7 +44,7 @@ npm --version
 
 ```bash
 npm ci
-cp .env.example .env
+cp .env.example .env   # optional: only the TEST runner reads it (§3)
 ```
 
 `npm ci` and not `npm install`: it installs exactly what `package-lock.json` records and fails if
@@ -61,10 +62,35 @@ There is no build step for development. `npm run dev:server` runs the TypeScript
 
 ## 3. Configuration
 
-`.env` is gitignored and never committed. Copy `.env.example`, which carries every variable with a
-safe default and the reasoning next to the two that have traps. The authority for the table is
-TSD §5.2; everything is parsed once with Zod at boot into a frozen object, and a value that fails
-validation **stops the server** rather than being coerced.
+`.env` is gitignored and never committed. The authority for the table is TSD §5.2; everything is
+parsed once with Zod at boot into a frozen object, and a value that fails validation **stops the
+server** rather than being coerced.
+
+> **Nothing loads `.env` at runtime, and this section used to imply otherwise.** It said "copy
+> `.env.example`" and then presented the table as the server's configuration. `apps/server/src/config.ts`
+> reads `process.env` and nothing else — there is no `dotenv` dependency (TSD §2.1 pins the
+> toolchain and a config convenience was judged not worth one) and no `--env-file` flag on any
+> script. **The only `.env` reader in the repository is `vitest.config.mts`**, which loads it for
+> the test runner so that `USDA_DATASET_PATH` works; its own docstring says that without it the
+> file is "decorative". So putting `AI_ENABLED=false` in `.env` and running `npm run dev` does
+> **nothing**, silently — exactly the shape of failure this section's own "will cost you an
+> afternoon" warning is about. Found at P28 by a clean-checkout run.
+
+**So set configuration in the environment, not in the file:**
+
+```bash
+# one command, POSIX shell
+AI_ENABLED=false npm run dev
+
+# one command, PowerShell
+$env:AI_ENABLED = 'false'; npm run dev
+
+# the built server, which reads the same variables
+AI_ENABLED=false node apps/server/dist/index.js
+```
+
+`.env` is still worth keeping for `USDA_DATASET_PATH`, because the seed and the USDA tests run
+under Vitest, which does read it (§8). For everything else it is a note to yourself.
 
 | Variable                        | Type                | Default                     |
 | ------------------------------- | ------------------- | --------------------------- |
@@ -120,24 +146,24 @@ startup. So a server that starts tells you nothing about whether the model is re
 
 ## 5. Running it
 
-**On macOS and Linux:**
+**On every platform, one command:**
 
 ```bash
 npm run dev
 ```
 
-**On Windows, use two terminals instead:**
-
-```bash
-npm run dev:server     # terminal 1
-npm run dev:mobile     # terminal 2
-```
-
-`npm run dev` is `npm run dev:server & npm run dev:mobile`. That `&` backgrounds the first command
-in a POSIX shell, but npm's default script shell on Windows is `cmd.exe`, where `&` is a
-**sequential** separator — so the second command waits for the first, `tsx watch` never exits, and
-the Expo dev server never starts. Measured, not assumed: under `cmd.exe`, `A & B` with a 2.5-second
-`A` printed `A` before `B` and took 2.6 seconds in total. Two terminals is the portable procedure.
+> **This section used to say "on Windows, use two terminals instead", and that is no longer true.**
+> `npm run dev` was `npm run dev:server & npm run dev:mobile`, and that `&` backgrounds the first
+> command in a POSIX shell while npm's default script shell on Windows is `cmd.exe`, where `&` is a
+> **sequential** separator — so the second command waited for the first, `tsx watch` never exited,
+> and the Expo dev server never started. Measured at the time: under `cmd.exe`, `A & B` with a
+> 2.5-second `A` printed `A` before `B` and took 2.6 seconds in total.
+>
+> `package.json` now runs `node scripts/dev.mjs`, which spawns both children itself and is
+> therefore shell-independent. That script's own docstring predicted this paragraph would be left
+> behind, and it was: a clean-checkout run at P28 found the instruction still here. **The two
+> individual scripts still exist** (`dev:server`, `dev:mobile`) and two terminals still work — it
+> is no longer the procedure.
 
 What should be listening:
 
@@ -319,19 +345,19 @@ Two steps in it are known to behave in ways worth knowing before you ever connec
 
 ## 10. Troubleshooting
 
-| Symptom                                                      | Cause and fix                                                                                                    |
-| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Server exits at boot naming a variable                       | A `.env` value failed Zod validation (TSD §5.2). The message names the variable; it is refusing on purpose.      |
-| Server exits at boot naming a meal record                    | An invalid catalog record. TSD §5.1 step 2 requires a non-zero exit rather than serving unvalidated safety data. |
-| `AI_KEEP_ALIVE=30` rejected                                  | Correct behaviour. Write `30m`. See §3.                                                                          |
-| Model answers nothing and the keep-alive setting looks right | You may have set `OLLAMA_KEEP_ALIVE`, which configures Ollama's daemon and not this app. See §3.                 |
-| Assistant returns `503 ai_disabled`                          | `AI_ENABLED=false`. That is No-AI mode, not a fault.                                                             |
-| First assistant question after a restart times out           | A cold model load takes roughly a minute and exceeds the 30 s budget. It recovers on its own; ask again.         |
-| Every E2E spec shows "Working offline"                       | The web origin is not one the API's CORS allowlist trusts. Serve on 19006; do not widen the allowlist.           |
-| E2E run dies with `No web export at …`                       | `npm run build:web` has not been run since the last clean. See §6.                                               |
-| `npm run dev` starts the API and nothing else, on Windows    | `cmd.exe` treats `&` as sequential. Use two terminals. See §5.                                                   |
-| `node apps/server/dist/index.js` cannot find `./core.js`     | R-69, **closed**. Re-run `npm run build:server` — step 3 stages the packages. See §7.                            |
-| `npm run check` reports a total you do not recognise         | Compare the **skipped** count against §6's table before anything else.                                           |
+| Symptom                                                      | Cause and fix                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server exits at boot naming a variable                       | A `.env` value failed Zod validation (TSD §5.2). The message names the variable; it is refusing on purpose.                                                                                                                                          |
+| Server exits at boot naming a meal record                    | An invalid catalog record. TSD §5.1 step 2 requires a non-zero exit rather than serving unvalidated safety data.                                                                                                                                     |
+| `AI_KEEP_ALIVE=30` rejected                                  | Correct behaviour. Write `30m`. See §3.                                                                                                                                                                                                              |
+| Model answers nothing and the keep-alive setting looks right | You may have set `OLLAMA_KEEP_ALIVE`, which configures Ollama's daemon and not this app. See §3.                                                                                                                                                     |
+| Assistant returns `503 ai_disabled`                          | `AI_ENABLED=false`. That is No-AI mode, not a fault.                                                                                                                                                                                                 |
+| First assistant question after a restart times out           | A cold model load takes roughly a minute and exceeds the 30 s budget. It recovers on its own; ask again.                                                                                                                                             |
+| Every E2E spec shows "Working offline"                       | The web origin is not one the API's CORS allowlist trusts. Serve on 19006; do not widen the allowlist.                                                                                                                                               |
+| E2E run dies with `No web export at …`                       | `npm run build:web` has not been run since the last clean. See §6.                                                                                                                                                                                   |
+| `npm run dev` starts the API and nothing else                | Fixed at P26 — `npm run dev` is `node scripts/dev.mjs`, which spawns both children itself and does not depend on the shell. If you see this on a current checkout it is a real bug, not the `cmd.exe` `&` problem this row used to describe. See §5. |
+| `node apps/server/dist/index.js` cannot find `./core.js`     | R-69, **closed**. Re-run `npm run build:server` — step 3 stages the packages. See §7.                                                                                                                                                                |
+| `npm run check` reports a total you do not recognise         | Compare the **skipped** count against §6's table before anything else.                                                                                                                                                                               |
 
 ---
 
