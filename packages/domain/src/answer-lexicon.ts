@@ -171,6 +171,10 @@ export const SHAPE_TERMS: readonly (readonly [string, ShapeKind])[] = [
   ['what can i have', 'listing'],
   ['what meal can i have', 'listing'],
   ['what meals can i have', 'listing'],
+  // The `which` forms of the same two, for the same reason the `what` forms are here: a user who
+  // types one and not the other should not meet a different assistant.
+  ['which meal can i have', 'listing'],
+  ['which meals can i have', 'listing'],
   /*
     **With an interposed "that", which is how the question was actually typed.**
 
