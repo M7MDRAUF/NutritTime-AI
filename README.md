@@ -70,7 +70,7 @@ cp .env.example .env
 `npm ci` rather than `npm install`: it installs exactly what `package-lock.json` records and fails
 if the lockfile and the manifests disagree, where `npm install` can quietly re-resolve a version
 that `TSD.md` §2.1 pins. (`SDD.md` §2.3 writes `npm install`; either populates the tree, and `npm ci`
-is what CI runs.)
+is the gate.)
 
 There is no build step for development: `dev:server` runs the TypeScript sources through `tsx`, and
 Metro compiles the app.
@@ -117,7 +117,7 @@ The two switches mean different things and are read in different places, which i
 three modes and not two: `AI_ENABLED=false` is a product state the user can see, while `AI_FAKE=true`
 substitutes only the outbound HTTP call. Under Fake AI the route, retrieval, resolution, prompt
 construction and containment all execute exactly as in production. That is what makes a pass under
-it evidence rather than theatre, and it is why the E2E suite and CI — neither of which has a model —
+it evidence rather than theatre, and it is why the E2E suite — which has no model —
 use it.
 
 Start it — one command, every platform:

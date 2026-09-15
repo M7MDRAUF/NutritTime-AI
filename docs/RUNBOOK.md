@@ -319,31 +319,7 @@ from 9 to 2. That is R-59 seen from the other side.
 
 ---
 
-## 9. Continuous integration
-
-`.github/workflows/ci.yml` is one job on push and pull request, running the sequence SDD §16 and
-Plan §21.2 specify: `npm ci` → `npm run check` → `build:server` → `build:web` → `test:e2e` with
-`AI_FAKE=true`, then `npm audit --audit-level=high`, then a boot of the server artefact against
-`/health`.
-
-**It has never run, and it cannot.** There is no git remote (A-02, B-03): this is a private,
-solo, local-only project with no forge behind it, so no push can happen and no Actions run can
-exist. Every step in that file was executed locally in the same order instead, and the P26 phase
-report records each command with its real output. Nothing in this repository claims a run URL,
-because there is none to claim.
-
-Two steps in it are known to behave in ways worth knowing before you ever connect a remote:
-
-- the **USDA preflight fails the job** when `USDA_DATASET_PATH` is not provisioned on the runner,
-  by design — see §6 and R-59. The escape is an explicit edit to `USDA_ARCHIVE_POLICY` in the
-  workflow itself, so an archive-less run is a reviewable line in version control rather than a
-  silent seven-test shortfall.
-- the **`/health` step now passes.** It was written correct and left red while R-69 was open,
-  rather than written to pass; R-69 is closed and §7 records the shape of the fix.
-
----
-
-## 10. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom                                                      | Cause and fix                                                                                                                                                                                                                                        |
 | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -361,7 +337,7 @@ Two steps in it are known to behave in ways worth knowing before you ever connec
 
 ---
 
-## 11. Known limitations of this procedure
+## 10. Known limitations of this procedure
 
 1. **No CI run exists and none can**, for the reason in §9. The workflow is validated structurally
    and by local execution of each step, which is weaker evidence than a run and is recorded as such.
