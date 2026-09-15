@@ -158,20 +158,42 @@ describe('chatFormat - the empty branch is a branch, not an edge case', () => {
     });
   });
 
-  it('shapes the whole `citedMealIds` fragment, and in particular sets no `minItems`', () => {
-    // **The assertion this branch most needs, and the one a vacuity audit found missing.**
-    // `minItems: 1` here would require a citation the prompt cannot supply - the enum is
-    // absent precisely because `namedMeals` is empty - so every reply would fail its own
-    // format and EVERY COUNT QUESTION would return a deterministic 503, on a question the
-    // domain answered correctly. A whole answer shape, silently unavailable.
-    //
-    // Asserting the fragment key by key cannot catch that: an absent constraint has no key
-    // to assert. Only `toStrictEqual` over the whole object does.
+  it('bounds the ARRAY at zero, so the only citation list it admits is empty', () => {
+    /**
+     * **`maxItems: 0` is what makes a counting question answerable at all (R-81).**
+     *
+     * The comment that used to sit here was prophetic and pointed the wrong way. It warned that
+     * `minItems: 1` "would require a citation the prompt cannot supply... so EVERY COUNT QUESTION
+     * would return a deterministic 503, on a question the domain answered correctly. A whole
+     * answer shape, silently unavailable." **That is exactly what happened, by the opposite
+     * route:** the array was `maxItems: 5` over a free bounded string, so the grammar *permitted*
+     * a citation the prompt could not supply, `gemma3:4b` duly invented one (`"MEAL_ID_9"`,
+     * `"MEAL_ID_28"`, `"7"`), and §5.7's check 1 discarded the correct count as a 503 — measured
+     * **3 of 3** count questions against a real model, in both sessions. The test was guarding
+     * the right risk from the wrong side, and a permissive bound turned out to be as fatal as a
+     * demanding one.
+     *
+     * `maxItems: 0` admits exactly `[]`: `required` is satisfied, the model cannot invent, and
+     * check 1 has nothing to reject. Verified against the real model at **9 of 9**.
+     *
+     * The literal `0` is written out rather than derived. `CITATION_BOUNDS.maxItems` is the
+     * contract's ceiling for a citing answer and is used by the enum branch below; reusing it
+     * here would compare this branch against the wrong authority and pass at any value.
+     *
+     * Still `toStrictEqual` over the whole fragment, for the original reason: an absent
+     * constraint has no key to assert, so key-by-key checks cannot catch one being added.
+     */
     expect(chatFormat([]).properties.citedMealIds).toStrictEqual({
       type: 'array',
-      maxItems: CITATION_BOUNDS.maxItems,
+      maxItems: 0,
       items: { type: 'string', maxLength: CITATION_BOUNDS.items.maxLength },
     });
+
+    // And the pair that stops a single constant satisfying both branches: a prompt WITH ids must
+    // still permit up to the contract's ceiling, or "bound the array at zero" would be a fix that
+    // silently disabled every citation in the application.
+    expect(chatFormat(REAL_IDS).properties.citedMealIds.maxItems).toBe(CITATION_BOUNDS.maxItems);
+    expect(CITATION_BOUNDS.maxItems).toBeGreaterThan(0);
   });
 
   it('still forbids extra fields and still bounds `answer` on the empty branch', () => {
@@ -229,13 +251,15 @@ describe('chatFormat - the whole schema, key for key', () => {
   });
 
   it('is exactly this, and nothing more, when the prompt carried none', () => {
+    // `maxItems: 0` rather than the contract ceiling, and that one number is the whole of R-81:
+    // a count resolves to no named meals, so the only honest citation list is an empty one.
     expect(chatFormat([])).toStrictEqual({
       ...envelope,
       properties: {
         ...envelope.properties,
         citedMealIds: {
           type: 'array',
-          maxItems: CITATION_BOUNDS.maxItems,
+          maxItems: 0,
           items: { type: 'string', maxLength: CITATION_BOUNDS.items.maxLength },
         },
       },

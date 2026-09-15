@@ -62,26 +62,40 @@ export function chatFormat(promptMealIds: readonly string[]): ChatFormat {
     properties: {
       answered: { type: 'boolean' },
       answer: { type: 'string', minLength: 1, maxLength: 700 },
-      citedMealIds: {
-        type: 'array',
-        maxItems: 5,
-        items:
-          promptMealIds.length === 0
-            ? // **No `enum` key at all, and this branch is production behaviour, not an
-              // edge case.** A `count` question resolves to an empty `namedMeals` (TSD 4.9:
-              // "Count -> empty, because the answer is a number and no meal needs
-              // describing"), so every counting question takes this path.
-              //
-              // An empty `enum` is either a schema error or an alternation that matches
-              // nothing, which would make the grammar unable to produce a citation at all -
-              // and since `citedMealIds` is required, every reply would then fail its own
-              // format and the lane would 503 on a question the domain answered correctly.
-              // A plain bounded string is the honest shape: the grammar permits a citation,
-              // and containment check 1 rejects it, because an empty prompt id set permits
-              // no citation.
-              { type: 'string', maxLength: 200 }
-            : { type: 'string', enum: [...promptMealIds] },
-      },
+      citedMealIds:
+        promptMealIds.length === 0
+          ? /*
+              **`maxItems: 0`, which is the only array a citation-less answer may be (R-81).**
+
+              A `count` question resolves to an empty `namedMeals` (TSD 4.9: "Count -> empty,
+              because the answer is a number and no meal needs describing"), so **every counting
+              question takes this branch** - it is production behaviour, not an edge case.
+
+              This used to be `{ type: 'string', maxLength: 200 }` at the item level, on reasoning
+              that was half right: an empty `enum` IS either a schema error or an alternation
+              matching nothing, and since `citedMealIds` is required, that would make every reply
+              fail its own format. The step missed is that the constraint belongs on the ARRAY and
+              not on the item. `maxItems: 0` admits exactly one value, `[]`, which satisfies
+              `required` and carries no citation to check.
+
+              **What the old shape cost, measured against a real `gemma3:4b` at P28:** a free
+              bounded string let the model invent `"MEAL_ID_9"`, `"MEAL_ID_28"` and `"7"`,
+              containment check 1 rejected them because an empty prompt id set permits no
+              citation, and the correct count was discarded as a 503 - **3 of 3 count questions,
+              in both measured sessions**. A user asking "how many are vegan?" got "The assistant
+              is unavailable right now." essentially always, while the domain held the right
+              answer.
+
+              **This is a TSD 5.5 amendment**, because that section specifies this function
+              verbatim, and it is in the permitted direction: PRD 7.4 lists **Count** as an
+              answerable shape, TSD 5.5's schema made Count unanswerable, and PRD outranks TSD.
+              Recorded in `Plan.md` as the R-81 closure rather than applied silently.
+            */
+            // The item's `maxLength` is kept although `maxItems: 0` makes it unreachable: it is
+            // the contract's own id bound, it costs nothing, and it still limits the damage if a
+            // future edit restores a non-zero `maxItems` without thinking about R-81.
+            { type: 'array', maxItems: 0, items: { type: 'string', maxLength: 200 } }
+          : { type: 'array', maxItems: 5, items: { type: 'string', enum: [...promptMealIds] } },
     },
     required: ['answered', 'answer', 'citedMealIds'],
     // A model returning an extra field must fail its own format, matching

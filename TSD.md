@@ -1186,19 +1186,34 @@ function chatFormat(promptMealIds: readonly string[]) {
     properties: {
       answered: { type: 'boolean' },
       answer: { type: 'string', minLength: 1, maxLength: 700 },
-      citedMealIds: {
-        type: 'array',
-        maxItems: 5,
-        items: promptMealIds.length === 0
-          ? { type: 'string', maxLength: 200 }
-          : { type: 'string', enum: [...promptMealIds] },
-      },
+      citedMealIds: promptMealIds.length === 0
+        ? { type: 'array', maxItems: 0, items: { type: 'string', maxLength: 200 } }
+        : { type: 'array', maxItems: 5, items: { type: 'string', enum: [...promptMealIds] } },
     },
     required: ['answered', 'answer', 'citedMealIds'],
     additionalProperties: false,
   } as const;
 }
 ```
+
+**Amendment (P28), and the only edit this project has made to an authority document.** The empty
+branch read `items: { type: 'string', maxLength: 200 }` under a `maxItems: 5` array — a free
+bounded string. Because a `count` resolves to an empty `namedMeals` (§4.9), **every** counting
+question took that branch, the model invented an id (`"MEAL_ID_9"`, `"MEAL_ID_28"`, `"7"`), §5.7's
+check 1 rejected it since an empty prompt id set permits no citation, and the correct count was
+discarded as a 503 — measured **3 of 3** count questions against a real `gemma3:4b`, in both
+sessions.
+
+The constraint belongs on the **array**, not the item: `maxItems: 0` admits exactly `[]`, which
+satisfies `required: ['citedMealIds']` and leaves check 1 nothing to reject. Verified against the
+real model: **9 of 9** count questions answered, every one with zero citations.
+
+**Why amending this document is the correct direction rather than a violation.** `PRD.md` §7.4
+lists **Count** as one of six answerable shapes; this section's schema made Count unanswerable.
+PRD outranks TSD, so the lower document was the defect. The alternative — leaving the code
+diverging from TSD — is what §10.5 of the plan forbids, and editing PRD to drop Count would have
+removed a product promise to protect an implementation detail.
+
 
 Ollama compiles `format` into a GBNF grammar through llama.cpp's schema-to-grammar converter, which
 renders `enum` as an alternation of literals — so an uncited id is not caught after the fact, it
