@@ -311,20 +311,36 @@ export function createApp(options: AppOptions): Express {
     });
   });
 
-  // 5. 404 - the `meal_not_found` shape under the meals route, a plain 404 elsewhere
-  app.use((request: Request, response: Response) => {
-    // The trailing slash matters: without it `/api/v1/mealsXYZ` answered `meal_not_found`,
-    // claiming a meal was missing on a path that names no meal at all.
-    if (request.path.startsWith('/api/v1/meals/')) {
-      const error = new ApiError('meal_not_found');
-      response.locals['errorCode'] = error.code;
-      response.status(error.status).json(error.toBody());
-      return;
-    }
-    // `not_found` was a SIXTH wire code, and it carried no `retryable` although
-    // `ApiErrorBody` requires one - so the branch every unmatched path lands on, including the
-    // not-yet-built chat route, answered with a shape the client cannot parse. TSD 3.5 has five
-    // codes; `meal_not_found` is the one that describes "the thing you asked for is not here".
+  // 5. 404 - every unmatched path, with the only 404 code TSD 3.5 defines
+  app.use((_request: Request, response: Response) => {
+    /*
+      **One branch, because the two this used to have were byte-identical (R-84).**
+
+      It read `if (request.path.startsWith('/api/v1/meals/'))` and then built the same
+      `new ApiError('meal_not_found')` the fall-through built, over a comment explaining at length
+      why "the trailing slash matters: without it `/api/v1/mealsXYZ` answered `meal_not_found`,
+      claiming a meal was missing on a path that names no meal at all". **Deleting the branch
+      failed 0 of 2617 tests** - it was decoration, and the comment argued for a distinction the
+      code had abandoned. The same shape as F-6: an explanation outliving the behaviour it
+      described.
+
+      Worth keeping the history, because the branch was not pointless when written - it was trying
+      to avoid exactly the defect this handler still has.
+
+      **What it still gets wrong, and why it is not fixed here.** `GET /` answers *"That meal could
+      not be found."* on a server whose root names no meal. TSD 3.5 fixes the wire codes at
+      **five** and its table maps 404 to `meal_not_found` alone, so there is no code for "that
+      route does not exist" - and a sixth was tried once and reverted, because it carried no
+      `retryable` while `ApiErrorBody` requires one. Inventing the code is a document amendment and
+      a stop condition, so it is recorded as R-84 instead.
+
+      **Not reachable from the app**: `routes.ts` only ever calls paths that exist, so this text
+      reaches a person poking the API directly, never a user reading a screen. That is what keeps
+      it a MINOR rather than a false statement in the interface.
+
+      The meals router answers an unknown *id* itself (`meals.ts`, `throw new ApiError('meal_not_found')`),
+      where the message is both true and useful. This handler is only what is left over.
+    */
     const missing = new ApiError('meal_not_found');
     response.locals['errorCode'] = missing.code;
     response.status(missing.status).json(missing.toBody());
