@@ -57,15 +57,27 @@ jobs:
       # fail loudly when it is absent. Quietly running 7 fewer tests is the one option that must
       # not ship.
       #
-      # **Providing it is not available to this project**: the archive cannot be committed, and
-      # with no forge there is no cache, artifact store, release asset or package registry to
-      # fetch it from. So this job fails loudly, and `required` is the default that makes it do so.
-      #
-      # `optional` is the only escape, and it is deliberately an edit to THIS FILE rather than an
-      # environment default: an archive-less run then still happens, but it is a reviewable line in
-      # version control and a warning annotation plus a line in the run summary naming the 7 tests
+      # `optional` is the escape, and it is deliberately an edit to THIS FILE rather than an
+      # environment default: an archive-less run still happens, but it is a reviewable line in
+      # version control, plus a warning annotation and a line in the run summary naming the 7 tests
       # that did not run. What is unavailable in either case is silence.
-      USDA_ARCHIVE_POLICY: required
+      #
+      # **Set to `optional` at P28, by the user's decision, on the first real CI run this project
+      # has ever had.** The paragraph that stood here said "providing it is not available to this
+      # project: the archive cannot be committed, and with no forge there is no cache, artifact
+      # store, release asset or package registry to fetch it from" - true when written and **false
+      # from the moment this repository existed**. Provisioning the archive is now genuinely
+      # available (a release asset, the Actions cache, or a self-hosted runner), and it was weighed
+      # against this line and declined for now: it would put a 15.7 MB data file on a public
+      # repository to certify seven tests that pass on the machine that authored them.
+      #
+      # So every run on this forge is an archive-less run, declared as one. What that costs is
+      # exact and is stated in the run summary each time: the 7 derivation tests in
+      # `packages/catalog/src/seed/usda-dataset.integration.test.ts` do not execute, and the run
+      # does NOT certify USDA nutrition derivation. The suite total is 7 lower than a developer
+      # machine's for that reason and no other - which is the whole of R-59, now visible in the log
+      # instead of hidden in a count.
+      USDA_ARCHIVE_POLICY: optional
 
       # Supplied as a repository variable, never written here: the archive's location is a
       # machine-local path and no machine-local path belongs in a committed file. Unset renders as
