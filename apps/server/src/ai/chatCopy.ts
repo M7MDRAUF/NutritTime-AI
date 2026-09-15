@@ -40,11 +40,31 @@ export const CHAT_COPY: {
    * The refusal comes first because it is the answer; the suggestions follow because a bounded
    * assistant that does not say what its bounds are reads as a broken one.
    */
+  /*
+    **Every suggestion here is a form that was MEASURED to resolve, and three of the previous
+    five were not (R-85).**
+
+    It used to offer "how they rank by calories or protein", "what they come to altogether" and
+    (in `greeting`) "which has the most protein" - and all three refuse:
+
+    - the four nutrition fields are `null` for **53 of the 60** seeded meals, and TSD 4.9's
+      `gather` refuses a field any candidate cannot supply (`field-partially-known`), so every
+      calorie, protein, carbohydrate and fat question is dead until the catalog-coverage pass
+      binds the remaining ingredients. That is R-03, not a lexicon gap;
+    - "what they come to altogether" names a shape and no field, which TSD 4.9's matching rule 5
+      makes `incomplete-intent` **by contract** - so the fix is this sentence, not the resolver.
+
+    **Guidance copy is a promise, and this one was telling the user to ask three questions the
+    app then refused.** A bounded assistant that misstates its bounds is worse than one that
+    states them narrowly: the narrow version is merely limited, and the other reads as broken.
+    So price, preparation time, listing and count are named - and nutrition is not named until it
+    works.
+  */
   noInformation:
     'I do not have that information. I can only answer from the meals your preferences ' +
     'allow, and this question is not one I can work out from them. Try asking which meal is ' +
-    'cheapest or quickest, how they rank by calories or protein, what they come to ' +
-    'altogether, or what options you have.',
+    'cheapest or quickest, which takes the longest to make, what the total price is, how they ' +
+    'rank by price or preparation time, how many there are, or what options you have.',
 
   /**
    * **One string for two question shapes, and that collision is R-22 rather than a shortcut.**
@@ -59,9 +79,9 @@ export const CHAT_COPY: {
    */
   greeting:
     'Hello. I can answer questions about the meals your diet, allergies, and availability ' +
-    'already allow: which one is cheapest or quickest, which has the most protein, how they ' +
-    'rank, what they come to altogether, and what options you have. Ask about one of those ' +
-    'and I will read the list for you.',
+    'already allow: which one is cheapest or quickest, which takes the longest to make, what ' +
+    'the total price is, how they rank by price or preparation time, how many there are, and ' +
+    'what options you have. Ask about one of those and I will read the list for you.',
 };
 
 /**

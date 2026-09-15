@@ -111,11 +111,19 @@ export const SENSE_TERMS: readonly (readonly [string, Sense])[] = [
   ['lower', { direction: 'lowest' }],
   ['smallest', { direction: 'lowest' }],
   ['fewest', { direction: 'lowest' }],
+  // `shortest` and `longest` are the words a duration attracts, and their absence was measured:
+  // "which has the lowest price" resolved while "which has the shortest preparation time" did
+  // not, on the same shape, because `lowest` was here and `shortest` was not. Bare directions
+  // rather than `preparation-time` senses on purpose - "the shortest ingredient list" is a
+  // sentence someone may yet write, and pinning the field here would answer it about the clock.
+  // (`longest to make` above stays: it is a longer phrase, so it claims its tokens first.)
+  ['shortest', { direction: 'lowest' }],
   ['highest', { direction: 'highest' }],
   ['most', { direction: 'highest' }],
   ['more', { direction: 'highest' }],
   ['largest', { direction: 'highest' }],
   ['biggest', { direction: 'highest' }],
+  ['longest', { direction: 'highest' }],
 ];
 
 export const SHAPE_TERMS: readonly (readonly [string, ShapeKind])[] = [
