@@ -175,6 +175,23 @@ jobs:
           echo "::error title=R-59::USDA_DATASET_PATH is not provisioned on this runner. 7 derivation tests in packages/catalog/src/seed/usda-dataset.integration.test.ts would be skipped and the suite total would move with nothing in the log to say why. Provision the archive (TSD 7.4; set the USDA_DATASET_PATH repository variable to its extracted directory on a runner that holds it), or set USDA_ARCHIVE_POLICY to 'optional' in .github/workflows/ci.yml to declare an archive-less run on the record."
           exit 1
 
+      # **Before the gate, not after it, and that ordering is load-bearing.**
+      #
+      # `npm run check` runs `tsc --noEmit -p e2e` as one of its seven projects (the e2e workspace
+      # joined the gate at the P08-P18 re-audit, having escaped it entirely until then). That
+      # project cannot typecheck without `@playwright/test` on disk, so installing the E2E suite
+      # after the gate made the gate fail on a clean runner with 30-odd
+      # "Cannot find module '@playwright/test'" and "implicitly has an 'any' type" errors.
+      #
+      # It passed locally for the reason every ordering bug like this passes locally: `e2e/`
+      # already had its `node_modules`. The first CI run this project ever had is what found it,
+      # alongside the lockfile gap in the commit before this one - both of them ordering or
+      # completeness faults that no amount of running the gate on the authoring machine could
+      # surface. `e2e/` is outside the npm workspaces by design (TSD §2.1), so its install is a
+      # separate command and therefore a separate chance to get the order wrong.
+      - name: Install the E2E suite
+        run: npm --prefix e2e ci
+
       # T-26-02, step 2 of 5, and TSD §2.4's single gate:
       # `format:check && lint && typecheck && test`.
       #
@@ -200,9 +217,6 @@ jobs:
 
       # `e2e/` has its own `package.json` and its own lockfile because it sits outside the npm
       # workspaces on purpose, so the root `npm ci` above installed none of it.
-      - name: Install the E2E suite
-        run: npm --prefix e2e ci
-
       # `--with-deps` rather than the package's own `install:browsers` script, which is
       # `playwright install chromium` with no OS dependencies. On a fresh Linux runner Chromium
       # needs its shared libraries installed too, and `e2e/package.json` is not this task's to
