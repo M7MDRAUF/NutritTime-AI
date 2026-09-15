@@ -40,8 +40,24 @@ const archiveAvailable = datasetPath !== undefined && datasetPath.trim() !== '';
  * **This is the half `.github/workflows/ci.yml` cannot cover.** A workflow can only make its own
  * runs loud; this makes `npm run check` honest on any machine that calls itself CI, which is where
  * TSD §2.4 says the gate lives.
+ *
+ * **`USDA_ARCHIVE_POLICY=optional` is honoured here, and until P28 it was not — which made the
+ * workflow's own documented escape hatch unreachable.** `ci.yml` offers `optional` as the declared
+ * archive-less run, warns, writes the 7 test names into the run summary, and continues. Then this
+ * file failed the run anyway, because it keyed on `CI` alone and knew nothing about the policy. The
+ * first real CI run this project ever had is what exposed it: the preflight said "continuing under
+ * an explicitly declared archive-less policy" and the gate then failed on these 7 tests four steps
+ * later. **Two guards for one risk, and the escape belonged to the half that could not grant it.**
+ *
+ * R-59's rule is unchanged and still holds, because the rule was never "fail" — it was **"never be
+ * silent"**. Under `optional` the skip happens and the absence is announced twice over, as a
+ * warning annotation and as a run-summary section naming the tests and stating that the run does
+ * not certify USDA derivation. On any machine that sets `CI` WITHOUT declaring the policy — which
+ * is every runner that has not thought about it — these tests still run and still fail, each with
+ * `resolveUsdaDatasetPath`'s own message naming the variable.
  */
-const underCi = (process.env['CI'] ?? '') !== '';
+const policyIsOptional = (process.env['USDA_ARCHIVE_POLICY'] ?? '').trim() === 'optional';
+const underCi = (process.env['CI'] ?? '') !== '' && !policyIsOptional;
 
 describe.skipIf(!archiveAvailable && !underCi)('the real USDA archive', () => {
   // Lazy on purpose. `describe.skipIf` skips the TESTS, not the describe body, so reading the
