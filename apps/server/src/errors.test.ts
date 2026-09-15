@@ -82,7 +82,11 @@ describe('detailsFromIssues, against real Zod failures', () => {
 
   it('groups by field path', () => {
     const details = detailsFromIssues(issuesFor({}));
-    expect(Object.keys(details).sort()).toStrictEqual(['preferences', 'question']);
+    // Three missing fields now, not two: `mealPeriod` joined the chat contract at P28. The point
+    // of the assertion is that EVERY missing path is reported and grouped, so the list grows with
+    // the schema - and `toStrictEqual` over a sorted list is what makes that visible rather than
+    // letting a silently-dropped path pass.
+    expect(Object.keys(details).sort()).toStrictEqual(['mealPeriod', 'preferences', 'question']);
   });
 
   it('NEVER echoes a submitted key, which is what Zod itself does', () => {

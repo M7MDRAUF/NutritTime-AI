@@ -183,6 +183,10 @@ const ask = (harnessed: Harness, question: string, preferences?: unknown) =>
     .send(
       JSON.stringify({
         question,
+        // Required by `chatRequestSchema` since P28: the client says what "now" is, because the
+        // server holds no clock. Fixed rather than taken from the clock so this suite's bodies do
+        // not change with the time of day.
+        mealPeriod: 'lunch',
         preferences: preferences ?? { diet: 'regular', allergies: [], dislikedIngredients: [] },
       }),
     );

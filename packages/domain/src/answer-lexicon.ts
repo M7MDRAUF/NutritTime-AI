@@ -144,8 +144,50 @@ export const SHAPE_TERMS: readonly (readonly [string, ShapeKind])[] = [
   ['ranked', 'ordering'],
   ['list', 'listing'],
   ['show me', 'listing'],
-  ['what can i eat', 'listing'],
   ['option', 'listing'],
+  /*
+    **The "what ... can I eat" family, spelled out because matching is CONTIGUOUS.**
+
+    `claimMatches` walks token positions, so a phrase only matches when its tokens are adjacent.
+    `what can i eat` therefore does NOT match "what **meals** can I eat" - one inserted noun and
+    the question falls through to `no-intent`. That was measured at P28 on the most natural
+    phrasing of the question this app is named after: "what can i eat right now" resolved and
+    "what meals can i eat right now" refused, which is the kind of difference no user would
+    forgive or understand.
+
+    Listed as whole phrases rather than solved with a gap-tolerant matcher on purpose: a matcher
+    that skipped tokens would let "what can i NOT eat" match too, and inverting a question about
+    allergies is the one mistake this domain must never make. Each entry here is a decision a
+    reader can check, which is what TSD 4.9 asks the lexicon to be.
+
+    Longest-first compilation means these claim their tokens before the bare `eat`.
+  */
+  ['what can i eat', 'listing'],
+  ['what meal can i eat', 'listing'],
+  ['what meals can i eat', 'listing'],
+  ['which meal can i eat', 'listing'],
+  ['which meals can i eat', 'listing'],
+  ['what food can i eat', 'listing'],
+  ['what can i have', 'listing'],
+  ['what meal can i have', 'listing'],
+  ['what meals can i have', 'listing'],
+  /*
+    **With an interposed "that", which is how the question was actually typed.**
+
+    "what meals THAT i can eat right now" - not textbook English, and the exact phrasing a real
+    user produced on first contact with the assistant. Contiguous matching means it shares no
+    phrase with the entries above, so it refused while its neighbour answered.
+
+    Kept as explicit entries rather than by teaching `tokenize` to drop filler words. Dropping
+    fillers would make these free, and it would also make "what can i NOT eat" collapse onto
+    "what can i eat" the day someone added `not` to the same list - and inverting a question about
+    what a user may eat is the one mistake this domain must never make. An explicit table cannot
+    do that by accident.
+  */
+  ['what meal that i can eat', 'listing'],
+  ['what meals that i can eat', 'listing'],
+  ['what meal that i can have', 'listing'],
+  ['what meals that i can have', 'listing'],
 ];
 
 /**
@@ -195,9 +237,34 @@ export const GREETING_TERMS: readonly string[] = [
 ];
 
 /** What a `count` question can count. A criterion narrows the eligible set; it is not a field. */
-export type CountCriterion =
+export type ResolvedCriterion =
   | { readonly sort: 'diet'; readonly tag: DietTag }
   | { readonly sort: 'period'; readonly period: MealPeriod };
+
+/**
+ * What the LEXICON can emit, which is a superset of what anything downstream may read.
+ *
+ * The split is the point: `ResolvedCriterion` has no relative variant, so every consumer that
+ * reads `.period` is a compile error until `answer.ts` has normalised `'current-period'` away.
+ * The invariant was a comment first and the compiler rejected three readers immediately - which
+ * is a better guard than the comment was.
+ */
+export type CountCriterion =
+  | ResolvedCriterion
+  /**
+   * **"right now" - the period the question was asked in, not a period it names (P28).**
+   *
+   * A third variant rather than a `MealPeriod` value, because which period this means is not
+   * known when the lexicon is compiled. `answer.ts` normalises it to a `'period'` criterion
+   * against `ChatRetrievalResult.currentPeriod` before anything reads it, so nothing downstream
+   * - `matchesCriterion` included - ever sees this shape.
+   *
+   * It exists because *"what can I eat right now?"* was the one question this app is named after
+   * and could not answer, while *"what can I eat for breakfast"* already worked. The gap was
+   * never the shape: PRD 7.4's **Listing** covers a criterion-scoped list and TSD 4.9 already
+   * had period criteria. Nobody could say which period "now" was.
+   */
+  | { readonly sort: 'current-period' };
 
 export const COUNT_CRITERIA: readonly (readonly [string, CountCriterion])[] = [
   ['vegan', { sort: 'diet', tag: 'vegan' }],
@@ -209,6 +276,22 @@ export const COUNT_CRITERIA: readonly (readonly [string, CountCriterion])[] = [
   ['lunch', { sort: 'period', period: 'lunch' }],
   ['dinner', { sort: 'period', period: 'dinner' }],
   ['snack', { sort: 'period', period: 'snack' }],
+  /*
+    Relative time, resolved against the period the client sent with the question.
+
+    Every one of these is a phrase a person actually types when they mean "at this moment", and
+    the list is deliberately short: each entry is unambiguous about meaning NOW. "today" and
+    "tonight" are NOT here - "what can I eat today" spans every period rather than the current
+    one, and "tonight" names the evening whether or not it is evening yet, so both would answer a
+    different question from the one asked. Adding them needs a period-range criterion, which
+    TSD 4.9 does not define.
+  */
+  ['right now', { sort: 'current-period' }],
+  ['now', { sort: 'current-period' }],
+  ['at the moment', { sort: 'current-period' }],
+  ['at this time of day', { sort: 'current-period' }],
+  ['this time of day', { sort: 'current-period' }],
+  ['currently', { sort: 'current-period' }],
 ];
 
 /** A lexicon entry reduced to the tokens the classifier will actually compare against. */

@@ -124,7 +124,15 @@ function everyCopyString(): readonly string[] {
 const CHAT_PREFERENCES = { diet: 'regular', allergies: ['peanut'], dislikedIngredients: [] };
 
 function parsesAsQuestion(question: string): boolean {
-  return chatRequestSchema.safeParse({ question, preferences: CHAT_PREFERENCES }).success;
+  // A COMPLETE body but for the question, so the only thing under test is the question. Omitting
+  // `mealPeriod` after P28 made every row here fail for the wrong reason - the schema rejected the
+  // body, not the length - which would have read as a client/server disagreement about question
+  // length when there was none.
+  return chatRequestSchema.safeParse({
+    question,
+    mealPeriod: 'lunch',
+    preferences: CHAT_PREFERENCES,
+  }).success;
 }
 
 describe('the denied-claim matcher used below', () => {

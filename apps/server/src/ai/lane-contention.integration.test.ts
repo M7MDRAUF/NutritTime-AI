@@ -87,6 +87,7 @@ function heldModel(): Held {
 
 const chatBody = {
   question: 'which is cheapest?',
+  mealPeriod: 'lunch',
   preferences: { diet: 'regular', allergies: [], dislikedIngredients: [] },
 };
 

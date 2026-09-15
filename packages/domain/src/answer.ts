@@ -16,6 +16,7 @@
  */
 
 import type { Meal } from '@nutritime/contracts';
+import { MAX_CHAT_CONTEXT_MEALS } from './chat-retrieval.js';
 import type { ChatRetrievalResult } from './chat-retrieval.js';
 import { formatMoney, sumMoney } from './money.js';
 import { compareIds, singularize, tokenize } from './text.js';
@@ -35,6 +36,7 @@ import type {
   CompiledTerm,
   CountCriterion,
   Direction,
+  ResolvedCriterion,
   ShapeKind,
 } from './answer-lexicon.js';
 
@@ -265,6 +267,30 @@ function gather(
 const SCOPE_IS_ELIGIBLE: ReadonlySet<AnswerKind> = new Set<AnswerKind>(['superlative', 'count']);
 
 /**
+ * **A listing that names a criterion is a question about the whole eligible set (R-20, P28).**
+ *
+ * The scope rule's reason is that a superlative must not call something "the cheapest" when it
+ * only outranked five. A *criterion* listing has the same problem and the table did not cover it:
+ * "what can I eat for dinner" asks about everything the user may eat, not about the five in front
+ * of them, so resolving it over `context` under-reports - and **can refuse outright**. Measured at
+ * P28: `mealPeriod: 'dinner'` answered *"I do not have that information"* while **38** dinner
+ * meals were eligible, because none of the five ranked meals happened to suit dinner. R-20 called
+ * that "Low - the sentence is true, merely incomplete"; a false refusal is neither.
+ *
+ * A listing with NO criterion keeps `context`, and that asymmetry is the point rather than an
+ * exception: "here are 5 of your meals" claims nothing about a total, so the five in front of the
+ * user are an honest answer to it.
+ *
+ * **This is an amendment to TSD 4.9's scope table**, which R-20 recorded as the required route and
+ * which the user authorised at P28. `count` already scoped to `eligible` and answered the same
+ * question correctly ("7 meals suit breakfast"), so the amendment makes the table consistent with
+ * itself.
+ */
+function scopeIsEligible(kind: AnswerKind, criterion: ResolvedCriterion | null): boolean {
+  return SCOPE_IS_ELIGIBLE.has(kind) || (kind === 'listing' && criterion !== null);
+}
+
+/**
  * Does the meal satisfy the criterion?
  *
  * A diet criterion goes through `isDietCompatible` rather than testing the literal tag,
@@ -272,7 +298,7 @@ const SCOPE_IS_ELIGIBLE: ReadonlySet<AnswerKind> = new Set<AnswerKind>(['superla
  * both asymmetries intentional. Testing `dietTags.includes('vegetarian')` would report a vegan
  * dish as not vegetarian and contradict the module every other part of the system consults.
  */
-function matchesCriterion(meal: Meal, criterion: CountCriterion): boolean {
+function matchesCriterion(meal: Meal, criterion: ResolvedCriterion): boolean {
   return criterion.sort === 'diet'
     ? isDietCompatible(criterion.tag, [...meal.dietTags])
     : meal.mealPeriods.includes(criterion.period);
@@ -287,12 +313,12 @@ function nameList(meals: readonly Meal[]): string {
 }
 
 /** How a criterion reads inside a sentence, with the identifier hyphen removed. */
-function criterionLabel(criterion: CountCriterion): string {
+function criterionLabel(criterion: ResolvedCriterion): string {
   return criterion.sort === 'diet' ? criterion.tag.replaceAll('-', ' ') : criterion.period;
 }
 
 /** The verb has to agree, or the assistant opens with "1 meal are vegan." */
-function criterionPhrase(criterion: CountCriterion, count: number): string {
+function criterionPhrase(criterion: ResolvedCriterion, count: number): string {
   const singular = count === 1;
   return criterion.sort === 'diet'
     ? `${singular ? 'is' : 'are'} ${criterionLabel(criterion)}`
@@ -427,14 +453,31 @@ export function resolveAnswer(question: string, scope: ChatRetrievalResult): Ans
     return unresolved(decision.reason);
   }
 
-  // THE SCOPE RULE. A superlative and a count speak about everything the user could have; the
-  // other three describe what is in front of them.
-  const scoped = SCOPE_IS_ELIGIBLE.has(decision.kind) ? scope.eligible : scope.context;
+  /**
+   * **"right now" becomes a concrete period here, and nowhere else.**
+   *
+   * The lexicon cannot know which period `now` is - it is compiled once, and the answer depends
+   * on when the question was asked - so it emits `{ sort: 'current-period' }` and this is the one
+   * place that resolves it, against the period the CLIENT sent (TSD 5.4: the server holds no
+   * clock). Normalising here rather than in `matchesCriterion` keeps the relative form out of
+   * every downstream reader: by the time anything tests a meal, the criterion is an ordinary
+   * `'period'` one and behaves exactly as `"for breakfast"` does.
+   *
+   * It has to happen BEFORE the scope rule, because the scope now depends on whether a criterion
+   * is present (R-20).
+   */
+  const criterion: ResolvedCriterion | null =
+    decision.criterion?.sort === 'current-period'
+      ? { sort: 'period', period: scope.currentPeriod }
+      : decision.criterion;
+
+  // THE SCOPE RULE. A superlative, a count and a CRITERION LISTING speak about everything the user
+  // could have; a bare ordering, listing or total describes what is in front of them.
+  const scoped = scopeIsEligible(decision.kind, criterion) ? scope.eligible : scope.context;
   if (scoped.length === 0) {
     return unresolved('no-candidates');
   }
 
-  const { criterion } = decision;
   const candidates =
     criterion === null ? scoped : scoped.filter((meal) => matchesCriterion(meal, criterion));
 
@@ -462,18 +505,36 @@ export function resolveAnswer(question: string, scope: ChatRetrievalResult): Ans
     }
 
     case 'listing': {
-      // "of your" rather than a bare count: the number is how many are being shown, and
-      // retrieval caps that at five. Worded as a total it would read as "you have 5 meals"
-      // against a sixty-meal catalog.
+      /*
+        "of your" rather than a bare count: the number is how many are being SHOWN. Worded as a
+        total it would read as "you have 5 meals" against a sixty-meal catalog.
+
+        **A criterion listing now selects from the whole eligible set (R-20) and so has to cap
+        what it shows.** Before P28 the cap came for free, because retrieval had already trimmed
+        the context to five; a dinner listing over `eligible` could otherwise name 38 meals in one
+        sentence, hand 38 blocks to the prompt, and exceed the grammar's five-citation ceiling.
+        So the list is trimmed here and **the sentence names both numbers** - which is exactly the
+        containment R-20's row proposed ("wording makes the number visibly a count of what is
+        shown rather than a total").
+
+        When everything matched fits, the second number is omitted: "5 of your 5 dinner meals"
+        answers a question nobody asked.
+      */
+      const shown = candidates.slice(0, MAX_CHAT_CONTEXT_MEALS);
       const subject = criterion === null ? 'meals' : `${criterionLabel(criterion)} meals`;
+      const total = candidates.length;
+      const scopePhrase =
+        shown.length === total ? `your ${subject}` : `your ${String(total)} ${subject}`;
       return {
         kind: decision.kind,
-        statement: `Here ${candidates.length === 1 ? 'is' : 'are'} ${String(
-          candidates.length,
-        )} of your ${subject}: ${nameList(candidates)}.`,
-        figures: [String(candidates.length)],
-        citedMealIds: candidates.map((meal) => meal.id),
-        namedMeals: [...candidates],
+        statement: `Here ${shown.length === 1 ? 'is' : 'are'} ${String(
+          shown.length,
+        )} of ${scopePhrase}: ${nameList(shown)}.`,
+        // BOTH numbers are permitted when they differ, or containment check 3 would discard a
+        // sentence the domain itself composed.
+        figures: permit([String(shown.length), String(total)]),
+        citedMealIds: shown.map((meal) => meal.id),
+        namedMeals: [...shown],
       };
     }
 

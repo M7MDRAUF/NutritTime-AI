@@ -109,6 +109,10 @@ export const RECOMMEND_REQUEST: RecommendationRequest = {
 
 export const CHAT_REQUEST: ChatRequest = {
   question: 'Which lunch has the most protein?',
+  // `dinner` while the question says "lunch", deliberately: the two are independent, and a
+  // fixture that made them agree could not catch a client that sent the question's word instead
+  // of the device's clock.
+  mealPeriod: 'dinner',
   preferences: { diet: 'vegetarian', allergies: ['peanut'], dislikedIngredients: [] },
 };
 

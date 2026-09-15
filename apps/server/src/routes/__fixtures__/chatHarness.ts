@@ -221,6 +221,8 @@ export const CHAT_PATH = '/api/v1/chat';
 
 export interface AskOptions {
   readonly question: string;
+  /** Overridden only by the tests whose subject is the period itself. */
+  readonly mealPeriod?: string;
   readonly allergies?: readonly string[];
   readonly diet?: string;
   readonly dislikedIngredients?: readonly string[];
@@ -237,6 +239,10 @@ export const ask = (harnessed: Harness, options: AskOptions) =>
     .send(
       JSON.stringify({
         question: options.question,
+        // Every harnessed request carries a period, because the schema requires one. `lunch` is
+        // the default rather than the current time: a suite whose bodies changed with the clock
+        // would pass or fail depending on when it ran.
+        mealPeriod: options.mealPeriod ?? 'lunch',
         preferences: {
           diet: options.diet ?? 'regular',
           allergies: options.allergies ?? [],

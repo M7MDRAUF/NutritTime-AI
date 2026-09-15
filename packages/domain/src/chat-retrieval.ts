@@ -11,7 +11,7 @@
  * cheapest of five - a sentence that reads as true and is not.
  */
 
-import type { DietTag, Meal } from '@nutritime/contracts';
+import type { DietTag, Meal, MealPeriod } from '@nutritime/contracts';
 import { hasAllergenConflict } from './allergens.js';
 import { isDietCompatible } from './diet.js';
 import { queryMeals } from './relevance.js';
@@ -36,6 +36,14 @@ export interface ChatRetrievalInput {
   readonly question: string;
   readonly preferences: RetrievalPreferences;
   readonly meals: readonly Meal[];
+  /**
+   * The period the CLIENT computed, because the server holds no clock (TSD 5.4).
+   *
+   * Retrieval does not filter by it - the eligible set is everything safe, and narrowing it here
+   * would make every question period-scoped, including "which is cheapest". It is carried through
+   * onto the result so a question that says "right now" has something to mean.
+   */
+  readonly mealPeriod: MealPeriod;
 }
 
 export interface ChatRetrievalResult {
@@ -43,6 +51,14 @@ export interface ChatRetrievalResult {
   readonly eligible: readonly Meal[];
   /** At most five, ranked. What a resolver runs over for a context-scoped question. */
   readonly context: readonly Meal[];
+  /**
+   * What "now" means for this question, passed straight through from the input.
+   *
+   * On the RESULT rather than as a second parameter to `resolveAnswer` so that function's
+   * signature does not change: the period is a property of the scope a question is asked in,
+   * which is exactly what this type is.
+   */
+  readonly currentPeriod: MealPeriod;
 }
 
 /**
@@ -53,7 +69,7 @@ export interface ChatRetrievalResult {
  * answer, which is the whole reason a dislike is a penalty in 4.6 rather than a filter.
  */
 export function retrieveChatMeals(input: ChatRetrievalInput): ChatRetrievalResult {
-  const { preferences, meals, question } = input;
+  const { preferences, meals, question, mealPeriod } = input;
 
   const eligible: Meal[] = [];
   const preferred: Meal[] = [];
@@ -96,5 +112,11 @@ export function retrieveChatMeals(input: ChatRetrievalInput): ChatRetrievalResul
   const fallback = [...preferred, ...demoted];
   const chosen = ranked.length > 0 ? ranked : fallback;
 
-  return { eligible, context: chosen.slice(0, MAX_CHAT_CONTEXT_MEALS) };
+  return {
+    eligible,
+    context: chosen.slice(0, MAX_CHAT_CONTEXT_MEALS),
+    // Passed through unchanged. Retrieval deliberately does NOT filter on it: see the field's
+    // docstring on `ChatRetrievalInput`.
+    currentPeriod: mealPeriod,
+  };
 }

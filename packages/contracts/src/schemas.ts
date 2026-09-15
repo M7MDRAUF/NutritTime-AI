@@ -190,6 +190,26 @@ export const retrievalPreferencesSchema = z.strictObject({
 
 export const chatRequestSchema = z.strictObject({
   question: z.string().trim().min(1).max(500),
+  /**
+   * **The client sends the meal period here for the same reason it sends it to
+   * `/recommendations`: the server holds no clock (TSD §5.4).**
+   *
+   * Added at P28 because *"what can I eat right now?"* was unanswerable by construction. The
+   * pieces all existed — TSD §4.9 already defines meal period as a count criterion, and PRD
+   * §7.4's **Listing** shape already covers a criterion-scoped list, so *"what can I eat for
+   * breakfast"* resolved fine. What no one could say was which period **"now"** is, because the
+   * question arrived without one and a server that invented a clock would answer wrongly across
+   * time zones and untestably everywhere.
+   *
+   * **Required, not optional**, matching `recommendationRequestSchema`. Optional would make a
+   * forgotten field indistinguishable from a question the assistant does not understand — which
+   * is the exact confusion this field exists to remove.
+   *
+   * `useRecommendations.ts` already computes it with the domain's own `mealPeriodForDate`, and
+   * its docstring already claimed "Home and the assistant cannot disagree about what time it is".
+   * That was aspirational until this field existed; now it is true.
+   */
+  mealPeriod: z.enum(MEAL_PERIODS),
   preferences: retrievalPreferencesSchema,
 });
 

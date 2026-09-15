@@ -219,7 +219,10 @@ describe('R-21 - a superlative winner outside scope.context is contained', () =>
     price: { amountCents: 300, currency: 'USD' },
   });
   const eligible = [...RANKED, UNRANKED_WINNER];
-  const scope: ChatRetrievalResult = { eligible, context: RANKED };
+  // The period is irrelevant to this test's subject and is stated rather than defaulted, so a
+  // reader is not left wondering whether the answer depends on it. It does not: the question
+  // below names no criterion.
+  const scope: ChatRetrievalResult = { eligible, context: RANKED, currentPeriod: 'lunch' };
 
   const outcome = resolveAnswer('which meal has the lowest price?', scope);
   if (outcome.kind === 'unresolved') {

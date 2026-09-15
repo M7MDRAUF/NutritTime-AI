@@ -295,12 +295,19 @@ export function chatRouter(deps: ChatRouterDeps): ExpressRouter {
     if (!parsed.success) {
       throw new ApiError('invalid_request', detailsFromIssues(parsed.error.issues));
     }
-    const { question, preferences } = parsed.data;
+    const { question, preferences, mealPeriod } = parsed.data;
 
     // Step 2 - retrieve. Allergen rejection on EFFECTIVE tags, diet compatibility and
     // availability all run here, deterministically, before the model is reachable (PRD FR-015,
     // TSD 4.8). The user's allergy list is consumed at this line and enters no prompt.
-    const scope = retrieveChatMeals({ question, preferences, meals: catalog.meals });
+    const scope = retrieveChatMeals({
+      question,
+      preferences,
+      meals: catalog.meals,
+      // The client's clock, not ours (TSD 5.4). It reaches the domain so a question that says
+      // "right now" has a period to mean; retrieval itself does not filter on it.
+      mealPeriod,
+    });
     if (scope.eligible.length === 0) {
       response.json(localAnswer(CHAT_COPY.noEligibleMeals));
       return;

@@ -156,6 +156,16 @@ export interface ChatRequestPreferences {
 
 export interface ChatRequest {
   readonly question: string;
+  /**
+   * What "now" is, computed on this device (TSD 5.4: the server holds no clock).
+   *
+   * Added at P28 with `chatRequestSchema`'s own new field. **The divergence was caught by a test,
+   * not by the compiler** - `routes.test.ts` parses a value of this type with the real schema,
+   * and it failed the moment the schema gained a field this interface lacked. That is the guard
+   * this declaration's docstring promises, doing exactly its job; the duplication itself is
+   * R-78's shape and stays recorded rather than fixed here.
+   */
+  readonly mealPeriod: MealPeriod;
   readonly preferences: ChatRequestPreferences;
 }
 

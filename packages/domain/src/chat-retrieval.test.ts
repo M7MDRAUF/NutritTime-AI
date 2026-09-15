@@ -47,7 +47,15 @@ const prefs = (overrides: Partial<RetrievalPreferences> = {}): RetrievalPreferen
 });
 
 const retrieve = (overrides: Partial<ChatRetrievalInput>) =>
-  retrieveChatMeals({ question: '', preferences: prefs(), meals: [], ...overrides });
+  retrieveChatMeals({
+    question: '',
+    preferences: prefs(),
+    meals: [],
+    // Retrieval does not filter on the period, so the default is arbitrary and saying so is
+    // the point: a test whose result changed with this value would be testing the wrong thing.
+    mealPeriod: 'lunch',
+    ...overrides,
+  });
 
 const idsOf = (meals: readonly Meal[]): readonly string[] => meals.map((meal) => meal.id);
 
@@ -181,8 +189,14 @@ describe('an empty eligible set', () => {
     expect(result.context).toStrictEqual([]);
   });
 
-  it('returns both sets empty for an empty catalog', () => {
-    expect(retrieve({ meals: [] })).toStrictEqual({ eligible: [], context: [] });
+  it('returns both sets empty for an empty catalog, and still reports the period', () => {
+    // `currentPeriod` is passed straight through even when there is nothing to retrieve, which is
+    // what lets `resolveAnswer` refuse with `no-candidates` rather than with a missing clock.
+    expect(retrieve({ meals: [] })).toStrictEqual({
+      eligible: [],
+      context: [],
+      currentPeriod: 'lunch',
+    });
   });
 });
 

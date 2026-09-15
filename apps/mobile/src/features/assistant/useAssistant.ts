@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ApiErrorCode, ChatResponse, Citation, UserPreferences } from '@nutritime/contracts';
 import { isApiClientError } from '../../infrastructure/api/errors.js';
+import { mealPeriodNow } from '../../shared/mealPeriodNow.js';
 import type { ApiClient } from '../../infrastructure/api/client.js';
 import type { ChatRequest, ChatRequestPreferences } from '../../infrastructure/api/routes.js';
 import { ASSISTANT_MAX_QUESTION } from './assistantCopy.js';
@@ -252,6 +253,19 @@ export function useAssistant({
        */
       const request: ChatRequest = {
         question: text,
+        /**
+         * **What "now" means, so "what can I eat right now?" has an answer.**
+         *
+         * Computed here on the device because the server holds no clock (TSD 5.4), through the
+         * same `mealPeriodNow` Home uses - which is what makes `useRecommendations`'s claim that
+         * the two "cannot disagree about what time it is" true rather than aspirational.
+         *
+         * Read at ASK time rather than memoised at mount: a transcript left open across the
+         * boundary between lunch and dinner should answer about dinner, and an assistant that
+         * answered about lunch because that is when the screen opened would be quietly wrong in
+         * the one way this field exists to prevent.
+         */
+        mealPeriod: mealPeriodNow(new Date(), preferences.mealTimes),
         preferences: selectChatPreferences(preferences),
       };
 

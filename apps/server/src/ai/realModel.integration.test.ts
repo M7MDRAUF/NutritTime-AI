@@ -103,7 +103,12 @@ const BATTERY: readonly (readonly ['plain' | 'figure' | 'safety', string])[] = [
 
 /** Retrieve and resolve exactly as `chat.ts` steps 2 and 3 do, over the shipped 60 records. */
 function resolve(question: string): ResolvedAnswer {
-  const scope = retrieveChatMeals({ question, preferences: PREFERENCES, meals: catalog.meals });
+  const scope = retrieveChatMeals({
+    question,
+    preferences: PREFERENCES,
+    meals: catalog.meals,
+    mealPeriod: 'lunch',
+  });
   const outcome = resolveAnswer(question, scope);
   if (outcome.kind === 'unresolved') {
     throw new Error(

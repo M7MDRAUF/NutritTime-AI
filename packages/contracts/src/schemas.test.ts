@@ -231,6 +231,9 @@ describe('userPreferencesSchema', () => {
 describe('chatRequestSchema', () => {
   const body = {
     question: 'Which of these is quickest to prepare?',
+    // The client's clock. Required, matching `recommendationRequestSchema`, so that a question
+    // about "right now" has a period to mean - the server has none (TSD 5.4).
+    mealPeriod: 'lunch',
     preferences: { diet: 'vegetarian', allergies: ['peanut'], dislikedIngredients: ['mushroom'] },
   };
 

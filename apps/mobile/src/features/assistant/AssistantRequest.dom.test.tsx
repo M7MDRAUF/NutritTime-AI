@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getByRole } from '@testing-library/dom';
+import { MEAL_PERIODS } from '@nutritime/contracts';
 import { STORAGE_KEYS } from '../../infrastructure/storage/definitions.js';
 import { ASSISTANT_COPY, ASSISTANT_FAILURE_COPY, ASSISTANT_MAX_QUESTION } from './assistantCopy.js';
 import {
@@ -66,15 +67,30 @@ describe('the Assistant request', () => {
   /**
    * The body, exactly. `toEqual` fails on an extra key, so this is also the assertion that `goal`
    * and `budget` do not travel — the 400 TSD §5.4 promises and the client's job to avoid.
+   *
+   * **`mealPeriod` joined the body at P28** and is asserted as a MEMBER of `MEAL_PERIODS` rather
+   * than as a literal, because the value is whatever this device's clock makes it and a literal
+   * would make the test pass or fail by the hour. What matters here is that it travels, that it
+   * is a period the schema accepts, and — below — that it is the only new key.
    */
-  it('posts one question and the three retrieval fields, and no conversation history', async () => {
+  it('posts one question, the period, the three retrieval fields, and no history', async () => {
     const { client, requests, settle } = deferredClient();
     const screen = await renderAssistant(client);
 
     await screen.type(QUESTION);
     await screen.ask();
+    expect(requests[0]?.question).toBe(QUESTION);
+    expect(requests[0]?.preferences).toEqual({
+      diet: 'regular',
+      allergies: [],
+      dislikedIngredients: [],
+    });
+    expect(MEAL_PERIODS).toContain(requests[0]?.mealPeriod);
+    // Still the WHOLE body, which is what catches a fifth key: the period is added to the
+    // expectation from the request itself, so every OTHER key must match exactly.
     expect(requests[0]).toEqual({
       question: QUESTION,
+      mealPeriod: requests[0]?.mealPeriod,
       preferences: { diet: 'regular', allergies: [], dislikedIngredients: [] },
     });
 
@@ -83,7 +99,11 @@ describe('the Assistant request', () => {
     await screen.ask();
     // PRD §7.3: each question is answered independently. The second body carries the second
     // question and nothing from the first.
-    expect(Object.keys(requests[1] ?? {}).sort()).toEqual(['preferences', 'question']);
+    expect(Object.keys(requests[1] ?? {}).sort()).toEqual([
+      'mealPeriod',
+      'preferences',
+      'question',
+    ]);
     expect(requests[1]?.question).toBe('And the cheapest?');
     expect(JSON.stringify(requests[1])).not.toContain(QUESTION);
   });

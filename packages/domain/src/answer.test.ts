@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Meal } from '@nutritime/contracts';
+import type { Meal, MealPeriod } from '@nutritime/contracts';
 import type { ChatRetrievalResult } from './chat-retrieval.js';
 import { formatAnswerValue, resolveAnswer } from './answer.js';
 import { COMPILED_CRITERIA, COMPILED_SENSES, COMPILED_SHAPES } from './answer-lexicon.js';
@@ -43,9 +43,20 @@ const BASE: Meal = {
 
 const makeMeal = (overrides: Partial<Meal>): Meal => ({ ...BASE, ...overrides });
 
-const scopeOf = (eligible: readonly Meal[], context?: readonly Meal[]): ChatRetrievalResult => ({
+const scopeOf = (
+  eligible: readonly Meal[],
+  context?: readonly Meal[],
+  /**
+   * What "now" is for the question under test. `lunch` by default because it is the period the
+   * fixtures below mostly carry, so a test that does not care about the clock reads unchanged.
+   *
+   * Passed explicitly by the `current-period` tests, which are the only ones whose subject it is.
+   */
+  currentPeriod: MealPeriod = 'lunch',
+): ChatRetrievalResult => ({
   eligible,
   context: context ?? eligible,
+  currentPeriod,
 });
 
 /** Narrows for assertions, and fails the test rather than the type system if it is unresolved. */

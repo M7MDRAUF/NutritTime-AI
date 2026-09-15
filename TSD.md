@@ -468,6 +468,7 @@ export const retrievalPreferencesSchema = z.strictObject({
 
 export const chatRequestSchema = z.strictObject({
   question: z.string().trim().min(1).max(500),
+  mealPeriod: z.enum(MEAL_PERIODS),   // the client's clock; the server has none (§5.4)
   preferences: retrievalPreferencesSchema,
 });
 
@@ -879,11 +880,13 @@ export interface ChatRetrievalInput {
   readonly question: string;
   readonly preferences: RetrievalPreferences;   // diet, allergies, dislikedIngredients
   readonly meals: readonly Meal[];
+  readonly mealPeriod: MealPeriod;   // what "now" is; NOT a filter, see below
 }
 
 export interface ChatRetrievalResult {
   readonly eligible: readonly Meal[];   // everything that survived the filters
   readonly context: readonly Meal[];    // <= 5, ranked; what the resolver runs over
+  readonly currentPeriod: MealPeriod;   // passed through from the input, unchanged
 }
 
 export function retrieveChatMeals(input: ChatRetrievalInput): ChatRetrievalResult;
@@ -956,7 +959,15 @@ export function resolveAnswer(question: string, scope: ChatRetrievalResult): Ans
 
 **Classification** is a keyword lexicon, not a regex and not a model. `answer-lexicon.ts` holds four
 tables — sense terms (field and/or direction), shape terms (`count` / `total` / `ordering` /
-`listing`), greeting terms, and count criteria (diet tag, meal period). Matching:
+`listing`), greeting terms, and count criteria (diet tag, meal period, **or the period the question
+was asked in**). Matching:
+
+The third criterion variant, added at P28, is what makes *"what can I eat right now"* answerable.
+The lexicon is compiled once and cannot know which period "now" is, so it emits a relative marker
+and `answer.ts` normalises it against `ChatRetrievalResult.currentPeriod` before anything reads it
+— nothing downstream, `matchesCriterion` included, ever sees the relative form. The types enforce
+that rather than a comment: `ResolvedCriterion` has no relative variant, so every consumer that
+reads `.period` is a compile error until the normalisation has happened.
 
 1. Tokenize and singularise the question.
 2. Compile every term longest-phrase-first. Walk them in that order; when a phrase matches, **claim**
@@ -976,9 +987,24 @@ tables — sense terms (field and/or direction), shape terms (`count` / `total` 
   `total` → `sumMoney`. `listing` → the meals shown.
 
 **Scope rule.** `superlative` and `count` assert something about the user's whole eligible set, so
-they resolve over `scope.eligible`. `ordering`, `listing`, and `total` describe what is in front of
-the user, so they resolve over `scope.context`. Getting this backwards produces the subtlest bug in
-the system: "the cheapest meal is X" where X is merely the cheapest of five.
+they resolve over `scope.eligible`. `ordering` and `total`, and a `listing` with **no** criterion,
+describe what is in front of the user, so they resolve over `scope.context`. Getting this backwards
+produces the subtlest bug in the system: "the cheapest meal is X" where X is merely the cheapest of
+five.
+
+**A `listing` WITH a criterion resolves over `scope.eligible` (amended at P28, R-20).** "What can I
+eat for dinner" asks about everything the user may eat, not about the five in front of them, so
+`context` under-reports it — and can refuse it outright. Measured before the amendment: a dinner
+listing answered *"I do not have that information"* while **38** dinner meals were eligible, because
+none of the five ranked meals happened to suit dinner. R-20 had recorded the impact as "the sentence
+is true, merely incomplete"; a false refusal is neither, and `count` already scoped to `eligible`
+and answered the same question correctly.
+
+Because `eligible` is unbounded, a criterion listing **caps what it names** at
+`MAX_CHAT_CONTEXT_MEALS` and **states both numbers** — "Here are 5 of your 38 dinner meals" — which
+is the containment R-20's row proposed, and which keeps `namedMeals` inside §5.6's block budget and
+`citedMealIds` inside §5.5's five-item ceiling. Both numbers are permitted figures when they
+differ, or §5.7's check 3 would discard a sentence the domain composed itself.
 
 **Figures.** `figures` is derived from the **formatted** strings, never the raw numbers — `1010`
 becomes `"$10.10"`, and `"10.10"` is what a reader will see, so `"10.10"` is what must be permitted.

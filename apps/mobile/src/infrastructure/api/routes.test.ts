@@ -102,6 +102,10 @@ describe('request bodies', () => {
   it('a ChatRequest is accepted by chatRequestSchema, and carries no goal or budget', () => {
     const request: ChatRequest = {
       question: 'What is the highest protein lunch?',
+      // The field whose absence made this test fail the moment `chatRequestSchema` gained it,
+      // which is this test's whole purpose: it is the only guard on a hand-declared duplicate of
+      // a schema in another package (R-78's shape, recorded there).
+      mealPeriod: 'lunch',
       preferences: { diet: 'vegan', allergies: [], dislikedIngredients: [] },
     };
     expect(chatRequestSchema.safeParse(request).success).toBe(true);

@@ -10,14 +10,18 @@
  *    and if the request failed they would stay there indefinitely.
  *
  * 2. **The period is computed here, on the device, and the server holds no clock** (TSD §5.4).
- *    `mealPeriodForDate` is the domain's, so Home and the assistant cannot disagree about what time
- *    it is — and it is returned separately from the request state so the screen can render it
- *    before anything resolves, which T-15-01's acceptance requires *with the server down*.
+ *    `shared/mealPeriodNow.ts` wraps the domain's `mealPeriodForDate`, and **the assistant uses
+ *    the same module as of P28**, so Home and the assistant cannot disagree about what time it
+ *    is. That sentence used to sit here as a claim about a shared function the assistant did not
+ *    actually call — it was never sent a period at all — which is why `chatRequestSchema` gained
+ *    `mealPeriod` and this guard moved out of this file. The period is still returned separately
+ *    from the request state so the screen can render it before anything resolves, which
+ *    T-15-01's acceptance requires *with the server down*.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { mealPeriodForDate } from '@nutritime/domain';
+import { mealPeriodNow } from '../../shared/mealPeriodNow.js';
 import type { MealPeriod, Recommendation } from '@nutritime/contracts';
 import { isApiClientError } from '../../infrastructure/api/errors.js';
 import type { ApiClient } from '../../infrastructure/api/client.js';
@@ -129,7 +133,8 @@ export function useRecommendations({
   const mealTimes = preferences.preferences.mealTimes;
   const mealPeriod = useMemo(
     /**
-     * **Guarded, because `mealPeriodForDate` THROWS.**
+     * **Guarded, because `mealPeriodForDate` THROWS** — the guard itself now lives in
+     * `shared/mealPeriodNow.ts`, shared with the assistant.
      *
      * `parseClockTime` raises `RangeError` on anything that is not zero-padded `HH:mm`, this runs
      * during render, and there is no error boundary anywhere in the app — so one unparseable stored
@@ -141,13 +146,10 @@ export function useRecommendations({
      * that claims least. Showing "Something small" is a mild inaccuracy; showing nothing at all
      * would break T-15-01's guarantee that the period renders before any request.
      */
-    () => {
-      try {
-        return mealPeriodForDate(now(), mealTimes);
-      } catch {
-        return 'snack';
-      }
-    },
+    // The guard moved to `shared/mealPeriodNow.ts` at P28 so the ASSISTANT could share it - the
+    // claim above, that Home and the assistant cannot disagree about the time, was aspirational
+    // until then. The reasoning lives there now; the behaviour is unchanged.
+    () => mealPeriodNow(now(), mealTimes),
     // `clockEpoch` is what makes this recompute on focus and on resume; `now` is deliberately
     // excluded, because including it would recompute on every render for a caller that passes an
     // inline arrow, which is every caller. **Nothing lints this** —
