@@ -2,7 +2,7 @@
 
 - **Version:** 2.2.0
 - **Date:** 2026-09-13
-- **Author:** Mohammad Ra'uf Naser Albatayneh
+- **Author:** Mohammad Ra'uf Naser Al Batayneh
 - **Status:** Active
 - **Scope:** private, single-developer, runs locally
 - **Stack:** Expo · React Native · TypeScript · React Navigation · AsyncStorage · Node.js · Express · Ollama (Gemma 3:4B)

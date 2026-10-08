@@ -2,7 +2,7 @@
 
 - **Version:** 2.1.0
 - **Date:** 2026-09-13
-- **Author:** Mohammad Ra'uf Naser Albatayneh
+- **Author:** Mohammad Ra'uf Naser Al Batayneh
 - **Status:** Active
 - **Related:** `PRD.md` (requirements), `TSD.md` (implementation contract)
 

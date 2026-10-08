@@ -2,7 +2,7 @@
 
 - **Version:** 1.2.0
 - **Date:** 2026-09-13
-- **Author:** Mohammad Ra'uf Naser Albatayneh
+- **Author:** Mohammad Ra'uf Naser Al Batayneh
 - **Status:** Active
 - **Related:** `PRD.md` (what and why), `SDD.md` (architecture and rationale)
 
